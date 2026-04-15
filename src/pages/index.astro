@@ -10,32 +10,76 @@ const latestPosts = posts.slice(0, 5);
 ---
 
 <BaseLayout title="首页" description="zzqDeco Blog 首页">
-  <section class="hero">
-    <span class="eyebrow">Personal site</span>
-    <h1>写给未来自己的技术与生活注脚。</h1>
-    <p>
-      这里是 zzqDeco 的个人博客，使用 Astro、Markdown、GitHub Pages 与 GitHub Actions 搭建。
-      内容优先，页面默认静态输出，只在需要的时候加最少的交互。
-    </p>
-    <div class="hero-actions">
-      <a class="button-link primary" href="/blog/">开始阅读</a>
-      <a class="button-link" href="/rss.xml">订阅 RSS</a>
+  <section class="shell-window">
+    <div class="window-bar">
+      <div class="window-dots" aria-hidden="true">
+        <span class="window-dot is-danger"></span>
+        <span class="window-dot is-warning"></span>
+        <span class="window-dot is-success"></span>
+      </div>
+      <p class="window-title">$ cat README.md</p>
+      <p class="window-meta">ready</p>
+    </div>
+    <div class="hero">
+      <p class="command-line">
+        <span class="prompt">zzqdeco@blog:~$</span>
+        <span>cat ./intro.txt</span>
+      </p>
+      <h1>写给未来自己的技术与生活注脚。</h1>
+      <p class="terminal-note">
+        这是一个偏工程感的个人博客。内容以 Markdown 管理，页面以静态输出为先，
+        同时保留一点终端界面的冷静和一点纸面阅读的温度。
+      </p>
+      <div class="inline-status">
+        <span class="status-pill">stack: astro</span>
+        <span class="status-pill">deploy: github pages</span>
+        <span class="status-pill">content: markdown</span>
+      </div>
+      <div class="hero-actions">
+        <a class="button-link primary" href="/blog/">浏览文章</a>
+        <a class="button-link" href="/about/">查看关于</a>
+        <a class="button-link" href="/rss.xml">订阅 RSS</a>
+      </div>
     </div>
   </section>
 
-  <section>
-    <span class="eyebrow">Latest posts</span>
-    <h2>最新文章</h2>
-    <div class="post-list">
+  <section class="shell-window">
+    <div class="window-bar">
+      <div class="window-dots" aria-hidden="true">
+        <span class="window-dot is-danger"></span>
+        <span class="window-dot is-warning"></span>
+        <span class="window-dot is-success"></span>
+      </div>
+      <p class="window-title">$ ls ./blog | head -n 5</p>
+      <p class="window-meta">{latestPosts.length} entries</p>
+    </div>
+    <div class="shell-body">
+      <div class="section-title">
+        <p class="command-line">
+          <span class="prompt">zzqdeco@blog:~$</span>
+          <span>ls ./src/content/blog</span>
+        </p>
+        <h2>最新文章</h2>
+      </div>
+      <div class="post-list">
       {latestPosts.map((post) => (
         <article class="card post-card">
+          <div class="post-card-top">
+            <p class="post-path">/blog/{post.id}/</p>
+            <p class="meta">{post.data.pubDate.toLocaleDateString('zh-CN')}</p>
+          </div>
           <h3>
-            <a href={`/blog/${post.id}/`}>{post.data.title}</a>
+            <a class="terminal-link" href={`/blog/${post.id}/`}>{post.data.title}</a>
           </h3>
-          <p class="meta">{post.data.pubDate.toLocaleDateString('zh-CN')}</p>
-          <p>{post.data.description}</p>
+          <p class="post-summary">{post.data.description}</p>
+          {post.data.tags.length > 0 && (
+            <div class="tags">
+              {post.data.tags.map((tag) => <span class="tag">{tag}</span>)}
+            </div>
+          )}
         </article>
       ))}
+      </div>
     </div>
   </section>
 </BaseLayout>

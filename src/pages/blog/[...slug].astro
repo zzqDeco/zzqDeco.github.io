@@ -19,35 +19,66 @@ const { Content, headings } = await render(post);
 
 <BaseLayout title={post.data.title} description={post.data.description}>
   <article class="article">
-    <header class="article-header">
-      <span class="eyebrow">Post</span>
-      <h1>{post.data.title}</h1>
-      <p class="meta">
-        发布于 {post.data.pubDate.toLocaleDateString('zh-CN')}
-        {post.data.updatedDate && ` · 更新于 ${post.data.updatedDate.toLocaleDateString('zh-CN')}`}
-      </p>
-      {post.data.tags.length > 0 && (
-        <div class="tags">
-          {post.data.tags.map((tag) => <span class="tag">{tag}</span>)}
+    <section class="shell-window">
+      <div class="window-bar">
+        <div class="window-dots" aria-hidden="true">
+          <span class="window-dot is-danger"></span>
+          <span class="window-dot is-warning"></span>
+          <span class="window-dot is-success"></span>
         </div>
-      )}
-    </header>
+        <p class="window-title">$ cat ./src/content/blog/{post.id}.md</p>
+        <p class="window-meta">markdown</p>
+      </div>
 
-    {headings.length > 0 && (
-      <aside class="card toc">
-        <strong>目录</strong>
-        <ul>
-          {headings.map((heading) => (
-            <li>
-              <a href={`#${heading.slug}`}>{heading.text}</a>
-            </li>
-          ))}
-        </ul>
-      </aside>
-    )}
+      <div class="shell-body article-shell">
+        <header class="article-header">
+          <div class="crumbs">
+            <a href="/">~</a>
+            <span>/</span>
+            <a href="/blog/">blog</a>
+            <span>/</span>
+            <span>{post.id}</span>
+          </div>
 
-    <div class="post-content">
-      <Content />
-    </div>
+          <p class="command-line">
+            <span class="prompt">zzqdeco@blog:~$</span>
+            <span>cat article.md</span>
+          </p>
+
+          <h1>{post.data.title}</h1>
+          <p class="terminal-note">{post.data.description}</p>
+          <div class="inline-status">
+            <span class="status-pill">published: {post.data.pubDate.toLocaleDateString('zh-CN')}</span>
+            {post.data.updatedDate && (
+              <span class="status-pill">updated: {post.data.updatedDate.toLocaleDateString('zh-CN')}</span>
+            )}
+            <span class="status-pill">type: markdown</span>
+          </div>
+
+          {post.data.tags.length > 0 && (
+            <div class="tags">
+              {post.data.tags.map((tag) => <span class="tag">{tag}</span>)}
+            </div>
+          )}
+        </header>
+
+        {headings.length > 0 && (
+          <aside class="card toc">
+            <p class="toc-label">$ ls ./sections</p>
+            <ul>
+              {headings.map((heading) => (
+                <li>
+                  <a href={`#${heading.slug}`}>{heading.text}</a>
+                </li>
+              ))}
+            </ul>
+          </aside>
+        )}
+
+        <div class="post-content card reading-panel">
+          <Content />
+        </div>
+      </div>
+    </section>
   </article>
 </BaseLayout>

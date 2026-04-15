@@ -8,26 +8,46 @@ const posts = (await getCollection('blog', ({ data }) => (
 ---
 
 <BaseLayout title="文章" description="zzqDeco Blog 文章列表">
-  <section>
-    <span class="eyebrow">Archive</span>
-    <h1>文章</h1>
-    <p class="meta">按发布时间倒序展示，生产环境会自动过滤草稿。</p>
-  </section>
+  <section class="shell-window">
+    <div class="window-bar">
+      <div class="window-dots" aria-hidden="true">
+        <span class="window-dot is-danger"></span>
+        <span class="window-dot is-warning"></span>
+        <span class="window-dot is-success"></span>
+      </div>
+      <p class="window-title">$ find ./src/content/blog -type f | sort</p>
+      <p class="window-meta">{posts.length} files</p>
+    </div>
 
-  <div class="post-list">
-    {posts.map((post) => (
-      <article class="card post-card">
-        <h2>
-          <a href={`/blog/${post.id}/`}>{post.data.title}</a>
-        </h2>
-        <p class="meta">{post.data.pubDate.toLocaleDateString('zh-CN')}</p>
-        <p>{post.data.description}</p>
-        {post.data.tags.length > 0 && (
-          <div class="tags">
-            {post.data.tags.map((tag) => <span class="tag">{tag}</span>)}
-          </div>
-        )}
-      </article>
-    ))}
-  </div>
+    <div class="shell-body">
+      <div class="section-title">
+        <p class="command-line">
+          <span class="prompt">zzqdeco@blog:~$</span>
+          <span>find ./blog -maxdepth 1 -type f</span>
+        </p>
+        <h1>文章归档</h1>
+        <p class="terminal-note">按发布时间倒序展示，生产环境会自动过滤草稿。</p>
+      </div>
+
+      <div class="post-list">
+        {posts.map((post) => (
+          <article class="card post-card">
+            <div class="post-card-top">
+              <p class="post-path">/blog/{post.id}/</p>
+              <p class="meta">{post.data.pubDate.toLocaleDateString('zh-CN')}</p>
+            </div>
+            <h2>
+              <a class="terminal-link" href={`/blog/${post.id}/`}>{post.data.title}</a>
+            </h2>
+            <p class="post-summary">{post.data.description}</p>
+            {post.data.tags.length > 0 && (
+              <div class="tags">
+                {post.data.tags.map((tag) => <span class="tag">{tag}</span>)}
+              </div>
+            )}
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
 </BaseLayout>

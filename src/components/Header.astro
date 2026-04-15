@@ -9,14 +9,36 @@ const { siteName } = Astro.props;
 ---
 
 <header class="site-header">
-  <div class="container header-inner">
-    <a class="brand" href="/">{siteName}</a>
-    <nav aria-label="主导航">
-      <a href="/">首页</a>
-      <a href="/blog/">文章</a>
-      <a href="/about/">关于</a>
-    </nav>
-    <ThemeToggle />
+  <div class="container">
+    <div class="header-shell">
+      <div class="window-bar">
+        <div class="window-dots" aria-hidden="true">
+          <span class="window-dot is-danger"></span>
+          <span class="window-dot is-warning"></span>
+          <span class="window-dot is-success"></span>
+        </div>
+        <p class="window-title">$ cd ~/zzqDeco.github.io</p>
+        <div class="header-status">
+          <span>online</span>
+          <span>zh-CN</span>
+        </div>
+      </div>
+
+      <div class="header-inner">
+        <a class="brand-block" href="/">
+          <span class="brand-prefix">~/</span>
+          <span class="brand">{siteName}</span>
+        </a>
+
+        <nav aria-label="主导航">
+          <a href="/">$ ls home</a>
+          <a href="/blog/">$ ls blog</a>
+          <a href="/about/">$ cat about</a>
+        </nav>
+
+        <ThemeToggle />
+      </div>
+    </div>
   </div>
 </header>
 
@@ -25,9 +47,26 @@ const { siteName } = Astro.props;
     position: sticky;
     top: 0;
     z-index: 10;
-    border-bottom: 1px solid var(--line);
-    background: color-mix(in srgb, var(--bg) 74%, transparent);
-    backdrop-filter: blur(14px);
+    padding-top: 1rem;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 86%, transparent), transparent);
+    backdrop-filter: blur(12px);
+  }
+
+  .header-shell {
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--panel) 90%, transparent);
+    box-shadow: var(--shadow);
+  }
+
+  .header-status {
+    display: inline-flex;
+    gap: 0.75rem;
+    color: var(--muted);
+    font-family: var(--mono-font);
+    font-size: 0.78rem;
+    text-transform: lowercase;
   }
 
   .header-inner {
@@ -35,13 +74,23 @@ const { siteName } = Astro.props;
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    min-height: 4.5rem;
-    padding: 0.75rem 0;
+    padding: 1rem 1.1rem;
+  }
+
+  .brand-block {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    color: var(--text);
+    font-family: var(--mono-font);
+  }
+
+  .brand-prefix {
+    color: var(--accent);
   }
 
   .brand {
-    color: var(--text);
-    font-size: 1.1rem;
+    font-size: 1rem;
     font-weight: 700;
     letter-spacing: 0.02em;
   }
@@ -50,17 +99,39 @@ const { siteName } = Astro.props;
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 1rem;
+    gap: 0.8rem;
   }
 
   nav a {
-    color: var(--text);
+    display: inline-flex;
+    align-items: center;
+    padding: 0.48rem 0.72rem;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    color: var(--text-soft);
+    font-family: var(--mono-font);
+    font-size: 0.82rem;
   }
 
-  @media (max-width: 720px) {
+  nav a:hover {
+    color: var(--text);
+    border-color: var(--line);
+    background: color-mix(in srgb, var(--panel-muted) 80%, transparent);
+    text-decoration: none;
+  }
+
+  @media (max-width: 860px) {
     .header-inner {
-      align-items: flex-start;
       flex-direction: column;
+      align-items: stretch;
+    }
+
+    nav {
+      justify-content: flex-start;
+    }
+
+    .header-status {
+      display: none;
     }
   }
 </style>

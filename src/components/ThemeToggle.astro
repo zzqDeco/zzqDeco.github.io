@@ -1,12 +1,14 @@
 <button id="theme-toggle" type="button" aria-label="切换主题">
-  切换到深色
+  <span class="theme-label">theme</span>
+  <span class="theme-value" data-theme-value>auto</span>
 </button>
 
 <script>
   const button = document.querySelector('#theme-toggle');
+  const valueNode = button?.querySelector('[data-theme-value]');
   const labels = {
-    light: '切换到深色',
-    dark: '切换到浅色',
+    light: 'paper',
+    dark: 'matrix',
   };
 
   const getTheme = () =>
@@ -15,8 +17,8 @@
   const updateButton = (theme) => {
     if (!button) return;
     const label = labels[theme];
-    button.textContent = label;
-    button.setAttribute('aria-label', label);
+    if (valueNode) valueNode.textContent = label;
+    button.setAttribute('aria-label', `切换主题，当前为 ${label}`);
   };
 
   const setTheme = (theme) => {
@@ -34,18 +36,38 @@
 
 <style>
   button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
     border: 1px solid var(--line);
     border-radius: 999px;
-    background: var(--surface);
+    background: color-mix(in srgb, var(--panel-muted) 84%, transparent);
     color: var(--text);
-    padding: 0.65rem 0.95rem;
-    font: inherit;
+    padding: 0.65rem 0.95rem 0.65rem 0.8rem;
+    font: 0.8rem var(--mono-font);
+    letter-spacing: 0.03em;
     cursor: pointer;
-    transition: transform 160ms ease, background-color 160ms ease;
+    transition: transform 160ms ease, border-color 160ms ease;
   }
 
   button:hover {
     transform: translateY(-1px);
-    text-decoration: none;
+    border-color: var(--line-strong);
+  }
+
+  .theme-label {
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .theme-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--accent);
+  }
+
+  .theme-value::before {
+    content: '>';
   }
 </style>
