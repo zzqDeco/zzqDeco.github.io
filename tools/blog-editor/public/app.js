@@ -271,7 +271,6 @@ const boot = async () => {
 };
 
 elements.newPost.addEventListener('click', newPost);
-elements.savePost.addEventListener('click', savePost);
 elements.deletePost.addEventListener('click', deletePost);
 elements.refreshPreview.addEventListener('click', () => {
   setStatus('rendering preview...', 'loading');
