@@ -160,8 +160,7 @@ section + section {
   margin-top: 1.5rem;
 }
 
-.shell-window,
-.hero {
+.shell-window {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: linear-gradient(180deg, color-mix(in srgb, var(--panel-strong) 92%, transparent), var(--panel));
