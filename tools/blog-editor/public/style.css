@@ -24,6 +24,294 @@
   --body: "Iowan Old Style", "Songti SC", "Noto Serif SC", Georgia, serif;
 }
 
+/* Refined command bar: compact grouped tools instead of large loose pills. */
+.typora-surface [role='toolbar'],
+.typora-surface .writing-toolbar,
+.typora-surface .editor-toolbar,
+.typora-surface .toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.28rem;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(99, 255, 178, 0.055), transparent),
+    rgba(6, 18, 25, 0.72);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(136, 255, 190, 0.35) transparent;
+}
+
+.typora-surface [role='toolbar']::-webkit-scrollbar,
+.typora-surface .writing-toolbar::-webkit-scrollbar,
+.typora-surface .editor-toolbar::-webkit-scrollbar,
+.typora-surface .toolbar::-webkit-scrollbar {
+  height: 6px;
+}
+
+.typora-surface [role='toolbar']::-webkit-scrollbar-thumb,
+.typora-surface .writing-toolbar::-webkit-scrollbar-thumb,
+.typora-surface .editor-toolbar::-webkit-scrollbar-thumb,
+.typora-surface .toolbar::-webkit-scrollbar-thumb {
+  background: rgba(136, 255, 190, 0.32);
+  border-radius: 999px;
+}
+
+.typora-surface button[data-action] {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 2.05rem;
+  height: 2rem;
+  padding: 0 0.58rem;
+  border: 1px solid rgba(128, 180, 157, 0.26);
+  border-radius: 9px;
+  background: rgba(245, 241, 225, 0.035);
+  color: var(--text);
+  box-shadow: none;
+  font-size: 0.74rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  transition:
+    color 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.typora-surface button[data-action]:hover {
+  border-color: rgba(137, 255, 185, 0.52);
+  background: rgba(136, 255, 190, 0.095);
+  box-shadow: 0 0 0 1px rgba(136, 255, 190, 0.09);
+  transform: translateY(-1px);
+}
+
+.typora-surface button[data-action]:focus-visible {
+  outline: 2px solid rgba(136, 255, 190, 0.72);
+  outline-offset: 2px;
+}
+
+.typora-surface button[data-action='zen'],
+.typora-surface button[data-action='save'],
+.typora-surface button[data-action='h1'],
+.typora-surface button[data-action='h2'],
+.typora-surface button[data-action='h3'],
+.typora-surface button[data-action='bold'],
+.typora-surface button[data-action='italic'],
+.typora-surface button[data-action='link'],
+.typora-surface button[data-action='image-url'],
+.typora-surface button[data-action='upload-image'],
+.typora-surface button[data-action='bullet'],
+.typora-surface button[data-action='ordered'],
+.typora-surface button[data-action='task'],
+.typora-surface button[data-action='quote'],
+.typora-surface button[data-action='code'],
+.typora-surface button[data-action='table'],
+.typora-surface button[data-action='math'],
+.typora-surface button[data-action='undo'],
+.typora-surface button[data-action='redo'] {
+  font-size: 0;
+}
+
+.typora-surface button[data-action]::after {
+  font-size: 0.74rem;
+  line-height: 1;
+}
+
+.typora-surface button[data-action='zen']::after {
+  content: 'Focus';
+}
+
+.typora-surface button[data-action='save']::after {
+  content: 'Save';
+}
+
+.typora-surface button[data-action='h1']::after {
+  content: 'H1';
+}
+
+.typora-surface button[data-action='h2']::after {
+  content: 'H2';
+}
+
+.typora-surface button[data-action='h3']::after {
+  content: 'H3';
+}
+
+.typora-surface button[data-action='bold']::after {
+  content: 'B';
+  font-weight: 850;
+}
+
+.typora-surface button[data-action='italic']::after {
+  content: 'I';
+  font-style: italic;
+}
+
+.typora-surface button[data-action='link']::after {
+  content: 'Link';
+}
+
+.typora-surface button[data-action='image-url']::after {
+  content: 'Img URL';
+}
+
+.typora-surface button[data-action='upload-image']::after {
+  content: 'Upload';
+}
+
+.typora-surface button[data-action='bullet']::after {
+  content: 'List';
+}
+
+.typora-surface button[data-action='ordered']::after {
+  content: '1.';
+}
+
+.typora-surface button[data-action='task']::after {
+  content: 'Task';
+}
+
+.typora-surface button[data-action='quote']::after {
+  content: 'Quote';
+}
+
+.typora-surface button[data-action='code']::after {
+  content: 'Code';
+}
+
+.typora-surface button[data-action='table']::after {
+  content: 'Table';
+}
+
+.typora-surface button[data-action='math']::after {
+  content: 'Math';
+}
+
+.typora-surface button[data-action='undo']::after {
+  content: 'Undo';
+}
+
+.typora-surface button[data-action='redo']::after {
+  content: 'Redo';
+}
+
+.typora-surface button[data-action='save'] {
+  min-width: 4rem;
+  border-color: rgba(136, 255, 190, 0.42);
+  background: linear-gradient(180deg, rgba(136, 255, 190, 0.18), rgba(136, 255, 190, 0.075));
+  color: var(--text);
+}
+
+.typora-surface button[data-action='zen'] {
+  min-width: 4.25rem;
+}
+
+.typora-surface button[data-action='h1'],
+.typora-surface button[data-action='link'],
+.typora-surface button[data-action='bullet'],
+.typora-surface button[data-action='undo'] {
+  margin-left: 0.78rem;
+}
+
+.typora-surface button[data-action='h1']::before,
+.typora-surface button[data-action='link']::before,
+.typora-surface button[data-action='bullet']::before,
+.typora-surface button[data-action='undo']::before {
+  content: '';
+  position: absolute;
+  left: -0.48rem;
+  top: 0.42rem;
+  bottom: 0.42rem;
+  width: 1px;
+  background: rgba(128, 180, 157, 0.28);
+}
+
+/* Softer Zen transition: the writing area expands instead of snapping. */
+.editor-shell,
+.editor-shell .content-shell,
+.editor-shell .editor-main,
+.editor-shell .typora-surface,
+.editor-shell [aria-label='本地文章文件列表'] {
+  transition:
+    grid-template-columns 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    gap 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    max-width 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 260ms ease,
+    transform 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.editor-shell.is-zen .typora-surface {
+  animation: zen-surface-expand 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.editor-shell.is-zen [aria-label='本地文章文件列表'],
+.editor-shell.is-zen .metadata-panel,
+.editor-shell.is-zen .frontmatter-panel,
+.editor-shell.is-zen .meta-panel {
+  opacity: 0;
+  transform: translateX(-18px) scale(0.985);
+  filter: blur(2px);
+  pointer-events: none;
+}
+
+.editor-shell.is-zen .milkdown-host {
+  animation: zen-editor-breathe 560ms cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
+}
+
+@keyframes zen-surface-expand {
+  from {
+    opacity: 0.82;
+    transform: translateY(18px) scale(0.982);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.16);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes zen-editor-breathe {
+  from {
+    transform: scale(0.992);
+  }
+
+  to {
+    transform: scale(1);
+  }
+}
+
+@media (max-width: 780px) {
+  .typora-surface [role='toolbar'],
+  .typora-surface .writing-toolbar,
+  .typora-surface .editor-toolbar,
+  .typora-surface .toolbar {
+    padding: 0.5rem;
+  }
+
+  .typora-surface button[data-action] {
+    height: 1.9rem;
+    min-width: 1.95rem;
+    padding: 0 0.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .editor-shell,
+  .editor-shell *,
+  .editor-shell.is-zen .typora-surface,
+  .editor-shell.is-zen .milkdown-host {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -47,8 +335,7 @@ body {
 }
 
 button,
-input,
-textarea {
+input {
   font: inherit;
 }
 
@@ -70,8 +357,7 @@ button:hover:not(:disabled) {
 }
 
 button:focus-visible,
-input:focus-visible,
-textarea:focus-visible {
+input:focus-visible {
   outline: 2px solid rgba(137, 247, 185, 0.72);
   outline-offset: 2px;
 }
@@ -103,13 +389,7 @@ button:disabled {
   color: var(--danger);
 }
 
-.compact {
-  padding: 0.35rem 0.55rem;
-  font-size: 0.74rem;
-}
-
-input,
-textarea {
+input {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -120,8 +400,7 @@ textarea {
   transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
-input:focus,
-textarea:focus {
+input:focus {
   border-color: var(--accent);
   background: var(--field-strong);
   box-shadow: 0 0 0 3px rgba(137, 247, 185, 0.1);
@@ -169,7 +448,8 @@ input:disabled {
   font-size: 0.88rem;
 }
 
-.terminal-command span {
+.terminal-command span,
+.status[data-tone="success"] {
   color: var(--accent);
 }
 
@@ -187,8 +467,8 @@ input:disabled {
   color: var(--warning);
 }
 
-.status[data-tone="success"] {
-  color: var(--accent);
+.editor-shell.is-dirty .status::before {
+  content: "* ";
 }
 
 .window-dots {
@@ -350,8 +630,7 @@ h1 {
   text-transform: uppercase;
 }
 
-.empty-state,
-.empty-preview {
+.empty-state {
   margin: 0;
   color: var(--muted);
   font-family: var(--mono);
@@ -368,8 +647,7 @@ h1 {
 
 .actionbar,
 .metadata-card,
-.markdown-pane,
-.preview-pane {
+.typora-surface {
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--panel);
@@ -414,25 +692,20 @@ h1 {
   padding: 0.85rem;
 }
 
-.metadata-head,
-.pane-head {
+.metadata-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid rgba(137, 247, 185, 0.1);
   color: var(--muted-strong);
   font-family: var(--mono);
   font-size: 0.75rem;
 }
 
-.metadata-head {
-  margin-bottom: 0.75rem;
-  padding-bottom: 0.65rem;
-  border-bottom: 1px solid rgba(137, 247, 185, 0.1);
-}
-
-.metadata-head code,
-.pane-head code {
+.metadata-head code {
   color: var(--accent);
   font-family: var(--mono);
   font-size: 0.72rem;
@@ -487,86 +760,123 @@ label.wide {
   font-size: 0.66rem;
 }
 
-.split-editor {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 0.85rem;
-  min-height: 0;
-}
-
-.markdown-pane,
-.preview-pane {
+.typora-surface {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  min-height: 38rem;
+  min-height: 42rem;
   overflow: hidden;
 }
 
-.pane-head {
-  min-height: 2.65rem;
-  padding: 0.62rem 0.75rem;
+.writing-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 3rem;
+  padding: 0.58rem 0.65rem;
   border-bottom: 1px solid rgba(137, 247, 185, 0.1);
   background: var(--panel-strong);
 }
 
-#content {
-  height: 100%;
-  min-height: 30rem;
-  border: 0;
-  border-radius: 0;
-  background: rgba(4, 10, 17, 0.72);
-  font-family: var(--mono);
-  font-size: 0.92rem;
-  line-height: 1.65;
-  resize: none;
+.writing-toolbar button {
+  padding: 0.42rem 0.58rem;
+  font-size: 0.72rem;
 }
 
-#content:focus {
-  box-shadow: inset 0 0 0 1px rgba(137, 247, 185, 0.4);
+.toolbar-separator {
+  width: 1px;
+  height: 1.35rem;
+  background: rgba(137, 247, 185, 0.16);
 }
 
-.preview {
+.zen-only {
+  display: none;
+}
+
+.milkdown-host {
+  min-height: 0;
   overflow: auto;
-  padding: 1.2rem;
-  color: #e7efe6;
-  font-size: 1rem;
-  line-height: 1.75;
+  background: rgba(4, 10, 17, 0.72);
 }
 
-.preview > :first-child {
-  margin-top: 0;
+.milkdown-host .milkdown {
+  min-height: 100%;
+  background: transparent;
+  color: var(--text);
+  --crepe-color-background: transparent;
+  --crepe-color-on-background: var(--text);
+  --crepe-color-surface: rgba(16, 30, 44, 0.96);
+  --crepe-color-surface-low: rgba(12, 23, 35, 0.96);
+  --crepe-color-on-surface: var(--text);
+  --crepe-color-on-surface-variant: var(--muted-strong);
+  --crepe-color-outline: rgba(137, 247, 185, 0.24);
+  --crepe-color-primary: var(--accent);
+  --crepe-color-secondary: rgba(137, 247, 185, 0.14);
+  --crepe-color-on-secondary: var(--text);
+  --crepe-color-inline-code: var(--accent);
+  --crepe-color-error: var(--danger);
+  --crepe-color-hover: rgba(137, 247, 185, 0.08);
+  --crepe-color-selected: rgba(137, 247, 185, 0.14);
+  --crepe-color-inline-area: rgba(137, 247, 185, 0.08);
+  --crepe-font-title: var(--body);
+  --crepe-font-default: var(--body);
+  --crepe-font-code: var(--mono);
 }
 
-.preview > :last-child {
-  margin-bottom: 0;
+.milkdown-host .ProseMirror {
+  max-width: 840px;
+  min-height: 42rem;
+  margin: 0 auto;
+  padding: clamp(1.5rem, 4vw, 3.5rem) clamp(1rem, 4vw, 3rem);
+  color: #dfe9df;
+  caret-color: var(--accent);
+  font-family: var(--body);
+  font-size: 1.08rem;
+  line-height: 1.85;
+  outline: none;
 }
 
-.preview h1,
-.preview h2,
-.preview h3 {
+.milkdown-host .ProseMirror > * {
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+
+.milkdown-host .ProseMirror-selectednode,
+.milkdown-host .ProseMirror-focused > *:hover {
+  border-radius: 8px;
+  background: rgba(137, 247, 185, 0.035);
+}
+
+.milkdown-host .ProseMirror p,
+.milkdown-host .ProseMirror li {
+  color: #dbe5dc;
+}
+
+.milkdown-host .ProseMirror h1,
+.milkdown-host .ProseMirror h2,
+.milkdown-host .ProseMirror h3,
+.milkdown-host .ProseMirror h4 {
   color: var(--text-strong);
   line-height: 1.22;
 }
 
-.preview h1 {
-  font-size: 1.9rem;
+.milkdown-host .ProseMirror h1 {
+  font-size: clamp(2rem, 5vw, 3.2rem);
 }
 
-.preview h2 {
-  margin-top: 1.8rem;
+.milkdown-host .ProseMirror h2 {
+  margin-top: 2rem;
+  font-size: clamp(1.55rem, 3vw, 2rem);
+}
+
+.milkdown-host .ProseMirror h3 {
   font-size: 1.35rem;
 }
 
-.preview p,
-.preview li {
-  color: #d7e2d8;
-}
-
-.preview a {
+.milkdown-host .ProseMirror a {
   color: var(--accent-alt);
 }
 
-.preview code {
+.milkdown-host .ProseMirror code {
   border: 1px solid rgba(137, 247, 185, 0.16);
   border-radius: 6px;
   background: rgba(137, 247, 185, 0.08);
@@ -576,31 +886,122 @@ label.wide {
   padding: 0.08rem 0.28rem;
 }
 
-.preview pre {
-  overflow: auto;
-  border: 1px solid rgba(137, 247, 185, 0.16);
-  border-radius: 12px;
-  background: rgba(4, 10, 17, 0.82);
-  padding: 1rem;
+.milkdown-host .ProseMirror pre,
+.milkdown-host .cm-editor {
+  border: 1px solid rgba(137, 247, 185, 0.16) !important;
+  border-radius: 12px !important;
+  background: rgba(4, 10, 17, 0.82) !important;
+  color: var(--text) !important;
+  font-family: var(--mono) !important;
 }
 
-.preview pre code {
+.milkdown-host .ProseMirror pre code {
   border: 0;
   background: transparent;
   padding: 0;
 }
 
-.preview blockquote {
-  margin: 1.4rem 0;
+.milkdown-host .ProseMirror blockquote {
   border-left: 3px solid var(--accent);
   background: rgba(137, 247, 185, 0.055);
   color: var(--muted-strong);
   padding: 0.75rem 1rem;
 }
 
-.preview ul,
-.preview ol {
-  padding-left: 1.35rem;
+.milkdown-host .ProseMirror table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+}
+
+.milkdown-host .ProseMirror th,
+.milkdown-host .ProseMirror td {
+  border: 1px solid rgba(137, 247, 185, 0.18);
+  padding: 0.55rem 0.65rem;
+}
+
+.milkdown-host .ProseMirror th {
+  background: rgba(137, 247, 185, 0.08);
+  color: var(--text-strong);
+}
+
+.milkdown-host .ProseMirror img {
+  max-width: 100%;
+  border-radius: 14px;
+}
+
+.insert-dialog {
+  width: min(100% - 2rem, 520px);
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  background: rgba(12, 23, 35, 0.98);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.insert-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(4px);
+}
+
+.insert-card {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.insert-card h2 {
+  margin: 0;
+  color: var(--text-strong);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.editor-shell.is-zen {
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.editor-shell.is-zen .workspace {
+  grid-template-columns: 1fr;
+}
+
+.editor-shell.is-zen .file-explorer,
+.editor-shell.is-zen .metadata-card,
+.editor-shell.is-zen .actions,
+.editor-shell.is-zen [data-command="zen"] {
+  display: none;
+}
+
+.editor-shell.is-zen .zen-only {
+  display: inline-flex;
+}
+
+.editor-shell.is-zen .editor-panel {
+  max-width: 1120px;
+  width: 100%;
+  min-height: calc(100vh - 3rem);
+  margin: 0 auto;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.editor-shell.is-zen .actionbar {
+  border-color: transparent;
+  background: transparent;
+}
+
+.editor-shell.is-zen .typora-surface {
+  min-height: calc(100vh - 11rem);
+}
+
+.editor-shell.is-zen .milkdown-host .ProseMirror {
+  min-height: calc(100vh - 14rem);
 }
 
 @media (max-width: 1180px) {
@@ -634,7 +1035,6 @@ label.wide {
   }
 
   .workspace,
-  .split-editor,
   .form-grid,
   .actionbar {
     grid-template-columns: 1fr;
@@ -657,9 +1057,12 @@ label.wide {
     justify-content: flex-start;
   }
 
-  .markdown-pane,
-  .preview-pane {
-    min-height: 28rem;
+  .typora-surface {
+    min-height: 34rem;
+  }
+
+  .milkdown-host .ProseMirror {
+    max-width: none;
   }
 }
 
@@ -681,8 +1084,300 @@ label.wide {
 
   .metadata-card,
   .actionbar,
-  .markdown-pane,
-  .preview-pane {
+  .typora-surface {
     border-radius: 14px;
   }
+
+  .writing-toolbar {
+    align-items: stretch;
+  }
+
+  .writing-toolbar button {
+    flex: 1 1 auto;
+  }
+
+  .toolbar-separator {
+    display: none;
+  }
+}
+
+/* Final toolbar polish overrides: keep the writing tools compact, grouped, and single-line. */
+.typora-surface [role='toolbar'],
+.typora-surface .writing-toolbar,
+.typora-surface .editor-toolbar,
+.typora-surface .toolbar {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.28rem !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  padding: 0.48rem 0.58rem !important;
+  min-height: 0 !important;
+  border-bottom: 1px solid var(--line) !important;
+  background: linear-gradient(180deg, rgba(126, 255, 181, 0.055), rgba(4, 16, 23, 0.7)) !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(136, 255, 190, 0.35) transparent;
+}
+
+.typora-surface button[data-action] {
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-width: 2rem !important;
+  height: 1.95rem !important;
+  padding: 0 0.54rem !important;
+  border: 1px solid rgba(128, 180, 157, 0.3) !important;
+  border-radius: 8px !important;
+  background: rgba(245, 241, 225, 0.035) !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+  font-size: 0 !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.01em !important;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease !important;
+}
+
+.typora-surface button[data-action]::after {
+  display: inline-block !important;
+  font-size: 0.73rem !important;
+  line-height: 1 !important;
+}
+
+.typora-surface button[data-action]:hover {
+  border-color: rgba(137, 255, 185, 0.55) !important;
+  background: rgba(136, 255, 190, 0.1) !important;
+  box-shadow: 0 0 0 1px rgba(136, 255, 190, 0.08) !important;
+  transform: translateY(-1px) !important;
+}
+
+.typora-surface button[data-action]:focus-visible {
+  outline: 2px solid rgba(136, 255, 190, 0.72) !important;
+  outline-offset: 2px !important;
+}
+
+.typora-surface button[data-action='zen']::after { content: 'Focus'; }
+.typora-surface button[data-action='save']::after { content: 'Save'; }
+.typora-surface button[data-action='h1']::after { content: 'H1'; }
+.typora-surface button[data-action='h2']::after { content: 'H2'; }
+.typora-surface button[data-action='h3']::after { content: 'H3'; }
+.typora-surface button[data-action='bold']::after { content: 'B'; font-weight: 850; }
+.typora-surface button[data-action='italic']::after { content: 'I'; font-style: italic; }
+.typora-surface button[data-action='link']::after { content: 'Link'; }
+.typora-surface button[data-action='image-url']::after { content: 'Img'; }
+.typora-surface button[data-action='upload-image']::after { content: 'Upload'; }
+.typora-surface button[data-action='bullet']::after { content: 'List'; }
+.typora-surface button[data-action='ordered']::after { content: '1.'; }
+.typora-surface button[data-action='task']::after { content: 'Task'; }
+.typora-surface button[data-action='quote']::after { content: 'Quote'; }
+.typora-surface button[data-action='code']::after { content: 'Code'; }
+.typora-surface button[data-action='table']::after { content: 'Table'; }
+.typora-surface button[data-action='math']::after { content: 'Math'; }
+.typora-surface button[data-action='undo']::after { content: 'Undo'; }
+.typora-surface button[data-action='redo']::after { content: 'Redo'; }
+
+.typora-surface button[data-action='save'] {
+  min-width: 3.8rem !important;
+  border-color: rgba(136, 255, 190, 0.48) !important;
+  background: linear-gradient(180deg, rgba(136, 255, 190, 0.18), rgba(136, 255, 190, 0.07)) !important;
+}
+
+.typora-surface button[data-action='zen'] {
+  min-width: 4.15rem !important;
+}
+
+.typora-surface button[data-action='h1'],
+.typora-surface button[data-action='link'],
+.typora-surface button[data-action='bullet'],
+.typora-surface button[data-action='undo'] {
+  margin-left: 0.74rem !important;
+}
+
+.typora-surface button[data-action='h1']::before,
+.typora-surface button[data-action='link']::before,
+.typora-surface button[data-action='bullet']::before,
+.typora-surface button[data-action='undo']::before {
+  content: '' !important;
+  position: absolute !important;
+  left: -0.46rem !important;
+  top: 0.42rem !important;
+  bottom: 0.42rem !important;
+  width: 1px !important;
+  background: rgba(128, 180, 157, 0.28) !important;
+}
+
+.editor-shell,
+.editor-shell .content-shell,
+.editor-shell .editor-main,
+.editor-shell .typora-surface,
+.editor-shell [aria-label='本地文章文件列表'] {
+  transition: grid-template-columns 420ms cubic-bezier(0.16, 1, 0.3, 1), gap 420ms cubic-bezier(0.16, 1, 0.3, 1), max-width 420ms cubic-bezier(0.16, 1, 0.3, 1), opacity 260ms ease, transform 420ms cubic-bezier(0.16, 1, 0.3, 1), filter 420ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.editor-shell.is-zen .typora-surface {
+  animation: zen-surface-expand 520ms cubic-bezier(0.16, 1, 0.3, 1) both !important;
+}
+
+.editor-shell.is-zen [aria-label='本地文章文件列表'],
+.editor-shell.is-zen .metadata-panel,
+.editor-shell.is-zen .frontmatter-panel,
+.editor-shell.is-zen .meta-panel {
+  opacity: 0 !important;
+  transform: translateX(-18px) scale(0.985) !important;
+  filter: blur(2px) !important;
+  pointer-events: none !important;
+}
+
+.editor-shell.is-zen .milkdown-host {
+  animation: zen-editor-breathe 560ms cubic-bezier(0.16, 1, 0.3, 1) 80ms both !important;
+}
+
+/* Current toolbar markup uses data-command. Keep this last so it wins. */
+.typora-surface button[data-command] {
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-width: 2rem !important;
+  height: 1.95rem !important;
+  padding: 0 0.54rem !important;
+  border: 1px solid rgba(128, 180, 157, 0.3) !important;
+  border-radius: 8px !important;
+  background: rgba(245, 241, 225, 0.035) !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+  font-size: 0 !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.01em !important;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease !important;
+}
+
+.typora-surface button[data-command]::after {
+  display: inline-block !important;
+  font-size: 0.73rem !important;
+  line-height: 1 !important;
+}
+
+.typora-surface button[data-command]:hover {
+  border-color: rgba(137, 255, 185, 0.55) !important;
+  background: rgba(136, 255, 190, 0.1) !important;
+  box-shadow: 0 0 0 1px rgba(136, 255, 190, 0.08) !important;
+  transform: translateY(-1px) !important;
+}
+
+.typora-surface button[data-command='zen']::after { content: 'Focus'; }
+.typora-surface button[data-command='save']::after { content: 'Save'; }
+.typora-surface button[data-command='h1']::after { content: 'H1'; }
+.typora-surface button[data-command='h2']::after { content: 'H2'; }
+.typora-surface button[data-command='h3']::after { content: 'H3'; }
+.typora-surface button[data-command='bold']::after { content: 'B'; font-weight: 850; }
+.typora-surface button[data-command='italic']::after { content: 'I'; font-style: italic; }
+.typora-surface button[data-command='link']::after { content: 'Link'; }
+.typora-surface button[data-command='image-url']::after { content: 'Img'; }
+.typora-surface button[data-command='upload-image']::after { content: 'Upload'; }
+.typora-surface button[data-command='bullet']::after { content: 'List'; }
+.typora-surface button[data-command='ordered']::after { content: '1.'; }
+.typora-surface button[data-command='task']::after { content: 'Task'; }
+.typora-surface button[data-command='quote']::after { content: 'Quote'; }
+.typora-surface button[data-command='code']::after { content: 'Code'; }
+.typora-surface button[data-command='table']::after { content: 'Table'; }
+.typora-surface button[data-command='math']::after { content: 'Math'; }
+.typora-surface button[data-command='undo']::after { content: 'Undo'; }
+.typora-surface button[data-command='redo']::after { content: 'Redo'; }
+.typora-surface button[data-command='exit-zen']::after { content: 'Exit'; }
+
+.typora-surface button[data-command='save'] {
+  min-width: 3.8rem !important;
+  border-color: rgba(136, 255, 190, 0.48) !important;
+  background: linear-gradient(180deg, rgba(136, 255, 190, 0.18), rgba(136, 255, 190, 0.07)) !important;
+}
+
+.typora-surface button[data-command='zen'] {
+  min-width: 4.15rem !important;
+}
+
+.typora-surface button[data-command='h1'],
+.typora-surface button[data-command='link'],
+.typora-surface button[data-command='bullet'],
+.typora-surface button[data-command='undo'] {
+  margin-left: 0.74rem !important;
+}
+
+.typora-surface button[data-command='h1']::before,
+.typora-surface button[data-command='link']::before,
+.typora-surface button[data-command='bullet']::before,
+.typora-surface button[data-command='undo']::before {
+  content: '' !important;
+  position: absolute !important;
+  left: -0.46rem !important;
+  top: 0.42rem !important;
+  bottom: 0.42rem !important;
+  width: 1px !important;
+  background: rgba(128, 180, 157, 0.28) !important;
+}
+
+/* Zen command visibility: normal mode shows Focus, Zen mode shows Exit. */
+.typora-surface button[data-command='exit-zen'] {
+  display: none !important;
+}
+
+.editor-shell.is-zen .typora-surface button[data-command='zen'] {
+  display: none !important;
+}
+
+.editor-shell.is-zen .typora-surface button[data-command='exit-zen'] {
+  display: inline-flex !important;
+}
+
+.typora-surface button[data-shortcut]::before {
+  content: attr(data-shortcut);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.48rem);
+  z-index: 8;
+  display: block;
+  min-width: max-content;
+  padding: 0.24rem 0.44rem;
+  border: 1px solid rgba(136, 255, 190, 0.28);
+  border-radius: 7px;
+  background: rgba(4, 15, 22, 0.95);
+  color: var(--muted);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.26);
+  font-size: 0.64rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.typora-surface button[data-shortcut]:hover::before,
+.typora-surface button[data-shortcut]:focus-visible::before {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.typora-surface button[data-command='h1'][data-shortcut]:not(:hover):not(:focus-visible)::before,
+.typora-surface button[data-command='link'][data-shortcut]:not(:hover):not(:focus-visible)::before,
+.typora-surface button[data-command='bullet'][data-shortcut]:not(:hover):not(:focus-visible)::before,
+.typora-surface button[data-command='undo'][data-shortcut]:not(:hover):not(:focus-visible)::before {
+  content: '';
+  position: absolute;
+  left: -0.46rem;
+  top: 0.42rem;
+  bottom: 0.42rem;
+  width: 1px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: rgba(128, 180, 157, 0.28);
+  box-shadow: none;
+  opacity: 1;
+  transform: none;
 }

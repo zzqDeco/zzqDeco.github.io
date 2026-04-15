@@ -4,10 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Blog Editor</title>
+    <link rel="stylesheet" href="/vendor/blog-editor/milkdown-editor.css" />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <main class="editor-shell">
+    <main id="editor-shell" class="editor-shell">
       <header class="topbar">
         <div class="window-dots" aria-hidden="true">
           <span class="dot danger"></span>
@@ -33,7 +34,7 @@
         <section class="editor-panel">
           <div class="actionbar">
             <div class="document-id">
-              <p class="kicker">$ edit frontmatter</p>
+              <p class="kicker">$ edit typora-like markdown</p>
               <h2 id="current-title">Select a post</h2>
               <p id="current-path">src/content/blog</p>
             </div>
@@ -80,28 +81,63 @@
             </div>
           </form>
 
-          <div class="split-editor">
-            <section class="markdown-pane">
-              <div class="pane-head">
-                <span>markdown.md</span>
-                <code>body</code>
-              </div>
-              <textarea id="content" spellcheck="false" aria-label="Markdown body"></textarea>
-            </section>
-
-            <section class="preview-pane">
-              <div class="pane-head">
-                <span>preview</span>
-                <button id="refresh-preview" type="button" class="ghost compact">Refresh</button>
-              </div>
-              <article id="preview" class="preview">
-                <p class="empty-preview">Select a post or create a new draft.</p>
-              </article>
-            </section>
-          </div>
+          <section class="typora-surface" aria-label="Typora-like Markdown editor">
+            <div class="writing-toolbar" aria-label="Markdown quick actions">
+              <button type="button" data-command="zen">Zen</button>
+              <button type="button" data-command="save" class="primary-action">Save</button>
+              <span class="toolbar-separator" aria-hidden="true"></span>
+              <button type="button" data-command="h1">H1</button>
+              <button type="button" data-command="h2">H2</button>
+              <button type="button" data-command="h3">H3</button>
+              <button type="button" data-command="bold">Bold</button>
+              <button type="button" data-command="italic">Italic</button>
+              <span class="toolbar-separator" aria-hidden="true"></span>
+              <button type="button" data-command="link">Link</button>
+              <button type="button" data-command="image-url">Image URL</button>
+              <button type="button" data-command="upload-image">Upload Image</button>
+              <span class="toolbar-separator" aria-hidden="true"></span>
+              <button type="button" data-command="bullet">Bullet</button>
+              <button type="button" data-command="ordered">Ordered</button>
+              <button type="button" data-command="task">Task</button>
+              <button type="button" data-command="quote">Quote</button>
+              <button type="button" data-command="code">Code</button>
+              <button type="button" data-command="table">Table</button>
+              <button type="button" data-command="math">Math</button>
+              <span class="toolbar-separator" aria-hidden="true"></span>
+              <button type="button" data-command="undo">Undo</button>
+              <button type="button" data-command="redo">Redo</button>
+              <button id="exit-zen" type="button" data-command="exit-zen" class="ghost zen-only">Exit Zen</button>
+            </div>
+            <div id="content" class="milkdown-host"></div>
+          </section>
         </section>
       </section>
     </main>
+
+    <input id="asset-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" hidden />
+
+    <dialog id="insert-dialog" class="insert-dialog">
+      <form method="dialog" id="insert-form" class="insert-card">
+        <div>
+          <p class="kicker" id="dialog-kicker">insert</p>
+          <h2 id="dialog-title">Insert</h2>
+        </div>
+        <label>
+          <span id="dialog-text-label">Text</span>
+          <input id="dialog-text" type="text" autocomplete="off" />
+        </label>
+        <label>
+          <span id="dialog-url-label">URL</span>
+          <input id="dialog-url" type="url" autocomplete="off" />
+        </label>
+        <div class="dialog-actions">
+          <button id="dialog-cancel" type="button" class="ghost">Cancel</button>
+          <button id="dialog-submit" type="submit" class="primary-action">Insert</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="/vendor/blog-editor/milkdown-editor.js"></script>
     <script type="module" src="/app.js"></script>
   </body>
 </html>
