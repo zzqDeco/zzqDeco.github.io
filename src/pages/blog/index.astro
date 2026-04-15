@@ -1,0 +1,33 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
+
+const posts = (await getCollection('blog', ({ data }) => (
+  import.meta.env.PROD ? data.draft !== true : true
+))).sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+---
+
+<BaseLayout title="文章" description="zzqDeco Blog 文章列表">
+  <section>
+    <span class="eyebrow">Archive</span>
+    <h1>文章</h1>
+    <p class="meta">按发布时间倒序展示，生产环境会自动过滤草稿。</p>
+  </section>
+
+  <div class="post-list">
+    {posts.map((post) => (
+      <article class="card post-card">
+        <h2>
+          <a href={`/blog/${post.id}/`}>{post.data.title}</a>
+        </h2>
+        <p class="meta">{post.data.pubDate.toLocaleDateString('zh-CN')}</p>
+        <p>{post.data.description}</p>
+        {post.data.tags.length > 0 && (
+          <div class="tags">
+            {post.data.tags.map((tag) => <span class="tag">{tag}</span>)}
+          </div>
+        )}
+      </article>
+    ))}
+  </div>
+</BaseLayout>

@@ -1,0 +1,53 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getCollection, render } from 'astro:content';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('blog', ({ data }) => (
+    import.meta.env.PROD ? data.draft !== true : true
+  ));
+
+  return posts.map((post) => ({
+    params: { slug: post.id },
+    props: { post },
+  }));
+}
+
+const { post } = Astro.props;
+const { Content, headings } = await render(post);
+---
+
+<BaseLayout title={post.data.title} description={post.data.description}>
+  <article class="article">
+    <header class="article-header">
+      <span class="eyebrow">Post</span>
+      <h1>{post.data.title}</h1>
+      <p class="meta">
+        发布于 {post.data.pubDate.toLocaleDateString('zh-CN')}
+        {post.data.updatedDate && ` · 更新于 ${post.data.updatedDate.toLocaleDateString('zh-CN')}`}
+      </p>
+      {post.data.tags.length > 0 && (
+        <div class="tags">
+          {post.data.tags.map((tag) => <span class="tag">{tag}</span>)}
+        </div>
+      )}
+    </header>
+
+    {headings.length > 0 && (
+      <aside class="card toc">
+        <strong>目录</strong>
+        <ul>
+          {headings.map((heading) => (
+            <li>
+              <a href={`#${heading.slug}`}>{heading.text}</a>
+            </li>
+          ))}
+        </ul>
+      </aside>
+    )}
+
+    <div class="post-content">
+      <Content />
+    </div>
+  </article>
+</BaseLayout>

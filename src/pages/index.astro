@@ -1,0 +1,41 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
+
+const posts = (await getCollection('blog', ({ data }) => (
+  import.meta.env.PROD ? data.draft !== true : true
+))).sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+
+const latestPosts = posts.slice(0, 5);
+---
+
+<BaseLayout title="首页" description="zzqDeco Blog 首页">
+  <section class="hero">
+    <span class="eyebrow">Personal site</span>
+    <h1>写给未来自己的技术与生活注脚。</h1>
+    <p>
+      这里是 zzqDeco 的个人博客，使用 Astro、Markdown、GitHub Pages 与 GitHub Actions 搭建。
+      内容优先，页面默认静态输出，只在需要的时候加最少的交互。
+    </p>
+    <div class="hero-actions">
+      <a class="button-link primary" href="/blog/">开始阅读</a>
+      <a class="button-link" href="/rss.xml">订阅 RSS</a>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">Latest posts</span>
+    <h2>最新文章</h2>
+    <div class="post-list">
+      {latestPosts.map((post) => (
+        <article class="card post-card">
+          <h3>
+            <a href={`/blog/${post.id}/`}>{post.data.title}</a>
+          </h3>
+          <p class="meta">{post.data.pubDate.toLocaleDateString('zh-CN')}</p>
+          <p>{post.data.description}</p>
+        </article>
+      ))}
+    </div>
+  </section>
+</BaseLayout>

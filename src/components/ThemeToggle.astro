@@ -1,0 +1,51 @@
+<button id="theme-toggle" type="button" aria-label="切换主题">
+  切换到深色
+</button>
+
+<script>
+  const button = document.querySelector('#theme-toggle');
+  const labels = {
+    light: '切换到深色',
+    dark: '切换到浅色',
+  };
+
+  const getTheme = () =>
+    document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+
+  const updateButton = (theme) => {
+    if (!button) return;
+    const label = labels[theme];
+    button.textContent = label;
+    button.setAttribute('aria-label', label);
+  };
+
+  const setTheme = (theme) => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('theme', theme);
+    updateButton(theme);
+  };
+
+  updateButton(getTheme());
+
+  button?.addEventListener('click', () => {
+    setTheme(getTheme() === 'dark' ? 'light' : 'dark');
+  });
+</script>
+
+<style>
+  button {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text);
+    padding: 0.65rem 0.95rem;
+    font: inherit;
+    cursor: pointer;
+    transition: transform 160ms ease, background-color 160ms ease;
+  }
+
+  button:hover {
+    transform: translateY(-1px);
+    text-decoration: none;
+  }
+</style>
