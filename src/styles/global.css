@@ -278,6 +278,12 @@ section + section {
   font-size: 1.08rem;
 }
 
+.hero-title {
+  max-width: 42rem;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 1.05;
+}
+
 .inline-status {
   display: flex;
   flex-wrap: wrap;
@@ -522,25 +528,30 @@ section + section {
 .terminal-action {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  min-height: 2.7rem;
-  padding: 0.66rem 0.9rem;
+  gap: 0.62rem;
+  min-height: 2.55rem;
+  padding: 0.58rem 0.86rem;
   border: 1px solid var(--line);
   border-radius: 14px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--panel-muted) 78%, transparent), color-mix(in srgb, var(--panel) 82%, transparent));
   color: var(--text);
   font-family: var(--mono-font);
-  font-size: 0.86rem;
+  font-size: 0.82rem;
   letter-spacing: 0.01em;
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--line) 35%, transparent);
   transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
 }
 
 .terminal-action::before {
-  content: '>';
-  color: var(--accent);
-  font-weight: 700;
+  content: '';
+  width: 0.72rem;
+  height: 0.72rem;
+  border: 1px solid var(--accent);
+  border-left: 0;
+  border-bottom: 0;
+  transform: rotate(45deg);
+  box-shadow: 3px -3px 0 -2px var(--accent);
 }
 
 .terminal-action:hover {
@@ -560,7 +571,8 @@ section + section {
 }
 
 .terminal-action.primary::before {
-  color: var(--accent-strong);
+  border-color: var(--accent-strong);
+  box-shadow: 3px -3px 0 -2px var(--accent-strong);
 }
 
 .button-link {
