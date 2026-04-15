@@ -37,9 +37,21 @@ const bioLines = profile.bio
       {bioLines.map((line) => <p>{line}</p>)}
     </div>
 
-    <div class="profile-facts">
-      <span class="status-pill">org: {profile.company}</span>
-      <span class="status-pill">loc: {profile.location}</span>
+    <div class="profile-fact-grid">
+      {profile.company && (
+        <div class="profile-fact">
+          <span class="profile-fact-icon" aria-hidden="true">edu</span>
+          <span class="profile-fact-label">campus</span>
+          <span class="profile-fact-value">{profile.company}</span>
+        </div>
+      )}
+      {profile.location && (
+        <div class="profile-fact">
+          <span class="profile-fact-icon" aria-hidden="true">geo</span>
+          <span class="profile-fact-label">based in</span>
+          <span class="profile-fact-value">{profile.location}</span>
+        </div>
+      )}
     </div>
 
     <div class="profile-stats" aria-label="GitHub stats">
