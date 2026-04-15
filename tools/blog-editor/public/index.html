@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Blog Editor</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="editor-shell">
+      <header class="topbar">
+        <div class="window-dots" aria-hidden="true">
+          <span class="dot danger"></span>
+          <span class="dot warning"></span>
+          <span class="dot success"></span>
+        </div>
+        <p class="terminal-command">$ blog-editor --local <span>/ src/content/blog</span></p>
+        <span id="status" class="status" data-tone="info">booting</span>
+      </header>
+
+      <section class="workspace">
+        <aside class="file-explorer" aria-label="本地文章文件列表">
+          <div class="explorer-head">
+            <div>
+              <p class="kicker">workspace</p>
+              <h1>content/blog</h1>
+            </div>
+            <button id="new-post" type="button" class="secondary-action">New draft</button>
+          </div>
+          <div id="post-list" class="file-list" aria-live="polite"></div>
+        </aside>
+
+        <section class="editor-panel">
+          <div class="actionbar">
+            <div class="document-id">
+              <p class="kicker">$ edit frontmatter</p>
+              <h2 id="current-title">Select a post</h2>
+              <p id="current-path">src/content/blog</p>
+            </div>
+            <div class="actions">
+              <button id="delete-post" type="button" class="ghost danger-action">Delete</button>
+              <button id="save-post" type="submit" form="post-form" class="primary-action">Save</button>
+            </div>
+          </div>
+
+          <form id="post-form" class="metadata-card">
+            <div class="metadata-head">
+              <span>frontmatter</span>
+              <code id="slug-label">unselected</code>
+            </div>
+            <div class="form-grid">
+              <label>
+                <span>Slug</span>
+                <input id="slug" name="slug" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="my-new-post" required />
+              </label>
+              <label>
+                <span>Title</span>
+                <input id="title" name="title" placeholder="Post title" required />
+              </label>
+              <label class="wide">
+                <span>Description</span>
+                <input id="description" name="description" placeholder="Short summary for list pages and RSS" required />
+              </label>
+              <label>
+                <span>Published</span>
+                <input id="pubDate" name="pubDate" type="date" required />
+              </label>
+              <label>
+                <span>Updated</span>
+                <input id="updatedDate" name="updatedDate" type="date" />
+              </label>
+              <label>
+                <span>Tags</span>
+                <input id="tags" name="tags" placeholder="AI, Astro, Notes" />
+              </label>
+              <label class="checkbox">
+                <input id="draft" name="draft" type="checkbox" />
+                <span>Draft <small>hidden in production</small></span>
+              </label>
+            </div>
+          </form>
+
+          <div class="split-editor">
+            <section class="markdown-pane">
+              <div class="pane-head">
+                <span>markdown.md</span>
+                <code>body</code>
+              </div>
+              <textarea id="content" spellcheck="false" aria-label="Markdown body"></textarea>
+            </section>
+
+            <section class="preview-pane">
+              <div class="pane-head">
+                <span>preview</span>
+                <button id="refresh-preview" type="button" class="ghost compact">Refresh</button>
+              </div>
+              <article id="preview" class="preview">
+                <p class="empty-preview">Select a post or create a new draft.</p>
+              </article>
+            </section>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

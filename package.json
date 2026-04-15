@@ -8,6 +8,7 @@
     "start": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
+    "editor": "node tools/blog-editor/server.mjs",
     "astro": "astro"
   },
   "engines": {
@@ -16,7 +17,9 @@
   "dependencies": {
     "@astrojs/rss": "^4.0.18",
     "@astrojs/sitemap": "^3.7.2",
-    "astro": "^6.1.6"
+    "astro": "^6.1.6",
+    "gray-matter": "^4.0.3",
+    "marked": "^18.0.0"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
