@@ -48,31 +48,34 @@ const latestPosts = posts.slice(0, 5);
       <p class="window-title">$ ls ./blog | head -n 5</p>
       <p class="window-meta">{latestPosts.length} entries</p>
     </div>
-    <div class="shell-body">
-      <div class="section-title">
+    <div class="shell-body post-terminal-list">
+      <div class="home-post-heading">
         <p class="command-line">
           <span class="prompt">zzqdeco@blog:~$</span>
           <span>ls ./src/content/blog</span>
         </p>
-        <h2>最新文章</h2>
+        <div>
+          <h2>recent posts</h2>
+          <p>{latestPosts.length} file indexed</p>
+        </div>
       </div>
-      <div class="post-list">
+      <div class="home-post-list">
       {latestPosts.map((post) => (
-        <article class="card post-card">
-          <div class="post-card-top">
-            <p class="post-path">/blog/{post.id}/</p>
-            <p class="meta">{post.data.pubDate.toLocaleDateString('zh-CN')}</p>
+        <a class="home-post-record" href={`/blog/${post.id}/`}>
+          <div class="home-post-meta">
+            <span class="home-post-path">/blog/{post.id}.md</span>
+            <time class="home-post-date" datetime={post.data.pubDate.toISOString()}>
+              {post.data.pubDate.toLocaleDateString('zh-CN')}
+            </time>
           </div>
-          <h3>
-            <a class="terminal-link" href={`/blog/${post.id}/`}>{post.data.title}</a>
-          </h3>
-          <p class="post-summary">{post.data.description}</p>
+          <h3 class="home-post-title">{post.data.title}</h3>
+          <p class="home-post-summary">{post.data.description}</p>
           {post.data.tags.length > 0 && (
-            <div class="tags">
-              {post.data.tags.map((tag) => <span class="tag">{tag}</span>)}
+            <div class="home-post-tags" aria-label="文章标签">
+              {post.data.tags.map((tag) => <span>{tag}</span>)}
             </div>
           )}
-        </article>
+        </a>
       ))}
       </div>
     </div>
