@@ -1,0 +1,81 @@
+---
+import { getGitHubProfile } from '../lib/githubProfile';
+
+const profile = await getGitHubProfile();
+const bioLines = profile.bio
+  .split(/\r?\n/)
+  .map((line) => line.trim())
+  .filter(Boolean);
+---
+
+<aside class="profile-sidebar shell-window" aria-label="GitHub profile">
+  <div class="window-bar">
+    <div class="window-dots" aria-hidden="true">
+      <span class="window-dot is-danger"></span>
+      <span class="window-dot is-warning"></span>
+      <span class="window-dot is-success"></span>
+    </div>
+    <p class="window-title">$ whoami</p>
+    <p class="window-meta">profile</p>
+  </div>
+
+  <div class="profile-body">
+    <a class="profile-avatar-link" href={profile.url} aria-label={`打开 ${profile.login} 的 GitHub 主页`}>
+      <img class="profile-avatar" src={profile.avatarUrl} alt={`${profile.login} avatar`} width="144" height="144" loading="lazy" />
+    </a>
+
+    <div class="profile-heading">
+      <p class="command-line">
+        <span class="prompt">github@profile:~$</span>
+        <span>gh user view {profile.login}</span>
+      </p>
+      <h2>{profile.name}</h2>
+      <a class="profile-handle" href={profile.url}>@{profile.login}</a>
+    </div>
+
+    <div class="profile-bio">
+      {bioLines.map((line) => <p>{line}</p>)}
+    </div>
+
+    <div class="profile-facts">
+      <span class="status-pill">org: {profile.company}</span>
+      <span class="status-pill">loc: {profile.location}</span>
+    </div>
+
+    <div class="profile-stats" aria-label="GitHub stats">
+      <div>
+        <strong>{profile.publicRepos}</strong>
+        <span>repos</span>
+      </div>
+      <div>
+        <strong>{profile.followers}</strong>
+        <span>followers</span>
+      </div>
+      <div>
+        <strong>{profile.following}</strong>
+        <span>following</span>
+      </div>
+      <div>
+        <strong>{profile.stars}</strong>
+        <span>stars</span>
+      </div>
+    </div>
+
+    <section class="profile-repos" aria-label="Pinned repositories">
+      <p class="toc-label">$ ls pinned</p>
+      <div class="profile-repo-list">
+        {profile.repos.map((repo) => (
+          <a class="profile-repo card" href={repo.url}>
+            <span class="profile-repo-name">{repo.name}</span>
+            <span class="profile-repo-description">{repo.description}</span>
+            <span class="profile-repo-meta">
+              {repo.language && <span>{repo.language}</span>}
+              <span>{repo.stars} stars</span>
+              <span>{repo.forks} forks</span>
+            </span>
+          </a>
+        ))}
+      </div>
+    </section>
+  </div>
+</aside>

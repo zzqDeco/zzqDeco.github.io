@@ -1,6 +1,7 @@
 ---
 import '../styles/global.css';
 import Header from '../components/Header.astro';
+import ProfileSidebar from '../components/ProfileSidebar.astro';
 
 interface Props {
   title?: string;
@@ -38,8 +39,11 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
   </head>
   <body>
     <Header siteName={siteName} />
-    <main class="container site-main">
-      <slot />
+    <main class="container site-main layout-shell">
+      <ProfileSidebar />
+      <div class="content-shell">
+        <slot />
+      </div>
     </main>
   </body>
 </html>
