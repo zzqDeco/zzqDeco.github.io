@@ -8,6 +8,13 @@ export default defineConfig({
   site: 'https://zzqDeco.github.io',
   integrations: [sitemap()],
   markdown: {
+    shikiConfig: {
+      themes: {
+        light: 'github-light',
+        dark: 'github-dark-dimmed',
+      },
+      wrap: true,
+    },
     remarkPlugins: [remarkGfm, remarkMath],
     rehypePlugins: [rehypeKatex],
   },
