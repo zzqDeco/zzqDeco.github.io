@@ -1,5 +1,5 @@
 <button id="theme-toggle" type="button" aria-label="切换主题">
-  <span class="theme-label">theme</span>
+  <span class="theme-label">mode</span>
   <span class="theme-value" data-theme-value>auto</span>
 </button>
 
@@ -38,21 +38,23 @@
   button {
     display: inline-flex;
     align-items: center;
-    gap: 0.6rem;
+    gap: 0.48rem;
+    min-height: 2.1rem;
+    padding: 0.34rem 0.72rem;
     border: 1px solid var(--line);
     border-radius: 999px;
-    background: color-mix(in srgb, var(--panel-muted) 84%, transparent);
+    background: color-mix(in srgb, var(--panel-soft) 86%, transparent);
     color: var(--text);
-    padding: 0.65rem 0.95rem 0.65rem 0.8rem;
-    font: 0.8rem var(--mono-font);
-    letter-spacing: 0.03em;
+    font: 0.76rem var(--mono-font);
+    letter-spacing: 0.02em;
     cursor: pointer;
-    transition: transform 160ms ease, border-color 160ms ease;
+    transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
   }
 
   button:hover {
     transform: translateY(-1px);
     border-color: var(--line-strong);
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
   }
 
   .theme-label {
@@ -63,11 +65,18 @@
   .theme-value {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.34rem;
     color: var(--accent);
   }
 
   .theme-value::before {
     content: '>';
+    font-size: 0.85em;
+  }
+
+  @media (max-width: 720px) {
+    .theme-label {
+      display: none;
+    }
   }
 </style>

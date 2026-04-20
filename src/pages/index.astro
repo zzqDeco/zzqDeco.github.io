@@ -10,7 +10,7 @@ const latestPosts = posts.slice(0, 5);
 ---
 
 <BaseLayout title="首页" description="zzqDeco Blog 首页">
-  <section class="shell-window">
+  <section class="shell-window hero-window">
     <div class="window-bar">
       <div class="window-dots" aria-hidden="true">
         <span class="window-dot is-danger"></span>
@@ -18,8 +18,9 @@ const latestPosts = posts.slice(0, 5);
         <span class="window-dot is-success"></span>
       </div>
       <p class="window-title">$ cat README.md</p>
-      <p class="window-meta">ready</p>
+      <p class="window-meta">intro</p>
     </div>
+
     <div class="hero">
       <p class="command-line">
         <span class="prompt">zzqdeco@blog:~$</span>
@@ -38,45 +39,50 @@ const latestPosts = posts.slice(0, 5);
     </div>
   </section>
 
-  <section class="shell-window">
+  <section class="shell-window recent-window">
     <div class="window-bar">
       <div class="window-dots" aria-hidden="true">
         <span class="window-dot is-danger"></span>
         <span class="window-dot is-warning"></span>
         <span class="window-dot is-success"></span>
       </div>
-      <p class="window-title">$ ls ./blog | head -n 5</p>
+      <p class="window-title">$ ls ./blog --latest</p>
       <p class="window-meta">{latestPosts.length} entries</p>
     </div>
+
     <div class="shell-body post-terminal-list">
-      <div class="home-post-heading">
+      <div class="section-title home-section-title">
         <p class="command-line">
           <span class="prompt">zzqdeco@blog:~$</span>
           <span>ls ./src/content/blog</span>
         </p>
-        <div>
-          <h2>recent posts</h2>
-          <p>{latestPosts.length} file indexed</p>
+        <div class="home-post-heading">
+          <div>
+            <h2>Recent posts</h2>
+            <p>Latest notes from the archive.</p>
+          </div>
+          <p class="home-post-count">{latestPosts.length} file indexed</p>
         </div>
       </div>
+
       <div class="home-post-list">
-      {latestPosts.map((post) => (
-        <a class="home-post-record" href={`/blog/${post.id}/`}>
-          <div class="home-post-meta">
-            <span class="home-post-path">/blog/{post.id}.md</span>
-            <time class="home-post-date" datetime={post.data.pubDate.toISOString()}>
-              {post.data.pubDate.toLocaleDateString('zh-CN')}
-            </time>
-          </div>
-          <h3 class="home-post-title">{post.data.title}</h3>
-          <p class="home-post-summary">{post.data.description}</p>
-          {post.data.tags.length > 0 && (
-            <div class="home-post-tags" aria-label="文章标签">
-              {post.data.tags.map((tag) => <span>{tag}</span>)}
+        {latestPosts.map((post) => (
+          <a class="home-post-record" href={`/blog/${post.id}/`}>
+            <div class="home-post-meta">
+              <span class="home-post-path">/blog/{post.id}.md</span>
+              <time class="home-post-date" datetime={post.data.pubDate.toISOString()}>
+                {post.data.pubDate.toLocaleDateString('zh-CN')}
+              </time>
             </div>
-          )}
-        </a>
-      ))}
+            <h3 class="home-post-title">{post.data.title}</h3>
+            <p class="home-post-summary">{post.data.description}</p>
+            {post.data.tags.length > 0 && (
+              <div class="home-post-tags" aria-label="文章标签">
+                {post.data.tags.map((tag) => <span>{tag}</span>)}
+              </div>
+            )}
+          </a>
+        ))}
       </div>
     </div>
   </section>

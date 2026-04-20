@@ -19,7 +19,7 @@ const { Content, headings } = await render(post);
 
 <BaseLayout title={post.data.title} description={post.data.description}>
   <article class="article">
-    <section class="shell-window">
+    <section class="shell-window article-window">
       <div class="window-bar">
         <div class="window-dots" aria-hidden="true">
           <span class="window-dot is-danger"></span>
@@ -27,7 +27,7 @@ const { Content, headings } = await render(post);
           <span class="window-dot is-success"></span>
         </div>
         <p class="window-title">$ cat ./src/content/blog/{post.id}.md</p>
-        <p class="window-meta">markdown</p>
+        <p class="window-meta">entry</p>
       </div>
 
       <div class="shell-body article-shell">
@@ -46,13 +46,10 @@ const { Content, headings } = await render(post);
           </p>
 
           <h1>{post.data.title}</h1>
-          <p class="terminal-note">{post.data.description}</p>
-          <div class="inline-status">
-            <span class="status-pill">published: {post.data.pubDate.toLocaleDateString('zh-CN')}</span>
-            {post.data.updatedDate && (
-              <span class="status-pill">updated: {post.data.updatedDate.toLocaleDateString('zh-CN')}</span>
-            )}
-            <span class="status-pill">type: markdown</span>
+          <p class="article-description">{post.data.description}</p>
+          <div class="article-meta" aria-label="文章元信息">
+            <span>Published {post.data.pubDate.toLocaleDateString('zh-CN')}</span>
+            {post.data.updatedDate && <span>Updated {post.data.updatedDate.toLocaleDateString('zh-CN')}</span>}
           </div>
 
           {post.data.tags.length > 0 && (
@@ -63,8 +60,8 @@ const { Content, headings } = await render(post);
         </header>
 
         {headings.length > 0 && (
-          <aside class="card toc">
-            <p class="toc-label">$ ls ./sections</p>
+          <aside class="toc">
+            <p class="toc-label">sections</p>
             <ul>
               {headings.map((heading) => (
                 <li>
@@ -75,7 +72,7 @@ const { Content, headings } = await render(post);
           </aside>
         )}
 
-        <div class="post-content card reading-panel">
+        <div class="post-content reading-panel">
           <Content />
         </div>
       </div>

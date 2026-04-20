@@ -8,7 +8,7 @@ const posts = (await getCollection('blog', ({ data }) => (
 ---
 
 <BaseLayout title="文章" description="zzqDeco Blog 文章列表">
-  <section class="shell-window">
+  <section class="shell-window archive-window">
     <div class="window-bar">
       <div class="window-dots" aria-hidden="true">
         <span class="window-dot is-danger"></span>
@@ -19,8 +19,8 @@ const posts = (await getCollection('blog', ({ data }) => (
       <p class="window-meta">{posts.length} files</p>
     </div>
 
-    <div class="shell-body">
-      <div class="section-title">
+    <div class="shell-body archive-shell">
+      <div class="section-title archive-heading">
         <p class="command-line">
           <span class="prompt">zzqdeco@blog:~$</span>
           <span>find ./blog -maxdepth 1 -type f</span>
@@ -29,23 +29,23 @@ const posts = (await getCollection('blog', ({ data }) => (
         <p class="terminal-note">按发布时间倒序展示，生产环境会自动过滤草稿。</p>
       </div>
 
-      <div class="post-list">
+      <div class="archive-list">
         {posts.map((post) => (
-          <article class="card post-card">
-            <div class="post-card-top">
-              <p class="post-path">/blog/{post.id}/</p>
-              <p class="meta">{post.data.pubDate.toLocaleDateString('zh-CN')}</p>
+          <a class="archive-record" href={`/blog/${post.id}/`}>
+            <div class="archive-meta">
+              <span class="archive-path">/blog/{post.id}/</span>
+              <time class="archive-date" datetime={post.data.pubDate.toISOString()}>
+                {post.data.pubDate.toLocaleDateString('zh-CN')}
+              </time>
             </div>
-            <h2>
-              <a class="terminal-link" href={`/blog/${post.id}/`}>{post.data.title}</a>
-            </h2>
-            <p class="post-summary">{post.data.description}</p>
+            <h2 class="archive-title">{post.data.title}</h2>
+            <p class="archive-summary">{post.data.description}</p>
             {post.data.tags.length > 0 && (
               <div class="tags">
                 {post.data.tags.map((tag) => <span class="tag">{tag}</span>)}
               </div>
             )}
-          </article>
+          </a>
         ))}
       </div>
     </div>
