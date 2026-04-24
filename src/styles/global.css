@@ -1179,19 +1179,6 @@ hr {
   font-size: var(--fs-xs);
 }
 
-.profile-status {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--bg-panel);
-  color: var(--fg-soft);
-  font-size: var(--fs-sm);
-  line-height: var(--lh-snug);
-}
-
 .profile-bio {
   color: var(--fg-soft);
   font-size: var(--fs-sm);
@@ -1393,10 +1380,6 @@ hr {
   .profile-avatar {
     width: 3.5rem;
     height: 3.5rem;
-  }
-
-  .profile-status {
-    padding: var(--space-2) var(--space-3);
   }
 
   .profile-stats {
