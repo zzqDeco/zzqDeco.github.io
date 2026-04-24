@@ -1,14 +1,50 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { Github, Terminal } from 'lucide-astro';
 ---
 
-<BaseLayout title="关于" description="关于 zzqDeco Blog">
-  <section class="hero">
-    <span class="eyebrow">About</span>
-    <h1>关于这个博客</h1>
-    <p>
-      这里记录技术实践、产品观察和一些长期有效的思考。整体策略很简单：
-      用 Markdown 写作，用 Git 管内容，用静态站点保证速度和维护成本。
-    </p>
-  </section>
+<BaseLayout title="关于" description="关于 zzqDeco Blog" variant="about">
+  <article class="article-page about-page" aria-label="about">
+    <header class="article-head">
+      <nav class="crumbs" aria-label="breadcrumbs">
+        <a href="/">~</a>
+        <span class="sep">/</span>
+        <span>about</span>
+      </nav>
+
+      <p class="terminal-line">
+        <Terminal size={16} strokeWidth={1.8} aria-hidden="true" />
+        <span class="prompt">$</span>
+        <span>cat ./about.md</span>
+      </p>
+
+      <h1 class="article-title">关于这个博客</h1>
+      <p class="article-description">技术实践、产品观察，以及一些长期有效的思考。</p>
+    </header>
+
+    <div class="article-body about-body">
+      <h2>策略</h2>
+      <p>
+        用 Markdown 写作，用 Git 管内容，用静态站点（Astro + GitHub Pages）保证速度和维护成本。
+        所有源码开源在 <a href="https://github.com/zzqDeco/zzqDeco.github.io">zzqDeco.github.io</a>，
+        排版与样式灵感来自终端、编辑器和技术杂志。
+      </p>
+
+      <h2>主题</h2>
+      <ul>
+        <li>工程实践：全栈开发、AI 应用、工具链</li>
+        <li>产品观察：偏技术读者的使用反馈</li>
+        <li>学习笔记：长期有效的基本功 &amp; 不会过时的思考</li>
+      </ul>
+
+      <h2>联系</h2>
+      <p>
+        欢迎通过 GitHub 找我：
+        <a class="inline-icon-link" href="https://github.com/zzqDeco">
+          <Github size={16} strokeWidth={1.8} aria-hidden="true" />
+          @zzqDeco
+        </a>。
+      </p>
+    </div>
+  </article>
 </BaseLayout>

@@ -1,153 +1,63 @@
 ---
+import { Github, Rss, Terminal } from 'lucide-astro';
 import ThemeToggle from './ThemeToggle.astro';
 
 interface Props {
   siteName: string;
+  currentPath?: string;
+  displayPath?: string;
 }
 
-const { siteName } = Astro.props;
+const { siteName, currentPath = '/', displayPath = '~/blog' } = Astro.props;
+
+const navItems = [
+  { href: '/', label: 'home', path: 'index.astro' },
+  { href: '/blog/', label: 'blog', path: 'posts.md' },
+  { href: '/about/', label: 'about', path: 'about.md' },
+];
+
+const isActive = (href: string) => {
+  if (href === '/') return currentPath === '/';
+  return currentPath === href || currentPath.startsWith(href);
+};
 ---
 
 <header class="site-header">
-  <div class="container">
-    <div class="header-shell">
-      <div class="window-bar">
-        <div class="window-dots" aria-hidden="true">
-          <span class="window-dot is-danger"></span>
-          <span class="window-dot is-warning"></span>
-          <span class="window-dot is-success"></span>
-        </div>
-        <p class="window-title">$ cd ~/zzqDeco.github.io</p>
-        <div class="header-status">
-          <span>online</span>
-          <span>zh-cn</span>
-        </div>
-      </div>
+  <div class="titlebar" aria-label="editor titlebar">
+    <div class="window-dots" aria-hidden="true">
+      <span></span><span></span><span></span>
+    </div>
 
-      <div class="header-inner">
-        <a class="brand-block" href="/">
-          <span class="brand-prefix">~/</span>
-          <span class="brand">{siteName}</span>
+    <a class="brand-lockup" href="/" aria-label={`${siteName} 首页`}>
+      <span class="brand-icon" aria-hidden="true">
+        <Terminal size={17} strokeWidth={1.9} />
+      </span>
+      <span class="brand-text">
+        <span class="brand-name">zzqdeco</span>
+        <span class="brand-path">{displayPath}</span>
+      </span>
+    </a>
+
+    <nav class="header-nav" aria-label="主导航">
+      {navItems.map((item) => (
+        <a
+          href={item.href}
+          aria-current={isActive(item.href) ? 'page' : undefined}
+          title={item.path}
+        >
+          <span>{item.label}</span>
         </a>
+      ))}
+    </nav>
 
-        <nav aria-label="主导航">
-          <a href="/">$ ls home</a>
-          <a href="/blog/">$ ls blog</a>
-          <a href="/about/">$ cat about</a>
-        </nav>
-
-        <div class="header-tools">
-          <ThemeToggle />
-        </div>
-      </div>
+    <div class="header-tools">
+      <a class="icon-button" href="/rss.xml" aria-label="RSS feed" title="RSS">
+        <Rss size={16} strokeWidth={1.8} />
+      </a>
+      <a class="icon-button" href="https://github.com/zzqDeco" aria-label="GitHub profile" title="GitHub">
+        <Github size={16} strokeWidth={1.8} />
+      </a>
+      <ThemeToggle />
     </div>
   </div>
 </header>
-
-<style>
-  .site-header {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    padding-top: var(--sp-3);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 88%, transparent), transparent);
-    backdrop-filter: blur(10px);
-  }
-
-  .header-shell {
-    border: 1px solid var(--line);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    background: color-mix(in srgb, var(--panel) 92%, transparent);
-    box-shadow: var(--shadow);
-  }
-
-  .header-status {
-    display: inline-flex;
-    gap: var(--sp-3);
-    color: var(--muted);
-    font-family: var(--mono-font);
-    font-size: var(--fs-2xs);
-    text-transform: lowercase;
-  }
-
-  .header-inner {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    align-items: center;
-    gap: var(--sp-4);
-    padding: var(--sp-3) var(--sp-4);
-  }
-
-  .brand-block {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--sp-1);
-    color: var(--text);
-    font-family: var(--mono-font);
-  }
-
-  .brand-prefix {
-    color: var(--accent);
-  }
-
-  .brand {
-    font-size: var(--fs-md);
-    font-weight: 700;
-    letter-spacing: 0.02em;
-  }
-
-  nav {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--sp-2);
-    min-width: 0;
-  }
-
-  nav a {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.36rem 0.58rem;
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
-    color: var(--text-soft);
-    font-family: var(--mono-font);
-    font-size: var(--fs-xs);
-    letter-spacing: 0.01em;
-    white-space: nowrap;
-  }
-
-  nav a:hover {
-    color: var(--text);
-    border-color: var(--line);
-    background: color-mix(in srgb, var(--panel-soft) 78%, transparent);
-    text-decoration: none;
-  }
-
-  .header-tools {
-    display: flex;
-    justify-content: flex-end;
-  }
-
-  @media (max-width: 920px) {
-    .header-inner {
-      grid-template-columns: 1fr;
-      align-items: start;
-      gap: var(--sp-3);
-    }
-
-    nav {
-      justify-content: flex-start;
-      flex-wrap: wrap;
-    }
-
-    .header-tools {
-      justify-content: flex-start;
-    }
-
-    .header-status {
-      display: none;
-    }
-  }
-</style>

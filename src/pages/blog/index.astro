@@ -1,53 +1,110 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { ArrowRight, CalendarDays, Hash, Terminal } from 'lucide-astro';
 import { getCollection } from 'astro:content';
 
 const posts = (await getCollection('blog', ({ data }) => (
   import.meta.env.PROD ? data.draft !== true : true
 ))).sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+
+const allTags = Array.from(new Set(posts.flatMap((post) => post.data.tags))).sort((a, b) =>
+  a.localeCompare(b, 'zh-CN')
+);
+
+const archiveGroups = posts.reduce((years, post) => {
+  const date = post.data.pubDate;
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const monthLabel = `${year}.${month}`;
+
+  let yearGroup = years.find((group) => group.year === year);
+  if (!yearGroup) {
+    yearGroup = { year, months: [] };
+    years.push(yearGroup);
+  }
+
+  let monthGroup = yearGroup.months.find((group) => group.month === month);
+  if (!monthGroup) {
+    monthGroup = { month, label: monthLabel, posts: [] };
+    yearGroup.months.push(monthGroup);
+  }
+
+  monthGroup.posts.push(post);
+  return years;
+}, [] as Array<{
+  year: string;
+  months: Array<{
+    month: string;
+    label: string;
+    posts: typeof posts;
+  }>;
+}>);
 ---
 
-<BaseLayout title="文章" description="zzqDeco Blog 文章列表">
-  <section class="shell-window archive-window">
-    <div class="window-bar">
-      <div class="window-dots" aria-hidden="true">
-        <span class="window-dot is-danger"></span>
-        <span class="window-dot is-warning"></span>
-        <span class="window-dot is-success"></span>
-      </div>
-      <p class="window-title">$ find ./src/content/blog -type f | sort</p>
-      <p class="window-meta">{posts.length} files</p>
-    </div>
+<BaseLayout title="文章" description="zzqDeco Blog 文章列表" variant="archive">
+  <header class="archive-hero" aria-label="文章归档">
+    <p class="terminal-line">
+      <Terminal size={16} strokeWidth={1.8} aria-hidden="true" />
+      <span class="prompt">$</span>
+      <span>find ./src/content/blog -type f | sort --reverse</span>
+    </p>
+    <h1>文章归档</h1>
+    <p>
+      {posts.length} entries sorted by pubDate desc. Markdown remains the source of truth; production filters drafts.
+    </p>
 
-    <div class="shell-body archive-shell">
-      <div class="section-title archive-heading">
-        <p class="command-line">
-          <span class="prompt">zzqdeco@blog:~$</span>
-          <span>find ./blog -maxdepth 1 -type f</span>
-        </p>
-        <h1>文章归档</h1>
-        <p class="terminal-note">按发布时间倒序展示，生产环境会自动过滤草稿。</p>
+    {allTags.length > 0 && (
+      <div class="tag-rail" aria-label="全部标签">
+        <span class="tag-rail-label">
+          <Hash size={14} strokeWidth={1.8} aria-hidden="true" />
+          tags
+        </span>
+        {allTags.map((tag) => <span class="tag-chip">{tag}</span>)}
       </div>
+    )}
+  </header>
 
-      <div class="archive-list">
-        {posts.map((post) => (
-          <a class="archive-record" href={`/blog/${post.id}/`}>
-            <div class="archive-meta">
-              <span class="archive-path">/blog/{post.id}/</span>
-              <time class="archive-date" datetime={post.data.pubDate.toISOString()}>
-                {post.data.pubDate.toLocaleDateString('zh-CN')}
-              </time>
+  <section class="archive-timeline" aria-label="文章列表">
+    {archiveGroups.map((yearGroup) => (
+      <section class="archive-year" aria-labelledby={`archive-${yearGroup.year}`}>
+        <h2 id={`archive-${yearGroup.year}`}>{yearGroup.year}</h2>
+
+        {yearGroup.months.map((monthGroup) => (
+          <div class="archive-month">
+            <div class="archive-month-label">
+              <CalendarDays size={15} strokeWidth={1.8} aria-hidden="true" />
+              <span>{monthGroup.label}</span>
             </div>
-            <h2 class="archive-title">{post.data.title}</h2>
-            <p class="archive-summary">{post.data.description}</p>
-            {post.data.tags.length > 0 && (
-              <div class="tags">
-                {post.data.tags.map((tag) => <span class="tag">{tag}</span>)}
-              </div>
-            )}
-          </a>
+
+            <ol class="post-list archive-list">
+              {monthGroup.posts.map((post) => (
+                <li class="post-entry">
+                  <div class="post-entry-head">
+                    <time class="post-date" datetime={post.data.pubDate.toISOString()}>
+                      {post.data.pubDate.toLocaleDateString('zh-CN')}
+                    </time>
+                    <span class="sep">·</span>
+                    <span class="post-path">/blog/{post.id}</span>
+                  </div>
+                  <h3 class="post-entry-title"><a href={`/blog/${post.id}/`}>{post.data.title}</a></h3>
+                  {post.data.description && (
+                    <p class="post-entry-summary">{post.data.description}</p>
+                  )}
+                  {post.data.tags.length > 0 && (
+                    <div class="post-entry-tags" aria-label="标签">
+                      {post.data.tags.map((tag) => <span>{tag}</span>)}
+                    </div>
+                  )}
+                  <a class="post-entry-read" href={`/blog/${post.id}/`}>
+                    read
+                    <ArrowRight size={13} strokeWidth={1.8} aria-hidden="true" />
+                  </a>
+                </li>
+              ))}
+            </ol>
+          </div>
         ))}
-      </div>
-    </div>
+      </section>
+    ))}
   </section>
 </BaseLayout>

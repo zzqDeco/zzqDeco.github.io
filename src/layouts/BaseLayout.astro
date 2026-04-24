@@ -7,6 +7,9 @@ import ProfileSidebar from '../components/ProfileSidebar.astro';
 interface Props {
   title?: string;
   description?: string;
+  variant?: 'home' | 'archive' | 'article' | 'about';
+  showProfile?: boolean;
+  showToc?: boolean;
 }
 
 const siteName = 'zzqDeco Blog';
@@ -15,10 +18,17 @@ const siteDescription = 'zzqDeco 的个人博客';
 const {
   title,
   description = siteDescription,
+  variant = 'home',
+  showProfile = true,
+  showToc = false,
 } = Astro.props;
 
 const fullTitle = title ? `${title} | ${siteName}` : siteName;
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+
+const today = new Date().toISOString().slice(0, 10);
+const pathname = Astro.url.pathname.replace(/\/$/, '') || '/';
+const displayPath = pathname === '/' ? '~/blog' : `~/blog${pathname}`;
 ---
 
 <html lang="zh-CN">
@@ -39,12 +49,29 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
     </script>
   </head>
   <body>
-    <Header siteName={siteName} />
-    <main class="container site-main layout-shell">
-      <ProfileSidebar />
-      <div class="content-shell">
-        <slot />
+    <a class="skip-link" href="#main-content">跳到正文</a>
+
+    <div class="site-frame" data-variant={variant}>
+      <Header siteName={siteName} currentPath={pathname} displayPath={displayPath} />
+
+      <div class:list={['ide-shell', showProfile && 'has-profile', showToc && 'has-toc']}>
+        {showProfile && <ProfileSidebar />}
+
+        <main id="main-content" class="content-shell" tabindex="-1">
+          <slot />
+        </main>
       </div>
-    </main>
+
+      <footer class="status-bar" aria-label="site status">
+        <span class="status-pill">
+          <span class="status-dot" aria-hidden="true"></span>
+          online
+        </span>
+        <span>{displayPath}</span>
+        <span>Astro static</span>
+        <span>zh-cn</span>
+        <time datetime={today}>{today}</time>
+      </footer>
+    </div>
   </body>
 </html>

@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { CalendarDays, Tags, Terminal, TableOfContents } from 'lucide-astro';
 import { getCollection, render } from 'astro:content';
 
 export async function getStaticPaths() {
@@ -15,67 +16,71 @@ export async function getStaticPaths() {
 
 const { post } = Astro.props;
 const { Content, headings } = await render(post);
+const pubDate = post.data.pubDate.toLocaleDateString('zh-CN');
+const updated = post.data.updatedDate?.toLocaleDateString('zh-CN');
+const tocHeadings = headings.filter((heading) => heading.depth <= 3);
 ---
 
-<BaseLayout title={post.data.title} description={post.data.description}>
-  <article class="article">
-    <section class="shell-window article-window">
-      <div class="window-bar">
-        <div class="window-dots" aria-hidden="true">
-          <span class="window-dot is-danger"></span>
-          <span class="window-dot is-warning"></span>
-          <span class="window-dot is-success"></span>
-        </div>
-        <p class="window-title">$ cat ./src/content/blog/{post.id}.md</p>
-        <p class="window-meta">entry</p>
-      </div>
+<BaseLayout
+  title={post.data.title}
+  description={post.data.description}
+  variant="article"
+  showToc={tocHeadings.length > 0}
+>
+  <article class:list={['article-page', tocHeadings.length > 0 && 'has-toc']}>
+    <header class="article-head">
+      <nav class="crumbs" aria-label="breadcrumbs">
+        <a href="/">~</a>
+        <span class="sep">/</span>
+        <a href="/blog/">blog</a>
+        <span class="sep">/</span>
+        <span>{post.id}</span>
+      </nav>
 
-      <div class="shell-body article-shell">
-        <header class="article-header">
-          <div class="crumbs">
-            <a href="/">~</a>
-            <span>/</span>
-            <a href="/blog/">blog</a>
-            <span>/</span>
-            <span>{post.id}</span>
-          </div>
+      <p class="terminal-line">
+        <Terminal size={16} strokeWidth={1.8} aria-hidden="true" />
+        <span class="prompt">$</span>
+        <span>cat ./src/content/blog/{post.id}.md</span>
+      </p>
 
-          <p class="command-line">
-            <span class="prompt">zzqdeco@blog:~$</span>
-            <span>cat article.md</span>
-          </p>
+      <h1 class="article-title">{post.data.title}</h1>
+      {post.data.description && (
+        <p class="article-description">{post.data.description}</p>
+      )}
 
-          <h1>{post.data.title}</h1>
-          <p class="article-description">{post.data.description}</p>
-          <div class="article-meta" aria-label="文章元信息">
-            <span>Published {post.data.pubDate.toLocaleDateString('zh-CN')}</span>
-            {post.data.updatedDate && <span>Updated {post.data.updatedDate.toLocaleDateString('zh-CN')}</span>}
-          </div>
-
-          {post.data.tags.length > 0 && (
-            <div class="tags">
-              {post.data.tags.map((tag) => <span class="tag">{tag}</span>)}
-            </div>
-          )}
-        </header>
-
-        {headings.length > 0 && (
-          <aside class="toc">
-            <p class="toc-label">sections</p>
-            <ul>
-              {headings.map((heading) => (
-                <li>
-                  <a href={`#${heading.slug}`}>{heading.text}</a>
-                </li>
-              ))}
-            </ul>
-          </aside>
+      <div class="article-meta" aria-label="文章元信息">
+        <span>
+          <CalendarDays size={14} strokeWidth={1.8} aria-hidden="true" />
+          pub {pubDate}
+        </span>
+        {updated && <span>updated {updated}</span>}
+        {post.data.tags.length > 0 && (
+          <span class="article-tags">
+            <Tags size={14} strokeWidth={1.8} aria-hidden="true" />
+            {post.data.tags.map((tag) => <span>{tag}</span>)}
+          </span>
         )}
-
-        <div class="post-content reading-panel">
-          <Content />
-        </div>
       </div>
-    </section>
+    </header>
+
+    {tocHeadings.length > 0 && (
+      <aside class="toc-panel" aria-label="目录">
+        <p class="toc-head">
+          <TableOfContents size={15} strokeWidth={1.8} aria-hidden="true" />
+          sections
+        </p>
+        <ol>
+          {tocHeadings.map((heading) => (
+            <li class={`toc-depth-${heading.depth}`}>
+              <a href={`#${heading.slug}`}>{heading.text}</a>
+            </li>
+          ))}
+        </ol>
+      </aside>
+    )}
+
+    <div class="article-body">
+      <Content />
+    </div>
   </article>
 </BaseLayout>

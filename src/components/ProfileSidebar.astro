@@ -1,4 +1,5 @@
 ---
+import { Building2, ExternalLink, FolderGit2, GitFork, Github, MapPin, Star } from 'lucide-astro';
 import { getGitHubProfile } from '../lib/githubProfile';
 
 const profile = await getGitHubProfile();
@@ -7,99 +8,96 @@ const bioLines = profile.bio
   .map((line) => line.trim())
   .filter(Boolean);
 const bioPreview = bioLines.slice(0, 3);
-const featuredRepos = profile.repos.slice(0, 2);
+const featuredRepos = profile.repos.slice(0, 3);
+
+const stats = [
+  { label: 'repos', value: profile.publicRepos },
+  { label: 'followers', value: profile.followers },
+  { label: 'stars', value: profile.stars },
+];
 ---
 
-<aside class="profile-sidebar shell-window" aria-label="GitHub profile">
-  <div class="window-bar">
-    <div class="window-dots" aria-hidden="true">
-      <span class="window-dot is-danger"></span>
-      <span class="window-dot is-warning"></span>
-      <span class="window-dot is-success"></span>
+<aside class="profile inspector-panel" aria-label="GitHub profile inspector">
+  <header class="profile-head">
+    <a class="profile-avatar-link" href={profile.url} aria-label={`打开 ${profile.login} 的 GitHub 主页`}>
+      <img class="profile-avatar" src={profile.avatarUrl} alt={`${profile.login} avatar`} width="72" height="72" loading="lazy" />
+    </a>
+    <div class="profile-title">
+      <p class="profile-kicker">GitHub inspector</p>
+      <h2 class="profile-name">{profile.name}</h2>
+      <a class="profile-handle" href={profile.url}>
+        <Github size={13} strokeWidth={1.8} aria-hidden="true" />
+        @{profile.login}
+      </a>
     </div>
-    <p class="window-title">$ whoami</p>
-    <p class="window-meta">profile</p>
+  </header>
+
+  <div class="profile-status" aria-label="current focus">
+    <span class="status-dot" aria-hidden="true"></span>
+    <span>Full-Stack AI Engineer &amp; Researcher</span>
   </div>
 
-  <div class="profile-body">
-    <div class="profile-identity">
-      <a class="profile-avatar-link" href={profile.url} aria-label={`打开 ${profile.login} 的 GitHub 主页`}>
-        <img class="profile-avatar" src={profile.avatarUrl} alt={`${profile.login} avatar`} width="96" height="96" loading="lazy" />
-      </a>
-
-      <div class="profile-copy">
-        <p class="command-line">
-          <span class="prompt">github@profile:~$</span>
-          <span>gh user view {profile.login}</span>
-        </p>
-
-        <div class="profile-heading">
-          <h2>{profile.name}</h2>
-          <a class="profile-handle" href={profile.url}>@{profile.login}</a>
-        </div>
-
-        {bioPreview.length > 0 && (
-          <div class="profile-bio">
-            {bioPreview.map((line) => <p>{line}</p>)}
-          </div>
-        )}
-      </div>
+  {bioPreview.length > 0 && (
+    <div class="profile-bio">
+      {bioPreview.map((line) => <p>{line}</p>)}
     </div>
+  )}
 
-    <div class="profile-fact-grid">
-      {profile.company && (
-        <div class="profile-fact">
-          <span class="profile-fact-icon" aria-hidden="true">edu</span>
-          <span class="profile-fact-label">campus</span>
-          <span class="profile-fact-value">{profile.company}</span>
-        </div>
-      )}
-      {profile.location && (
-        <div class="profile-fact">
-          <span class="profile-fact-icon" aria-hidden="true">geo</span>
-          <span class="profile-fact-label">based in</span>
-          <span class="profile-fact-value">{profile.location}</span>
-        </div>
-      )}
-    </div>
-
-    <div class="profile-stats" aria-label="GitHub stats">
-      <div>
-        <strong>{profile.publicRepos}</strong>
-        <span>repos</span>
+  <div class="profile-facts">
+    {profile.company && (
+      <div class="profile-fact">
+        <Building2 size={14} strokeWidth={1.8} aria-hidden="true" />
+        <span class="profile-fact-label">campus</span>
+        <span>{profile.company}</span>
       </div>
-      <div>
-        <strong>{profile.followers}</strong>
-        <span>followers</span>
+    )}
+    {profile.location && (
+      <div class="profile-fact">
+        <MapPin size={14} strokeWidth={1.8} aria-hidden="true" />
+        <span class="profile-fact-label">based in</span>
+        <span>{profile.location}</span>
       </div>
-      <div>
-        <strong>{profile.following}</strong>
-        <span>following</span>
-      </div>
-      <div>
-        <strong>{profile.stars}</strong>
-        <span>stars</span>
-      </div>
-    </div>
-
-    {featuredRepos.length > 0 && (
-      <section class="profile-repos" aria-label="Pinned repositories">
-        <p class="toc-label">$ ls pinned</p>
-        <div class="profile-repo-list">
-          {featuredRepos.map((repo) => (
-            <a class="profile-repo" href={repo.url}>
-              <span class="profile-repo-name">{repo.name}</span>
-              <span class="profile-repo-description">{repo.description}</span>
-              <span class="profile-repo-meta">
-                {repo.language && <span>{repo.language}</span>}
-                <span>{repo.stars} stars</span>
-                <span>{repo.forks} forks</span>
-              </span>
-            </a>
-          ))}
-        </div>
-        <a class="profile-more" href={profile.url}>View more on GitHub</a>
-      </section>
     )}
   </div>
+
+  <dl class="profile-stats" aria-label="GitHub stats">
+    {stats.map((stat) => (
+      <div>
+        <dt>{stat.label}</dt>
+        <dd>{stat.value}</dd>
+      </div>
+    ))}
+  </dl>
+
+  {featuredRepos.length > 0 && (
+    <section class="profile-pinned inspector-section" aria-label="Pinned repositories">
+      <div class="inspector-title">
+        <FolderGit2 size={14} strokeWidth={1.8} aria-hidden="true" />
+        <span>pinned repos</span>
+      </div>
+      {featuredRepos.map((repo) => (
+        <a class="profile-repo" href={repo.url}>
+          <span class="profile-repo-name">
+            <span
+              class="repo-lang"
+              style={`--repo-lang: ${repo.languageColor ?? 'var(--accent)'}`}
+              aria-hidden="true"
+            ></span>
+            {repo.name}
+            <ExternalLink size={12} strokeWidth={1.8} aria-hidden="true" />
+          </span>
+          {repo.description && <span class="profile-repo-desc">{repo.description}</span>}
+          <span class="profile-repo-meta">
+            {repo.language && <span>{repo.language}</span>}
+            <span><Star size={12} strokeWidth={1.8} aria-hidden="true" />{repo.stars}</span>
+            <span><GitFork size={12} strokeWidth={1.8} aria-hidden="true" />{repo.forks}</span>
+          </span>
+        </a>
+      ))}
+      <a class="profile-more" href={profile.url}>
+        more on GitHub
+        <ExternalLink size={12} strokeWidth={1.8} aria-hidden="true" />
+      </a>
+    </section>
+  )}
 </aside>
