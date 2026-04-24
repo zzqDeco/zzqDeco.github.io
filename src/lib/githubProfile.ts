@@ -71,6 +71,7 @@ const fallbackProfile: GitHubProfile = {
 };
 
 const userAgent = 'zzqDeco.github.io';
+const pinnedRepoLimit = 6;
 
 const toRepo = (repo: any): Repo => ({
   name: repo.name,
@@ -120,7 +121,7 @@ const fetchGraphQLProfile = async (token: string): Promise<GitHubProfile> => {
             starredRepositories {
               totalCount
             }
-            pinnedItems(first: 3, types: REPOSITORY) {
+            pinnedItems(first: ${pinnedRepoLimit}, types: REPOSITORY) {
               nodes {
                 ... on Repository {
                   name
@@ -193,7 +194,7 @@ const fetchRESTProfile = async (): Promise<GitHubProfile> => {
 
   const representativeRepos = repos
     .filter((repo: any) => !repo.fork && !repo.archived)
-    .slice(0, 3)
+    .slice(0, pinnedRepoLimit)
     .map(toRepo);
 
   return {

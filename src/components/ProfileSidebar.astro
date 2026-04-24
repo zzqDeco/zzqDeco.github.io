@@ -8,7 +8,7 @@ const bioLines = profile.bio
   .map((line) => line.trim())
   .filter(Boolean);
 const bioPreview = bioLines.slice(0, 3);
-const featuredRepos = profile.repos.slice(0, 3);
+const featuredRepos = profile.repos;
 
 const stats = [
   { label: 'repos', value: profile.publicRepos },
