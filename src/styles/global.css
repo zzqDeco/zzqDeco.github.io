@@ -936,9 +936,25 @@ hr {
 
 .article-body {
   width: min(100%, var(--w-reading));
+  padding: var(--space-7);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-panel);
   color: var(--fg);
   font-size: 1.05rem;
   line-height: var(--lh-body);
+}
+
+.article-body::before {
+  content: 'document';
+  display: block;
+  margin-bottom: var(--space-5);
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .article-body > :first-child {
