@@ -803,13 +803,12 @@ hr {
 /* Article */
 .article-page {
   display: grid;
-  width: min(100%, var(--w-reading));
+  width: 100%;
   gap: var(--space-6);
 }
 
 .article-page.has-toc {
-  width: min(100%, calc(var(--w-reading) + 16rem + var(--space-7)));
-  grid-template-columns: minmax(0, var(--w-reading)) minmax(13rem, 16rem);
+  grid-template-columns: minmax(0, 1fr) minmax(13rem, 16rem);
   column-gap: var(--space-7);
   align-items: start;
 }
@@ -937,7 +936,7 @@ hr {
 }
 
 .article-body {
-  width: min(100%, var(--w-reading));
+  width: 100%;
   padding: var(--space-7);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
