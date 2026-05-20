@@ -894,11 +894,36 @@ label.wide {
   font-family: var(--font-mono);
 }
 
-.milkdown-host .ProseMirror img {
+.milkdown-host .ProseMirror :where(figure, .image-block, .milkdown-image-block, [data-type='image-block'], [data-node-type='image']) {
   max-width: 100%;
+  margin: var(--space-6) 0;
+}
+
+.milkdown-host .ProseMirror img {
+  display: block !important;
+  width: auto !important;
+  max-width: 100% !important;
+  max-height: min(70vh, 760px) !important;
+  height: auto !important;
+  margin: var(--space-6) auto;
+  object-fit: contain !important;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
+  background: var(--bg-inset);
   box-shadow: var(--shadow-panel);
+}
+
+.milkdown-host .ProseMirror :where(figure, .image-block, .milkdown-image-block, [data-type='image-block'], [data-node-type='image']) img {
+  margin: 0 auto;
+}
+
+.milkdown-host .ProseMirror img.ProseMirror-selectednode,
+.milkdown-host .ProseMirror .ProseMirror-selectednode img {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  box-shadow:
+    0 0 0 4px var(--accent-soft),
+    var(--shadow-panel);
 }
 
 .insert-dialog {

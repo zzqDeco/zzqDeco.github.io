@@ -11,6 +11,8 @@ const repoRoot = process.cwd();
 const blogDir = path.join(repoRoot, 'src/content/blog');
 const trashDir = path.join(repoRoot, '.trash/blog');
 const assetDir = path.join(repoRoot, 'public/images/blog');
+const sitePublicDir = path.join(repoRoot, 'public');
+const siteImagesDir = path.join(sitePublicDir, 'images');
 const publicDir = path.join(__dirname, 'public');
 const bundleDir = path.join(repoRoot, 'node_modules/.cache/blog-editor');
 const editorBundlePath = path.join(bundleDir, 'milkdown-editor.js');
@@ -309,12 +311,15 @@ const serveStatic = async (request, response, pathname) => {
   }
 
   const isEditorVendor = pathname.startsWith('/vendor/blog-editor/');
+  const isSiteImage = pathname.startsWith('/images/');
   const relative = isEditorVendor
     ? pathname.replace('/vendor/blog-editor/', '')
-    : pathname === '/'
-      ? 'index.html'
-      : pathname.slice(1);
-  const root = isEditorVendor ? bundleDir : publicDir;
+    : isSiteImage
+      ? pathname.replace('/images/', '')
+      : pathname === '/'
+        ? 'index.html'
+        : pathname.slice(1);
+  const root = isEditorVendor ? bundleDir : isSiteImage ? siteImagesDir : publicDir;
   const target = path.normalize(path.join(root, relative));
   const publicRoot = `${root}${path.sep}`;
 
@@ -365,6 +370,22 @@ const serveStatic = async (request, response, pathname) => {
 };
 
 const server = createServer(async (request, response) => {
+  const rawPathname = String(request.url ?? '/').split(/[?#]/)[0];
+  let decodedRawPathname = rawPathname;
+  try {
+    decodedRawPathname = decodeURIComponent(rawPathname);
+  } catch {
+    // Let URL parsing below return the normal error response for malformed paths.
+  }
+
+  if (
+    decodedRawPathname.startsWith('/images/') &&
+    decodedRawPathname.split('/').some((segment) => segment === '..')
+  ) {
+    text(response, 403, 'Forbidden');
+    return;
+  }
+
   const url = new URL(request.url ?? '/', `http://${host}:${port}`);
   const pathname = decodeURIComponent(url.pathname);
   const segments = pathname.split('/').filter(Boolean);

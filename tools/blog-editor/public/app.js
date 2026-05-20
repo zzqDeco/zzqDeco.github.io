@@ -186,6 +186,23 @@ const today = () => new Date().toISOString().slice(0, 10);
 const validateSlug = (slug) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
 const currentMarkdown = () => state.editor?.getMarkdown() ?? '';
 
+const isHttpUrl = (value) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+const isLocalImageUrl = (value) => {
+  if (!value.startsWith('/images/') || value.includes('\\')) return false;
+  const pathOnly = value.split(/[?#]/)[0];
+  return !pathOnly.split('/').some((segment) => segment === '..');
+};
+
+const isImageUrl = (value) => isHttpUrl(value) || isLocalImageUrl(value);
+
 const confirmDiscard = () => {
   if (!state.isDirty) return true;
   return confirm('Discard unsaved changes?');
@@ -423,6 +440,7 @@ const openInsertDialog = (mode) => {
   elements.dialogUrlLabel.textContent = isImage ? 'Image URL' : 'URL';
   elements.dialogText.value = '';
   elements.dialogUrl.value = '';
+  elements.dialogUrl.placeholder = isImage ? '/images/blog/post/image.png' : 'https://example.com';
   elements.dialog.showModal();
   elements.dialogText.focus();
 };
@@ -442,8 +460,16 @@ const submitInsertDialog = () => {
   }
 
   if (state.dialogMode === 'image-url') {
+    if (!isImageUrl(url)) {
+      setStatus('image URL must start with http://, https://, or /images/', 'error');
+      return;
+    }
     insertImage({ alt: text, url });
   } else {
+    if (!isHttpUrl(url)) {
+      setStatus('link URL must start with http:// or https://', 'error');
+      return;
+    }
     insertLink({ text, url });
   }
   closeInsertDialog();
