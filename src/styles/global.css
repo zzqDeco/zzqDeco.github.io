@@ -517,13 +517,12 @@ hr {
 /* Home */
 .home-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(16rem, 0.65fr);
+  grid-template-columns: 1fr;
   gap: var(--space-5);
   align-items: stretch;
 }
 
 .hero-console,
-.hero-brief,
 .archive-hero,
 .article-head,
 .toc-panel {
@@ -591,16 +590,6 @@ hr {
   background: var(--accent-hover);
 }
 
-.hero-brief {
-  display: grid;
-  align-content: start;
-  gap: var(--space-5);
-  padding: var(--space-5);
-  background:
-    linear-gradient(180deg, var(--bg-panel), var(--bg-panel-soft));
-}
-
-.brief-head,
 .inspector-title {
   display: inline-flex;
   align-items: center;
@@ -610,30 +599,6 @@ hr {
   font-size: var(--fs-xs);
   font-weight: 700;
   text-transform: uppercase;
-}
-
-.brief-list {
-  display: grid;
-  gap: var(--space-4);
-}
-
-.brief-list div {
-  display: grid;
-  gap: var(--space-1);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--line);
-}
-
-.brief-list dt {
-  color: var(--fg-muted);
-  font-family: var(--font-mono);
-  font-size: var(--fs-2xs);
-}
-
-.brief-list dd {
-  color: var(--fg-soft);
-  font-size: var(--fs-sm);
-  line-height: var(--lh-snug);
 }
 
 /* Post list */
@@ -1388,10 +1353,6 @@ hr {
 
   .content-shell {
     padding: var(--space-6);
-  }
-
-  .home-hero {
-    grid-template-columns: 1fr;
   }
 
   .archive-month {

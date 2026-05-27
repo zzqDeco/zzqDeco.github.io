@@ -1,6 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { ArrowRight, FileText, Rss, Sparkles, Terminal, UserRound } from 'lucide-astro';
+import { ArrowRight, FileText, Rss, Terminal, UserRound } from 'lucide-astro';
 import { getCollection } from 'astro:content';
 
 const posts = (await getCollection('blog', ({ data }) => (
@@ -41,22 +41,6 @@ const latestPosts = posts.slice(0, 5);
       </div>
     </div>
 
-    <aside class="hero-brief" aria-label="当前状态">
-      <div class="brief-head">
-        <Sparkles size={16} strokeWidth={1.8} aria-hidden="true" />
-        <span>current buffer</span>
-      </div>
-      <dl class="brief-list">
-        <div>
-          <dt>role</dt>
-          <dd>Full-Stack AI Engineer &amp; Researcher</dd>
-        </div>
-        <div>
-          <dt>latest</dt>
-          <dd>{latestPosts.length} entries loaded from Markdown</dd>
-        </div>
-      </dl>
-    </aside>
   </section>
 
   <section class="section-stack" aria-label="最近文章">
