@@ -544,7 +544,7 @@ hr {
 }
 
 .hero-lede {
-  max-width: 42rem;
+  max-width: 100%;
   color: var(--fg-soft);
   font-size: var(--fs-lg);
   line-height: var(--lh-body);
