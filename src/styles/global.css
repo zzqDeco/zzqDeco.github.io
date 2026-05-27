@@ -539,8 +539,9 @@ hr {
 }
 
 .hero-title {
-  max-width: 12ch;
+  max-width: 100%;
   font-size: var(--fs-3xl);
+  white-space: nowrap;
 }
 
 .hero-lede {
@@ -1410,6 +1411,10 @@ hr {
   .hero-title,
   .article-title {
     max-width: none;
+  }
+
+  .hero-title {
+    font-size: 1.72rem;
   }
 
   .hero-actions,
