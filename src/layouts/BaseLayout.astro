@@ -28,7 +28,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 
 const today = new Date().toISOString().slice(0, 10);
 const pathname = Astro.url.pathname.replace(/\/$/, '') || '/';
-const displayPath = pathname === '/' ? '~/blog' : `~/blog${pathname}`;
+const displayPath = pathname === '/' ? '~/blog' : `~${pathname}`;
 ---
 
 <html lang="zh-CN">

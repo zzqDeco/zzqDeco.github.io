@@ -1048,6 +1048,7 @@ hr {
 
 .article-body th,
 .article-body td {
+  min-width: 9rem;
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--line);
   text-align: left;
