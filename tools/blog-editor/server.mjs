@@ -21,6 +21,20 @@ const host = '127.0.0.1';
 const port = Number(process.env.BLOG_EDITOR_PORT ?? 4322);
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const maxAssetBytes = 5 * 1024 * 1024;
+const shanghaiOffset = '+08:00';
+const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+const localDateTimePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/;
+const zonedDateTimePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})$/;
+const shanghaiDateTimeFormatter = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
 const assetTypes = new Map([
   ['.png', 'image/png'],
   ['.jpg', 'image/jpeg'],
@@ -55,17 +69,33 @@ const safeSlug = (slug) => {
 
 const postPath = (slug) => path.join(blogDir, `${safeSlug(slug)}.md`);
 
-const toDateInput = (value) => {
+const getShanghaiDateTimeParts = (date) =>
+  Object.fromEntries(shanghaiDateTimeFormatter.formatToParts(date).map((part) => [part.type, part.value]));
+
+const formatShanghaiTimestamp = (date) => {
+  const parts = getShanghaiDateTimeParts(date);
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}${shanghaiOffset}`;
+};
+
+const normalizeTimestamp = (value) => {
   if (!value) return '';
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  return String(value).slice(0, 10);
+  if (value instanceof Date) return formatShanghaiTimestamp(value);
+
+  const raw = String(value).trim();
+  if (dateOnlyPattern.test(raw)) return `${raw}T00:00:00${shanghaiOffset}`;
+  if (localDateTimePattern.test(raw)) {
+    return `${raw.length === 16 ? `${raw}:00` : raw}${shanghaiOffset}`;
+  }
+  if (zonedDateTimePattern.test(raw)) return formatShanghaiTimestamp(new Date(raw));
+
+  return raw;
 };
 
 const normalizeData = (data = {}) => ({
   title: String(data.title ?? ''),
   description: String(data.description ?? ''),
-  pubDate: toDateInput(data.pubDate),
-  updatedDate: toDateInput(data.updatedDate),
+  pubDate: normalizeTimestamp(data.pubDate),
+  updatedDate: normalizeTimestamp(data.updatedDate),
   tags: Array.isArray(data.tags) ? data.tags.map(String) : [],
   draft: Boolean(data.draft),
 });
@@ -111,11 +141,11 @@ const serializePost = ({ data, content }) => {
     '---',
     `title: ${quoteYaml(clean.title)}`,
     `description: ${quoteYaml(clean.description)}`,
-    `pubDate: ${clean.pubDate}`,
+    `pubDate: ${quoteYaml(clean.pubDate)}`,
   ];
 
   if (clean.updatedDate) {
-    lines.push(`updatedDate: ${clean.updatedDate}`);
+    lines.push(`updatedDate: ${quoteYaml(clean.updatedDate)}`);
   }
 
   lines.push('tags:');
@@ -134,9 +164,11 @@ const validatePayload = ({ data, content }) => {
 
   if (!clean.title.trim()) errors.push('title is required');
   if (!clean.description.trim()) errors.push('description is required');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(clean.pubDate)) errors.push('pubDate must be YYYY-MM-DD');
-  if (clean.updatedDate && !/^\d{4}-\d{2}-\d{2}$/.test(clean.updatedDate)) {
-    errors.push('updatedDate must be YYYY-MM-DD');
+  if (!zonedDateTimePattern.test(clean.pubDate)) {
+    errors.push('pubDate must be an ISO timestamp with timezone');
+  }
+  if (clean.updatedDate && !zonedDateTimePattern.test(clean.updatedDate)) {
+    errors.push('updatedDate must be an ISO timestamp with timezone');
   }
   if (typeof content !== 'string') errors.push('content must be a string');
 

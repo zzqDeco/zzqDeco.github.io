@@ -84,8 +84,8 @@ The editor follows the current Astro content collection schema:
 ```yaml
 title: "Post title"
 description: "Short summary"
-pubDate: 2026-04-15
-updatedDate: 2026-04-15
+pubDate: "2026-04-15T15:27:56+08:00"
+updatedDate: "2026-04-15T15:27:56+08:00"
 tags:
   - Astro
 draft: false
@@ -95,8 +95,8 @@ Fields:
 
 - `title`: required string
 - `description`: required string
-- `pubDate`: required date, `YYYY-MM-DD`
-- `updatedDate`: optional date, `YYYY-MM-DD`
+- `pubDate`: required ISO timestamp with timezone, displayed in `Asia/Shanghai`
+- `updatedDate`: optional ISO timestamp with timezone, displayed in `Asia/Shanghai`
 - `tags`: comma-separated input in the UI, saved as a YAML array
 - `draft`: boolean; production pages hide `draft: true`
 
