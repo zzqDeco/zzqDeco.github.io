@@ -1,7 +1,8 @@
 ---
 title: "找工作的sonnnet"
 description: "不知道怎么说，感觉人能有很多选择，但是也没有什么选择"
-pubDate: 2026-04-27
+pubDate: "2026-04-28T00:27:11+08:00"
+updatedDate: "2026-04-28T00:27:11+08:00"
 tags:
   - "Works"
 draft: false

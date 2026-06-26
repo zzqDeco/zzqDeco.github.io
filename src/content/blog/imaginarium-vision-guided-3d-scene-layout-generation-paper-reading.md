@@ -1,8 +1,8 @@
 ---
 title: "Imaginarium 论文精读：视觉引导、高质量资产库、代码实现与 3D 场景布局生成"
 description: "从论文与官方代码双线精读 Imaginarium 如何通过 Flux 图像引导、视觉解析、资产检索、姿态估计、场景图约束和 Blender 物理优化生成高质量 3D 场景布局"
-pubDate: 2026-06-26
-updatedDate: 2026-06-26
+pubDate: "2026-06-26T10:11:20+08:00"
+updatedDate: "2026-06-26T10:11:20+08:00"
 tags:
   - "Paper Reading"
   - "3D Scene Synthesis"

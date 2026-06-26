@@ -1,8 +1,8 @@
 ---
 title: "长期收益强化学习算法研究进展：从时间信用分配到 Agentic RL"
 description: "系统梳理长时域、稀疏延迟奖励强化学习中的信用分配、时间抽象、离线到在线、世界模型与 LLM Agent RL 进展"
-pubDate: 2026-06-10
-updatedDate: 2026-06-10
+pubDate: "2026-06-10T18:53:09+08:00"
+updatedDate: "2026-06-10T18:53:09+08:00"
 tags:
   - "Reinforcement Learning"
   - "Long-Horizon RL"

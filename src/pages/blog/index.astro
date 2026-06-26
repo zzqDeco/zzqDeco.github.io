@@ -2,6 +2,7 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { ArrowRight, CalendarDays, Hash, Terminal } from 'lucide-astro';
 import { getCollection } from 'astro:content';
+import { formatBlogDateTime, getBlogDateParts } from '../../lib/date';
 
 const posts = (await getCollection('blog', ({ data }) => (
   import.meta.env.PROD ? data.draft !== true : true
@@ -12,9 +13,7 @@ const allTags = Array.from(new Set(posts.flatMap((post) => post.data.tags))).sor
 );
 
 const archiveGroups = posts.reduce((years, post) => {
-  const date = post.data.pubDate;
-  const year = String(date.getFullYear());
-  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const { year, month } = getBlogDateParts(post.data.pubDate);
   const monthLabel = `${year}.${month}`;
 
   let yearGroup = years.find((group) => group.year === year);
@@ -81,7 +80,7 @@ const archiveGroups = posts.reduce((years, post) => {
                 <li class="post-entry">
                   <div class="post-entry-head">
                     <time class="post-date" datetime={post.data.pubDate.toISOString()}>
-                      {post.data.pubDate.toLocaleDateString('zh-CN')}
+                      {formatBlogDateTime(post.data.pubDate)}
                     </time>
                     <span class="sep">·</span>
                     <span class="post-path">/blog/{post.id}</span>

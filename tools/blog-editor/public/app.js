@@ -182,7 +182,49 @@ const request = async (url, options = {}) => {
   return payload;
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
+const shanghaiOffset = '+08:00';
+const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+const localDateTimePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/;
+const zonedDateTimePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})$/;
+const shanghaiDateTimeFormatter = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
+
+const getShanghaiDateTimeParts = (date) =>
+  Object.fromEntries(shanghaiDateTimeFormatter.formatToParts(date).map((part) => [part.type, part.value]));
+
+const toDateTimeLocalInput = (value) => {
+  if (!value) return '';
+  const raw = String(value).trim();
+  if (dateOnlyPattern.test(raw)) return `${raw}T00:00:00`;
+  if (localDateTimePattern.test(raw)) return raw.length === 16 ? `${raw}:00` : raw;
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.valueOf())) return raw;
+
+  const parts = getShanghaiDateTimeParts(parsed);
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+};
+
+const fromDateTimeLocalInput = (value) => {
+  if (!value) return '';
+  const raw = String(value).trim();
+  if (dateOnlyPattern.test(raw)) return `${raw}T00:00:00${shanghaiOffset}`;
+  if (localDateTimePattern.test(raw)) {
+    return `${raw.length === 16 ? `${raw}:00` : raw}${shanghaiOffset}`;
+  }
+  if (zonedDateTimePattern.test(raw)) return raw;
+  return raw;
+};
+
+const nowDateTimeLocal = () => toDateTimeLocalInput(new Date().toISOString());
 const validateSlug = (slug) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
 const currentMarkdown = () => state.editor?.getMarkdown() ?? '';
 
@@ -213,8 +255,8 @@ const formPayload = () => ({
   data: {
     title: elements.title.value.trim(),
     description: elements.description.value.trim(),
-    pubDate: elements.pubDate.value,
-    updatedDate: elements.updatedDate.value,
+    pubDate: fromDateTimeLocalInput(elements.pubDate.value),
+    updatedDate: fromDateTimeLocalInput(elements.updatedDate.value),
     tags: elements.tags.value
       .split(',')
       .map((tag) => tag.trim())
@@ -260,8 +302,8 @@ const fillForm = ({ slug, data, content }) => {
   elements.slug.disabled = !state.isNew;
   elements.title.value = data.title ?? '';
   elements.description.value = data.description ?? '';
-  elements.pubDate.value = data.pubDate ?? today();
-  elements.updatedDate.value = data.updatedDate ?? '';
+  elements.pubDate.value = toDateTimeLocalInput(data.pubDate) || nowDateTimeLocal();
+  elements.updatedDate.value = toDateTimeLocalInput(data.updatedDate);
   elements.tags.value = (data.tags ?? []).join(', ');
   elements.draft.checked = Boolean(data.draft);
   setEditorMarkdown(content ?? '');
@@ -326,7 +368,7 @@ const newPost = () => {
     data: {
       title: '',
       description: '',
-      pubDate: today(),
+      pubDate: nowDateTimeLocal(),
       updatedDate: '',
       tags: [],
       draft: true,

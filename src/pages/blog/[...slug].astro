@@ -2,6 +2,7 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { CalendarDays, Tags, Terminal, TableOfContents } from 'lucide-astro';
 import { getCollection, render } from 'astro:content';
+import { formatBlogDateTime } from '../../lib/date';
 
 export async function getStaticPaths() {
   const posts = await getCollection('blog', ({ data }) => (
@@ -16,8 +17,8 @@ export async function getStaticPaths() {
 
 const { post } = Astro.props;
 const { Content, headings } = await render(post);
-const pubDate = post.data.pubDate.toLocaleDateString('zh-CN');
-const updated = post.data.updatedDate?.toLocaleDateString('zh-CN');
+const pubDate = formatBlogDateTime(post.data.pubDate);
+const updated = post.data.updatedDate ? formatBlogDateTime(post.data.updatedDate) : undefined;
 const tocHeadings = headings.filter((heading) => heading.depth <= 3);
 ---
 

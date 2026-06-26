@@ -1,8 +1,8 @@
 ---
 title: "Git 分支工作流：从 Git Flow 到 Trunk-Based"
 description: "横向比较 GitHub Flow、GitLab Flow、OneFlow、Trunk-Based Development 与 Git Flow 的分支模型、发布方式、成本和适用场景。"
-pubDate: 2026-05-16
-updatedDate: 2026-05-16
+pubDate: "2026-05-16T14:27:17+08:00"
+updatedDate: "2026-05-16T14:27:17+08:00"
 tags:
   - "Git"
   - "Engineering"

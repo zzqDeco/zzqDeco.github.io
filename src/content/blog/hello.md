@@ -1,8 +1,8 @@
 ---
 title: "Hello"
 description: "oh my first blog"
-pubDate: 2026-04-15
-updatedDate: 2026-04-15
+pubDate: "2026-04-15T15:27:56+08:00"
+updatedDate: "2026-04-15T15:27:56+08:00"
 tags:
   - "Notes"
 draft: false

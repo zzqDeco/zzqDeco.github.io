@@ -1,8 +1,8 @@
 ---
 title: "神经网络损失景观中的坏局部极小值：从 Backpropagation 到过参数化理论"
 description: "梳理 BP、深度线性网络、宽网络、NTK 与过参数化视角下坏局部极小值问题的理论脉络"
-pubDate: 2026-06-09
-updatedDate: 2026-06-09
+pubDate: "2026-06-10T12:46:13+08:00"
+updatedDate: "2026-06-10T12:46:13+08:00"
 tags:
   - "Deep Learning"
   - "Optimization"

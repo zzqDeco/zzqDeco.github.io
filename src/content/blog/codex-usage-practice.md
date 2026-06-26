@@ -1,8 +1,8 @@
 ---
 title: "Codex 使用实践"
 description: "任务拆解、审查改动、运行验证，如何把 AI coding agent的输出纳入可维护的工程流程"
-pubDate: 2026-05-27
-updatedDate: 2026-05-27
+pubDate: "2026-05-27T01:27:53+08:00"
+updatedDate: "2026-05-27T01:27:53+08:00"
 tags:
   - "Codex"
   - "AI"
