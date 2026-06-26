@@ -1,8 +1,8 @@
 ---
 title: "简单推荐算法实施指南：从冷启动弱监督到真实反馈闭环"
 description: "系统梳理推荐系统在缺少样本时如何通过内容先验、规则蒸馏、受控探索、曝光日志和双塔召回逐步建立稳定训练闭环"
-pubDate: 2026-06-26
-updatedDate: 2026-06-26
+pubDate: "2026-06-26T15:20:05+08:00"
+updatedDate: "2026-06-26T15:20:05+08:00"
 tags:
   - "Recommendation System"
   - "Cold Start"

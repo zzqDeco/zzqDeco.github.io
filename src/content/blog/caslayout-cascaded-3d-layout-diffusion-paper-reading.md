@@ -1,8 +1,8 @@
 ---
 title: "CasLayout 论文精读：级联 3D 布局扩散、稀疏关系建模与室内场景生成"
 description: "精读 CasLayout 如何通过四阶段条件扩散、建筑约束、稀疏关系图与 Relation VAE 实现可控 3D 室内布局生成"
-pubDate: 2026-06-25
-updatedDate: 2026-06-25
+pubDate: "2026-06-26T09:24:04+08:00"
+updatedDate: "2026-06-26T09:24:04+08:00"
 tags:
   - "Paper Reading"
   - "3D Scene Synthesis"
