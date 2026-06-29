@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import GiscusComments from '../../components/GiscusComments.astro';
 import { CalendarDays, Tags, Terminal, TableOfContents } from 'lucide-astro';
 import { getCollection, render } from 'astro:content';
 import { formatBlogDateTime } from '../../lib/date';
@@ -83,5 +84,7 @@ const tocHeadings = headings.filter((heading) => heading.depth <= 3);
     <div class="article-body">
       <Content />
     </div>
+
+    <GiscusComments />
   </article>
 </BaseLayout>
