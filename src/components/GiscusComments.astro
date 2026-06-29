@@ -1,0 +1,81 @@
+---
+import { MessageSquareText } from 'lucide-astro';
+
+const repo = 'zzqDeco/zzqDeco.github.io';
+const repoId = 'R_kgDOSC_3dQ';
+const category = 'General';
+const categoryId = 'DIC_kwDOSC_3dc4DAIBn';
+---
+
+<section
+  class="comments-panel"
+  aria-labelledby="comments-title"
+  data-giscus-comments
+>
+  <div class="comments-head">
+    <h2 id="comments-title">
+      <MessageSquareText size={18} strokeWidth={1.8} aria-hidden="true" />
+      comments
+    </h2>
+    <p>使用 GitHub 登录后即可参与讨论。</p>
+  </div>
+  <div class="giscus-host" data-giscus-container></div>
+  <noscript>
+    <p class="comments-noscript">评论区需要启用 JavaScript 才能加载。</p>
+  </noscript>
+</section>
+
+<script define:vars={{ repo, repoId, category, categoryId }}>
+  (() => {
+    const getTheme = () =>
+      document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+
+    const sendGiscusMessage = (message) => {
+      const iframe = document.querySelector('iframe.giscus-frame');
+      if (!iframe?.contentWindow) return;
+      iframe.contentWindow.postMessage({ giscus: message }, 'https://giscus.app');
+    };
+
+    const mountGiscus = (panel) => {
+      if (panel.dataset.giscusMounted === 'true') return;
+
+      const container = panel.querySelector('[data-giscus-container]');
+      if (!container) return;
+
+      const script = document.createElement('script');
+      script.src = 'https://giscus.app/client.js';
+      script.setAttribute('data-repo', repo);
+      script.setAttribute('data-repo-id', repoId);
+      script.setAttribute('data-category', category);
+      script.setAttribute('data-category-id', categoryId);
+      script.setAttribute('data-mapping', 'pathname');
+      script.setAttribute('data-strict', '1');
+      script.setAttribute('data-reactions-enabled', '1');
+      script.setAttribute('data-emit-metadata', '0');
+      script.setAttribute('data-input-position', 'bottom');
+      script.setAttribute('data-theme', getTheme());
+      script.setAttribute('data-lang', 'zh-CN');
+      script.setAttribute('data-loading', 'lazy');
+      script.crossOrigin = 'anonymous';
+      script.async = true;
+
+      container.append(script);
+      panel.dataset.giscusMounted = 'true';
+    };
+
+    document.querySelectorAll('[data-giscus-comments]').forEach(mountGiscus);
+
+    let currentTheme = getTheme();
+    const observer = new MutationObserver(() => {
+      const nextTheme = getTheme();
+      if (nextTheme === currentTheme) return;
+      currentTheme = nextTheme;
+      sendGiscusMessage({ setConfig: { theme: nextTheme } });
+    });
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
+  })();
+</script>
