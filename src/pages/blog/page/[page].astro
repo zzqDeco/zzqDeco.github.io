@@ -1,0 +1,44 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import BlogArchiveView from '../../../components/BlogArchiveView.astro';
+import {
+  createBlogPage,
+  getBlogPageHref,
+  getBlogTags,
+  getVisibleBlogPosts,
+  groupBlogPostsByArchive,
+} from '../../../lib/blog';
+
+export async function getStaticPaths() {
+  const posts = await getVisibleBlogPosts();
+  const firstPage = createBlogPage(posts, 1, getBlogPageHref);
+
+  return Array.from({ length: Math.max(0, firstPage.lastPage - 1) }, (_, index) => {
+    const currentPage = index + 2;
+    const page = createBlogPage(posts, currentPage, getBlogPageHref);
+
+    return {
+      params: { page: String(currentPage) },
+      props: {
+        page,
+        tags: getBlogTags(posts),
+        archiveGroups: groupBlogPostsByArchive(page.data),
+      },
+    };
+  });
+}
+
+const { page, tags, archiveGroups } = Astro.props;
+const summary = `${page.total} entries sorted by pubDate desc. Page ${page.currentPage} / ${page.lastPage}. Markdown remains the source of truth; production filters drafts.`;
+---
+
+<BaseLayout title={`文章 - 第 ${page.currentPage} 页`} description="zzqDeco Blog 文章列表" variant="archive">
+  <BlogArchiveView
+    heading="文章归档"
+    terminalCommand={`find ./src/content/blog -type f | sort --reverse | sed -n '${page.start + 1},${page.end + 1}p'`}
+    summary={summary}
+    tags={tags}
+    archiveGroups={archiveGroups}
+    page={page}
+  />
+</BaseLayout>
