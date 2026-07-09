@@ -1,0 +1,58 @@
+---
+import BaseLayout from '../../../../layouts/BaseLayout.astro';
+import BlogArchiveView from '../../../../components/BlogArchiveView.astro';
+import {
+  createBlogPage,
+  filterBlogPostsByTagSlug,
+  getBlogTagPageHref,
+  getBlogTags,
+  getVisibleBlogPosts,
+  groupBlogPostsByArchive,
+} from '../../../../lib/blog';
+
+export async function getStaticPaths() {
+  const posts = await getVisibleBlogPosts();
+  const tags = getBlogTags(posts);
+
+  return tags.flatMap((tag) => {
+    const taggedPosts = filterBlogPostsByTagSlug(posts, tag.slug);
+    const firstPage = createBlogPage(taggedPosts, 1, (page) => getBlogTagPageHref(tag.slug, page));
+
+    return Array.from({ length: firstPage.lastPage }, (_, index) => {
+      const currentPage = index + 1;
+      const page = createBlogPage(taggedPosts, currentPage, (pageNumber) => (
+        getBlogTagPageHref(tag.slug, pageNumber)
+      ));
+
+      return {
+        params: {
+          tag: tag.slug,
+          page: currentPage === 1 ? undefined : String(currentPage),
+        },
+        props: {
+          tag,
+          page,
+          tags,
+          archiveGroups: groupBlogPostsByArchive(page.data),
+        },
+      };
+    });
+  });
+}
+
+const { tag, page, tags, archiveGroups } = Astro.props;
+const title = `标签 ${tag.name}`;
+const summary = `${page.total} entries tagged "${tag.name}". Page ${page.currentPage} / ${page.lastPage}. Markdown remains the source of truth; production filters drafts.`;
+---
+
+<BaseLayout title={title} description={`zzqDeco Blog 标签 ${tag.name} 文章列表`} variant="archive">
+  <BlogArchiveView
+    heading={title}
+    terminalCommand={`rg -l '^- ${tag.name}$' src/content/blog`}
+    summary={summary}
+    tags={tags}
+    archiveGroups={archiveGroups}
+    page={page}
+    activeTagSlug={tag.slug}
+  />
+</BaseLayout>

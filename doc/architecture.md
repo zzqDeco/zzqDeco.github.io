@@ -24,11 +24,17 @@
 | Path | Role |
 | --- | --- |
 | `src/pages/index.astro` | 首页和 recent posts |
-| `src/pages/blog/index.astro` | 文章归档 |
+| `src/pages/blog/index.astro` | 文章归档第一页 |
+| `src/pages/blog/page/[page].astro` | 文章归档后续分页 |
+| `src/pages/blog/tag/[tag]/[...page].astro` | tag 筛选归档和分页 |
 | `src/pages/blog/[...slug].astro` | 单篇文章页面 |
 | `src/pages/rss.xml.js` | RSS 输出 |
 
 共享布局和全局样式分别位于 `src/layouts/BaseLayout.astro` 和 `src/styles/global.css`。
+
+文章归档默认每页展示 10 篇。`/blog/` 是第一页，后续页使用 `/blog/page/2/`、`/blog/page/3/` 形式。tag 页面使用静态 URL，例如 `/blog/tag/paper-reading/` 和 `/blog/tag/paper-reading/2/`。
+
+tag slug 由 `src/lib/blog.ts` 统一生成：trim、lowercase、NFKC normalization，非 Unicode letter/number 字符折叠为 `-`。`page` 和 `tag` 是 `/blog/` 下的保留路径段，不应用作文章 id 的首段。
 
 ## Static Assets
 

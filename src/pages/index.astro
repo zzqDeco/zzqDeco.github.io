@@ -1,12 +1,10 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { ArrowRight, FileText, Rss, Terminal, UserRound } from 'lucide-astro';
-import { getCollection } from 'astro:content';
 import { formatBlogDateTime } from '../lib/date';
+import { getBlogTagHref, getVisibleBlogPosts } from '../lib/blog';
 
-const posts = (await getCollection('blog', ({ data }) => (
-  import.meta.env.PROD ? data.draft !== true : true
-))).sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+const posts = await getVisibleBlogPosts();
 
 const latestPosts = posts.slice(0, 5);
 ---
@@ -68,7 +66,7 @@ const latestPosts = posts.slice(0, 5);
           )}
           {post.data.tags.length > 0 && (
             <div class="post-entry-tags" aria-label="标签">
-              {post.data.tags.map((tag) => <span>{tag}</span>)}
+              {post.data.tags.map((tag) => <a href={getBlogTagHref(tag)}>{tag}</a>)}
             </div>
           )}
           <a class="post-entry-read" href={`/blog/${post.id}/`}>

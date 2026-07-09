@@ -1,0 +1,148 @@
+---
+import { ArrowLeft, ArrowRight, CalendarDays, Hash, Terminal } from 'lucide-astro';
+import type { BlogPage, BlogTag, BlogYearGroup } from '../lib/blog';
+import { formatBlogDateTime } from '../lib/date';
+import { getBlogTagHref } from '../lib/blog';
+
+interface Props {
+  heading: string;
+  terminalCommand: string;
+  summary: string;
+  tags: BlogTag[];
+  archiveGroups: BlogYearGroup[];
+  page: BlogPage;
+  activeTagSlug?: string;
+  emptyMessage?: string;
+}
+
+const {
+  heading,
+  terminalCommand,
+  summary,
+  tags,
+  archiveGroups,
+  page,
+  activeTagSlug,
+  emptyMessage = 'No entries matched this view.',
+} = Astro.props;
+
+---
+
+<header class="archive-hero" aria-label={heading}>
+  <p class="terminal-line">
+    <Terminal size={16} strokeWidth={1.8} aria-hidden="true" />
+    <span class="prompt">$</span>
+    <span>{terminalCommand}</span>
+  </p>
+  <h1>{heading}</h1>
+  <p>{summary}</p>
+
+  {tags.length > 0 && (
+    <div class="tag-rail" aria-label="全部标签">
+      <span class="tag-rail-label">
+        <Hash size={14} strokeWidth={1.8} aria-hidden="true" />
+        tags
+      </span>
+      {tags.map((tag) => (
+        <a
+          class:list={['tag-chip', tag.slug === activeTagSlug && 'is-active']}
+          href={tag.href}
+          aria-current={tag.slug === activeTagSlug ? 'page' : undefined}
+        >
+          <span>{tag.name}</span>
+          <span class="tag-count">{tag.count}</span>
+        </a>
+      ))}
+    </div>
+  )}
+</header>
+
+{archiveGroups.length > 0 ? (
+  <section class="archive-timeline" aria-label="文章列表">
+    {archiveGroups.map((yearGroup) => (
+      <section class="archive-year" aria-labelledby={`archive-${activeTagSlug ?? 'all'}-${yearGroup.year}`}>
+        <h2 id={`archive-${activeTagSlug ?? 'all'}-${yearGroup.year}`}>{yearGroup.year}</h2>
+
+        {yearGroup.months.map((monthGroup) => (
+          <div class="archive-month">
+            <div class="archive-month-label">
+              <CalendarDays size={15} strokeWidth={1.8} aria-hidden="true" />
+              <span>{monthGroup.label}</span>
+            </div>
+
+            <ol class="post-list archive-list">
+              {monthGroup.posts.map((post) => (
+                <li class="post-entry">
+                  <div class="post-entry-head">
+                    <time class="post-date" datetime={post.data.pubDate.toISOString()}>
+                      {formatBlogDateTime(post.data.pubDate)}
+                    </time>
+                    <span class="sep">·</span>
+                    <span class="post-path">/blog/{post.id}</span>
+                  </div>
+                  <h3 class="post-entry-title"><a href={`/blog/${post.id}/`}>{post.data.title}</a></h3>
+                  {post.data.description && (
+                    <p class="post-entry-summary">{post.data.description}</p>
+                  )}
+                  {post.data.tags.length > 0 && (
+                    <div class="post-entry-tags" aria-label="标签">
+                      {post.data.tags.map((tag) => <a href={getBlogTagHref(tag)}>{tag}</a>)}
+                    </div>
+                  )}
+                  <a class="post-entry-read" href={`/blog/${post.id}/`}>
+                    read
+                    <ArrowRight size={13} strokeWidth={1.8} aria-hidden="true" />
+                  </a>
+                </li>
+              ))}
+            </ol>
+          </div>
+        ))}
+      </section>
+    ))}
+  </section>
+) : (
+  <p class="empty-state">{emptyMessage}</p>
+)}
+
+{page.lastPage > 1 && (
+  <nav class="pagination-nav" aria-label="文章分页">
+    {page.url.prev ? (
+      <a class="pagination-control" href={page.url.prev}>
+        <ArrowLeft size={14} strokeWidth={1.8} aria-hidden="true" />
+        prev
+      </a>
+    ) : (
+      <span class="pagination-control is-disabled" aria-disabled="true">
+        <ArrowLeft size={14} strokeWidth={1.8} aria-hidden="true" />
+        prev
+      </span>
+    )}
+
+    <ol class="pagination-pages">
+      {page.pages.map((pageLink) => (
+        <li>
+          {pageLink.number === page.currentPage ? (
+            <span class="pagination-page is-current" aria-current="page">{pageLink.number}</span>
+          ) : (
+            <a class="pagination-page" href={pageLink.href}>
+              {pageLink.number}
+            </a>
+          )}
+        </li>
+      ))}
+    </ol>
+
+    {page.url.next ? (
+      <a class="pagination-control" href={page.url.next}>
+        next
+        <ArrowRight size={14} strokeWidth={1.8} aria-hidden="true" />
+      </a>
+    ) : (
+      <span class="pagination-control is-disabled" aria-disabled="true">
+        next
+        <ArrowRight size={14} strokeWidth={1.8} aria-hidden="true" />
+      </span>
+    )}
+  </nav>
+)}

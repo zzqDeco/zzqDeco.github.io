@@ -2,13 +2,12 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import GiscusComments from '../../components/GiscusComments.astro';
 import { CalendarDays, Tags, Terminal, TableOfContents } from 'lucide-astro';
-import { getCollection, render } from 'astro:content';
+import { render } from 'astro:content';
 import { formatBlogDateTime } from '../../lib/date';
+import { getBlogTagHref, getVisibleBlogPosts } from '../../lib/blog';
 
 export async function getStaticPaths() {
-  const posts = await getCollection('blog', ({ data }) => (
-    import.meta.env.PROD ? data.draft !== true : true
-  ));
+  const posts = await getVisibleBlogPosts();
 
   return posts.map((post) => ({
     params: { slug: post.id },
@@ -59,7 +58,7 @@ const tocHeadings = headings.filter((heading) => heading.depth <= 3);
         {post.data.tags.length > 0 && (
           <span class="article-tags">
             <Tags size={14} strokeWidth={1.8} aria-hidden="true" />
-            {post.data.tags.map((tag) => <span>{tag}</span>)}
+            {post.data.tags.map((tag) => <a href={getBlogTagHref(tag)}>{tag}</a>)}
           </span>
         )}
       </div>
