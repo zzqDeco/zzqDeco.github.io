@@ -7,9 +7,9 @@ import ProfileSidebar from '../components/ProfileSidebar.astro';
 interface Props {
   title?: string;
   description?: string;
-  variant?: 'home' | 'archive' | 'article' | 'about';
+  /** og:type，文章页传 'article'，其余页面用默认 'website' */
+  ogType?: 'article' | 'website';
   showProfile?: boolean;
-  showToc?: boolean;
   noindex?: boolean;
   /** 分享图路径（如 /images/xxx.png），缺省回退站点默认分享图 */
   image?: string;
@@ -26,9 +26,8 @@ const defaultShareImage = '/images/og-default.png';
 const {
   title,
   description = siteDescription,
-  variant = 'home',
+  ogType = 'website',
   showProfile = true,
-  showToc = false,
   noindex = false,
   image,
   publishedTime,
@@ -37,7 +36,6 @@ const {
 
 const fullTitle = title ? `${title} | ${siteName}` : siteName;
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
-const ogType = variant === 'article' ? 'article' : 'website';
 const ogImageURL = new URL(image ?? defaultShareImage, Astro.site);
 const ogImageAlt = image ? fullTitle : `${siteName} 默认分享图`;
 
@@ -100,10 +98,10 @@ const displayPath = pathname === '/' ? '~/blog' : `~${pathname}`;
   <body>
     <a class="skip-link" href="#main-content">跳到正文</a>
 
-    <div class="site-frame" data-variant={variant}>
+    <div class="site-frame">
       <Header siteName={siteName} currentPath={pathname} displayPath={displayPath} />
 
-      <div class:list={['ide-shell', showProfile && 'has-profile', showToc && 'has-toc']}>
+      <div class:list={['ide-shell', showProfile && 'has-profile']}>
         {showProfile && <ProfileSidebar />}
 
         <main id="main-content" class="content-shell" tabindex="-1">
