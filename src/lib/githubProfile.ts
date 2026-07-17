@@ -213,7 +213,7 @@ const fetchRESTProfile = async (): Promise<GitHubProfile> => {
   };
 };
 
-export const getGitHubProfile = async (): Promise<GitHubProfile> => {
+const doFetch = async (): Promise<GitHubProfile> => {
   try {
     const token = import.meta.env.GITHUB_TOKEN ?? process.env.GITHUB_TOKEN;
     if (token) {
@@ -229,3 +229,9 @@ export const getGitHubProfile = async (): Promise<GitHubProfile> => {
     return fallbackProfile;
   }
 };
+
+// Astro 构建在单进程内渲染所有页面，模块级缓存让全站页面共享同一次请求结果，
+// 避免逐页请求 GitHub API 触发匿名限流、导致同次构建的页面间数据不一致（issue #27）。
+let cachedProfile: Promise<GitHubProfile> | undefined;
+
+export const getGitHubProfile = (): Promise<GitHubProfile> => (cachedProfile ??= doFetch());
