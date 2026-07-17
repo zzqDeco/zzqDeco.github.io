@@ -27,6 +27,9 @@ const tocHeadings = headings.filter((heading) => heading.depth <= 3);
   description={post.data.description}
   variant="article"
   showToc={tocHeadings.length > 0}
+  image={post.data.image}
+  publishedTime={post.data.pubDate.toISOString()}
+  modifiedTime={post.data.updatedDate?.toISOString()}
 >
   <article class:list={['article-page', tocHeadings.length > 0 && 'has-toc']}>
     <header class="article-head">

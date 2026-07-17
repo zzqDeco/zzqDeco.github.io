@@ -98,6 +98,7 @@ const normalizeData = (data = {}) => ({
   updatedDate: normalizeTimestamp(data.updatedDate),
   tags: Array.isArray(data.tags) ? data.tags.map(String) : [],
   draft: Boolean(data.draft),
+  image: typeof data.image === 'string' ? data.image.trim() : '',
 });
 
 const readPost = async (slug) => {
@@ -151,6 +152,9 @@ const serializePost = ({ data, content }) => {
   lines.push('tags:');
   lines.push(tags || '  []');
   lines.push(`draft: ${clean.draft ? 'true' : 'false'}`);
+  if (clean.image) {
+    lines.push(`image: ${quoteYaml(clean.image)}`);
+  }
   lines.push('---', '');
   lines.push(String(content ?? '').replace(/\s+$/, ''));
   lines.push('');
@@ -236,6 +240,15 @@ const createPost = async (request, response) => {
 const updatePost = async (request, response, slug) => {
   try {
     const payload = await readJsonBody(request);
+    if (payload.data && payload.data.image === undefined) {
+      // 编辑器表单不含分享图字段：payload 缺省时保留现有 image，避免保存时静默丢失
+      try {
+        const existing = await readPost(slug);
+        payload.data.image = existing.data.image;
+      } catch {
+        // 原文件不可读时按无 image 处理，不阻断正常保存流程
+      }
+    }
     const errors = validatePayload(payload);
     if (errors.length > 0) {
       json(response, 400, { errors });
