@@ -1,6 +1,7 @@
 import { defineConfig } from 'astro/config';
 import sitemap from '@astrojs/sitemap';
 import rehypeKatex from 'rehype-katex';
+import rehypeImageAttrs from './src/lib/rehype-image-attrs.mjs';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 
@@ -16,6 +17,6 @@ export default defineConfig({
       wrap: true,
     },
     remarkPlugins: [remarkGfm, remarkMath],
-    rehypePlugins: [rehypeKatex],
+    rehypePlugins: [rehypeKatex, rehypeImageAttrs],
   },
 });

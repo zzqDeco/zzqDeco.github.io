@@ -4,6 +4,9 @@ dist
 .trash
 .DS_Store
 
+# image-pipeline 对照 PNG 产物（一次性对比证据，可用 convert_images.py 重新生成，不入库）
+/assets/img-opt-png/
+
 # Local agent configuration
 /.claude/
 /.mcp.json
