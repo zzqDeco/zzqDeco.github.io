@@ -52,12 +52,17 @@ import { Moon, Sun } from 'lucide-astro';
     // 静默降级为仅内存状态
   }
   if (storedTheme == null) {
-    window
-      .matchMedia('(prefers-color-scheme: dark)')
-      .addEventListener('change', (event) => {
-        if (manualSelected) return;
-        applyTheme(event.matches ? 'dark' : 'light');
-      });
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleSystemThemeChange = (event) => {
+      if (manualSelected) return;
+      applyTheme(event.matches ? 'dark' : 'light');
+    };
+    // 旧版 Safari 的 MediaQueryList 只有 addListener，需回退兼容
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleSystemThemeChange);
+    } else if (typeof mediaQuery.addListener === 'function') {
+      mediaQuery.addListener(handleSystemThemeChange);
+    }
   }
 
   button?.addEventListener('click', () => {
