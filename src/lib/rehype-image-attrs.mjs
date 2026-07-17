@@ -8,6 +8,9 @@
  *  - 从 src/lib/image-manifest.json（由 tools/image-pipeline/convert_images.py 生成）
  *    按图片 URL 查出产物尺寸，注入 width/height（配合 global.css 的
  *    `img { max-width: 100%; height: auto }`，浏览器据此预留纵横比空间，消除 CLS）；
+ *  - manifest 中带 srcset 多档产物（768/1280/1920 等宽度档）的图片，注入
+ *    srcset 与 sizes="(max-width: 760px) 100vw, 760px"（正文容器 --w-reading 760px，
+ *    窄屏图片铺满视口宽，宽屏不超过正文列宽）；
  *  - 全部图片注入 decoding="async"；
  *  - 加载属性按位置区分：文档中第一张内容图 loading="eager" + fetchpriority="high"
  *    （视为 LCP 候选），其余 loading="lazy"；
@@ -54,6 +57,10 @@ export default function rehypeImageAttrs() {
       if (meta) {
         props.width ??= meta.width;
         props.height ??= meta.height;
+        if (Array.isArray(meta.srcset) && meta.srcset.length >= 2) {
+          props.srcset ??= meta.srcset.map((v) => `${v.url} ${v.width}w`).join(', ');
+          props.sizes ??= '(max-width: 760px) 100vw, 760px';
+        }
       }
 
       props.decoding ??= 'async';

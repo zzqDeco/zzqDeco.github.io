@@ -21,7 +21,7 @@ KAG 试图处理的正是这组系统性矛盾。论文 **KAG: Boosting LLMs in 
 
 复现状态也先写清：本文完成论文、TeX 图表和两个官方仓库的静态阅读，没有启动 OpenSPG 服务，没有配置 MySQL、Neo4j、MinIO 或付费 LLM API，没有下载三套 benchmark，也没有复现政务、医疗或论文表格中的工业结果。文中的运行清单是工程审计结果，不是一次完整复现记录。
 
-![KAG framework](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig01-framework.png)
+![KAG framework](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig01-framework.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Fig. 1, arXiv non-exclusive distribution license.*
 
@@ -129,7 +129,7 @@ $$
 
 这一定义把两种传统路线放在一起。专家可以在 schema 中预先定义类型、字段和关系，用于稳定决策；LLM 又可以对未预先枚举的文本做 schema-free 抽取，保留动态属性和开放关系。二者共享类型声明、概念术语和证据 Chunk，但实例化的约束强度不同。
 
-![LLMFriSPG](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig02-llmfriendly-spg.png)
+![LLMFriSPG](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig02-llmfriendly-spg.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Fig. 2, arXiv non-exclusive distribution license.*
 
@@ -162,7 +162,7 @@ $p_t^b$ 是系统内建属性。论文重点列出：
 
 ## 8. 三层知识表示：KG_cs、KG_fr 与 RC
 
-![Three-layer knowledge representation](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig03-knowledge-layering.png)
+![Three-layer knowledge representation](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig03-knowledge-layering.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Fig. 3, arXiv non-exclusive distribution license.*
 
@@ -201,7 +201,7 @@ OpenSPG 解决“知识如何建模、存储、推理和服务”；KAG 解决�
 
 ## 10. KAG-Builder 总览：从文件到互索引知识
 
-![KAG Builder pipeline](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig04-builder-pipeline.png)
+![KAG Builder pipeline](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig04-builder-pipeline.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Fig. 4, arXiv non-exclusive distribution license.*
 
@@ -260,7 +260,7 @@ Semantic Chunking 能支持“减少上下文割裂”的工程判断，却不�
 
 论文的开放抽取流程先按 Chunk 得到实体集合 $E$，再抽取与实体相关的事件集合 $EV$，最后迭代抽取关系集合 $R$。与此同时，为实体和关系生成 `description`、`summary`、`semanticType` 与 `supporting_chunks`。
 
-![Builder example](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig05-builder-example.png)
+![Builder example](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig05-builder-example.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Fig. 5, arXiv non-exclusive distribution license.*
 
@@ -344,7 +344,7 @@ KAG 的解决方向是：离线构建时进行实例消歧、概念链接和关�
 
 ## 16. 六类语义关系及其方向性
 
-![Semantic relations](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table02-semantic-relations.png)
+![Semantic relations](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table02-semantic-relations.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Table 2, arXiv non-exclusive distribution license.*
 
@@ -399,7 +399,7 @@ $$
 
 ## 19. Logical Form Solver：把问答变成状态机
 
-![Logical form execution](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig06-logical-form-execution.png)
+![Logical form execution](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig06-logical-form-execution.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Fig. 6, arXiv non-exclusive distribution license.*
 
@@ -428,7 +428,7 @@ state_r = {
 
 ## 20. Algorithm 1：Logical Form Solver 逐行精读
 
-![Logical Form Solver algorithm](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-algorithm01-logical-form-solver.png)
+![Logical Form Solver algorithm](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-algorithm01-logical-form-solver.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Algorithm 1, arXiv non-exclusive distribution license.*
 
@@ -451,7 +451,7 @@ Algorithm 1 最重要的不是函数名，而是终止条件。真实实现至�
 
 ## 21. Logical Form 语言：Retrieval、Sort、Math、Deduce、Output
 
-![Logical form functions](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table01-logical-form-functions.png)
+![Logical form functions](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table01-logical-form-functions.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Table 1, arXiv non-exclusive distribution license.*
 
@@ -485,7 +485,7 @@ Step 4: Output(math1)
 
 ## 22. Algorithm 2：图检索优先、混合检索回退
 
-![Logical Form Reasoner algorithm](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-algorithm02-logical-form-reasoner.png)
+![Logical Form Reasoner algorithm](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-algorithm02-logical-form-reasoner.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Algorithm 2, arXiv non-exclusive distribution license.*
 
@@ -555,7 +555,7 @@ visited_queries:
 
 ## 25. KAG-Model：Builder 与 Solver 的共同能力底座
 
-![KAG model capabilities](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig07-kag-model-capabilities.png)
+![KAG model capabilities](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig07-kag-model-capabilities.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Fig. 7, arXiv non-exclusive distribution license.*
 
@@ -571,7 +571,7 @@ Fig. 7 将任务归为三类：
 
 ## 26. NLU 实验：Instruction Reconstruction 的证据强度
 
-![NLU results](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table03-nlu-results.png)
+![NLU results](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table03-nlu-results.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Table 3, arXiv non-exclusive distribution license.*
 
@@ -590,13 +590,13 @@ Table 3 比较 C3、WSC、XSum、Lambda、L-CSTS、RACE 六类任务。KAG 微�
 
 ## 27. NLI 与概念推理实验
 
-![NLI results](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table04-nli-results.png)
+![NLI results](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table04-nli-results.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Table 4, arXiv non-exclusive distribution license.*
 
 Table 4 中，KAG-Llama3 在 CMNLI、OCNLI、SIQA 上分别为 `49.52`、`44.31`、`65.81`，对比 Llama3 的 `35.14`、`32.1`、`44.27`。这说明定向数据能显著改善所选语义推断任务。
 
-![Hypernym discovery results](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table05-hypernym-results.png)
+![Hypernym discovery results](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table05-hypernym-results.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Table 5, arXiv non-exclusive distribution license.*
 
@@ -623,13 +623,13 @@ $$
 
 但这只是帮助理解的拆分，不是论文给出的完整统一目标函数。正文不能补造未公开的损失细节。
 
-![Medical generation results](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table06-medical-generation.png)
+![Medical generation results](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table06-medical-generation.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Table 6, arXiv non-exclusive distribution license.*
 
 Table 6 在 CMedQA 和 BioASQ 上比较 Rouge-L/BLEU。KAG-Llama2 分别得到 `15.44/3.46` 与 `24.21/7.79`，高于表中 ChatGPT-3.5 0-shot、2-shot 和 Llama2。结果支持知识反馈在这两个数据集上的增益，不能证明医疗答案已达到临床安全性；自动文本指标也无法覆盖事实危害、禁忌和个体化风险。
 
-![OneGen results](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table07-onegen-results.png)
+![OneGen results](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table07-onegen-results.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Table 7, arXiv non-exclusive distribution license.*
 
@@ -807,7 +807,7 @@ Baselines 包括 NativeRAG、HippoRAG、IRCoT 与它们的组合。比较时要�
 
 ## 37. Table 8：端到端主结果与数字复算
 
-![Main QA results](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table08-main-qa-results.png)
+![Main QA results](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table08-main-qa-results.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Table 8, arXiv non-exclusive distribution license.*
 
@@ -843,7 +843,7 @@ Table 8 支持 KAG 配置在这三个 1000-question 子集上显著优于所列�
 
 ## 38. Table 9：检索结果不等于答案结果
 
-![Retrieval results](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table09-retrieval-results.png)
+![Retrieval results](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table09-retrieval-results.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Table 9, arXiv non-exclusive distribution license.*
 
@@ -863,7 +863,7 @@ KAG 在 HotpotQA 与 MuSiQue 的两个 Recall 指标上领先表中方法；2Wik
 
 ## 39. Table 10/11：索引、对齐、Logical Form 与 Reflection 消融
 
-![Generation ablation](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table10-generation-ablation.png)
+![Generation ablation](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table10-generation-ablation.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Table 10, arXiv non-exclusive distribution license.*
 
@@ -880,7 +880,7 @@ Table 10 从 `M_Indexing + CR_ref3` 开始，再加入 `K_Alignment`、logical-f
 
 对齐在 2Wiki 上的提升特别大；LFS 相比 conventional reasoning 继续提升；三轮 reflection 对 MuSiQue 更明显。LFSH_ref1 并非每列都高于 LFS_ref3，说明混合检索、reflection 与数据集之间存在交互，不能只给一个模块排固定优先级。
 
-![Retrieval ablation](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table11-retrieval-ablation.png)
+![Retrieval ablation](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table11-retrieval-ablation.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Table 11, arXiv non-exclusive distribution license.*
 
@@ -890,7 +890,7 @@ Table 11 中，`K_Alignment + LFSH_ref3` 达到 Hotpot `72.7/88.8`、2Wiki `65.4
 
 ## 40. Fig. 8/9：执行时间与图连通性
 
-![Execution time profiling](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig08-execution-time.png)
+![Execution time profiling](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig08-execution-time.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Fig. 8, arXiv non-exclusive distribution license.*
 
@@ -898,7 +898,7 @@ Fig. 8 在并发 20 个任务的设置下比较 ReSP、LFS 和 LFS_fuzzy。三�
 
 这些是特定实验批次的总时间，不是单请求 SLA，也不能换算成通用 QPS。它支持的结论是 logical-form、多轮和模糊检索有真实系统成本；不能证明某种部署必然需要相同倍数。LLM endpoint、并发策略、缓存和索引后端都会改变结果。
 
-![Knowledge-alignment connectivity](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig09-knowledge-alignment-connectivity.png)
+![Knowledge-alignment connectivity](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig09-knowledge-alignment-connectivity.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Fig. 9, arXiv non-exclusive distribution license.*
 
@@ -908,7 +908,7 @@ Fig. 9 比较 `M_Indexing` 与 `K_Alignment` 后的一到三跳 degree-frequency
 
 ## 41. Table 13/14：案例比平均分更能暴露错误传播
 
-![Reflection example](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table13-reflection-example.png)
+![Reflection example](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table13-reflection-example.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Table 13, arXiv non-exclusive distribution license.*
 
@@ -916,7 +916,7 @@ Table 13 的问题要求计算某首协奏曲作曲家出生地发生瘟疫的�
 
 这个例子展示 reflection 的理想路径：识别缺失变量、把模糊证据转成更精确查询、保留前轮已确认的实体，然后再计算/输出。它也暴露脆弱点：若第一步把作曲家识别错，后续每轮都会在错误城市中检索；若 Generator 根据“多次”猜一个数字，Judge 可能过早停止。
 
-![Logical-form cases](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table14-logical-form-cases.png)
+![Logical-form cases](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table14-logical-form-cases.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Table 14, arXiv non-exclusive distribution license.*
 
@@ -928,7 +928,7 @@ Table 14 展示数值推理、逻辑推理和语义推断案例。例如先检�
 
 论文在政务场景使用约 11,000 份文档，并比较 NaiveRAG 与 KAG。
 
-![E-Government results](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table12-egovernment-results.png)
+![E-Government results](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table12-egovernment-results.webp)
 
 *Source: Liang et al., arXiv:2409.13731v3, Table 12, arXiv non-exclusive distribution license.*
 

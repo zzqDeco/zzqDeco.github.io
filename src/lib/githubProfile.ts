@@ -34,7 +34,7 @@ const fallbackProfile: GitHubProfile = {
   login: 'zzqDeco',
   name: 'zzqDeco',
   bio: 'Full-Stack AI Engineer & Researcher\nBuilding only what I truly wanna build\nHangzhou Dianzi University',
-  avatarUrl: 'https://avatars.githubusercontent.com/u/41999232?v=4',
+  avatarUrl: '/images/avatar.webp',
   url: 'https://github.com/zzqDeco',
   company: 'Hangzhou Dianzi University',
   location: 'Hangzhou China',

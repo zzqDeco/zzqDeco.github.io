@@ -59,7 +59,7 @@ Jiaqi Zhai、Lucy Liao、Xing Liu、Yueming Wang、Rui Li、Xuan Cao、Leon Gao�
 
 Fig. 1 是全文立场最鲜明的一张图：论文把 DLRM、GR 和语言/视觉模型放在同一张训练 compute 坐标里。
 
-![Fig. 1: DLRM 与 GR 训练 compute 趋势](/images/blog/generative-recommenders-hstu/hstu-fig01-training-compute.png)
+![Fig. 1: DLRM 与 GR 训练 compute 趋势](/images/blog/generative-recommenders-hstu/hstu-fig01-training-compute.webp)
 
 *Source: Zhai et al., ICML 2024, Fig. 1, CC BY 4.0.*
 
@@ -89,7 +89,7 @@ Fig. 1 是全文立场最鲜明的一张图：论文把 DLRM、GR 和语言/视�
 
 Fig. 2 展示了论文最核心的范式转换。
 
-![Fig. 2: DLRM 与 GR 的特征组织和训练流程](/images/blog/generative-recommenders-hstu/hstu-fig02-dlrm-vs-gr-features.png)
+![Fig. 2: DLRM 与 GR 的特征组织和训练流程](/images/blog/generative-recommenders-hstu/hstu-fig02-dlrm-vs-gr-features.webp)
 
 *Source: Zhai et al., ICML 2024, Fig. 2, CC BY 4.0.*
 
@@ -113,7 +113,7 @@ Fig. 2 展示了论文最核心的范式转换。
 
 Table 1 是 GR 形式化的入口。
 
-![Table 1: Ranking 与 retrieval 作为 sequential transduction tasks](/images/blog/generative-recommenders-hstu/hstu-table01-sequential-transduction-tasks.png)
+![Table 1: Ranking 与 retrieval 作为 sequential transduction tasks](/images/blog/generative-recommenders-hstu/hstu-table01-sequential-transduction-tasks.webp)
 
 *Source: Zhai et al., ICML 2024, Table 1, CC BY 4.0.*
 
@@ -145,7 +145,7 @@ $$
 
 附录 Table 10 对比了相关工作。
 
-![Table 10: sequential recommender 与 GR 相关工作对比](/images/blog/generative-recommenders-hstu/hstu-table10-related-work-ranking.png)
+![Table 10: sequential recommender 与 GR 相关工作对比](/images/blog/generative-recommenders-hstu/hstu-table10-related-work-ranking.webp)
 
 *Source: Zhai et al., ICML 2024, Table 10, CC BY 4.0.*
 
@@ -153,7 +153,7 @@ $$
 
 Table 11 则把内容和动作交错的生成目标写得更明确。
 
-![Table 11: 对内容与动作序列的生成建模](/images/blog/generative-recommenders-hstu/hstu-table11-generative-modeling.png)
+![Table 11: 对内容与动作序列的生成建模](/images/blog/generative-recommenders-hstu/hstu-table11-generative-modeling.webp)
 
 *Source: Zhai et al., ICML 2024, Table 11, CC BY 4.0.*
 
@@ -177,7 +177,7 @@ $$
 
 Fig. 3 给出了 DLRM 与 GR/HSTU 的组件对比。
 
-![Fig. 3: DLRM 与 GR/HSTU 的关键组件](/images/blog/generative-recommenders-hstu/hstu-fig03-model-components.png)
+![Fig. 3: DLRM 与 GR/HSTU 的关键组件](/images/blog/generative-recommenders-hstu/hstu-fig03-model-components.webp)
 
 *Source: Zhai et al., ICML 2024, Fig. 3, CC BY 4.0.*
 
@@ -221,7 +221,7 @@ $$
 
 论文先用 synthetic streaming setting 验证 HSTU 的 inductive hypotheses。
 
-![Table 2: synthetic one-pass streaming setting 结果](/images/blog/generative-recommenders-hstu/hstu-table02-synthetic-streaming.png)
+![Table 2: synthetic one-pass streaming setting 结果](/images/blog/generative-recommenders-hstu/hstu-table02-synthetic-streaming.webp)
 
 *Source: Zhai et al., ICML 2024, Table 2, CC BY 4.0.*
 
@@ -229,7 +229,7 @@ Table 2 中 HSTU 明显优于 Transformers。更重要的是，`HSTU (-rabp,t, S
 
 Table 5 是另一组 ablation。
 
-![Table 5: HSTU、HSTU ablation 与 Transformers 对比](/images/blog/generative-recommenders-hstu/hstu-table05-hstu-ablation.png)
+![Table 5: HSTU、HSTU ablation 与 Transformers 对比](/images/blog/generative-recommenders-hstu/hstu-table05-hstu-ablation.webp)
 
 *Source: Zhai et al., ICML 2024, Table 5, CC BY 4.0.*
 
@@ -250,7 +250,7 @@ Table 5 是另一组 ablation。
 
 Table 3 展示了不同 $\alpha$ 与最大序列长度下的 sparsity。
 
-![Table 3: Stochastic Length 对序列稀疏性的影响](/images/blog/generative-recommenders-hstu/hstu-table03-sl-sparsity-main.png)
+![Table 3: Stochastic Length 对序列稀疏性的影响](/images/blog/generative-recommenders-hstu/hstu-table03-sl-sparsity-main.webp)
 
 *Source: Zhai et al., ICML 2024, Table 3, CC BY 4.0.*
 
@@ -258,7 +258,7 @@ Table 3 展示了不同 $\alpha$ 与最大序列长度下的 sparsity。
 
 Fig. 4 展示 Stochastic Length 对指标的影响。
 
-![Fig. 4: Stochastic Length 对指标的影响](/images/blog/generative-recommenders-hstu/hstu-fig04-stochastic-length-metrics.png)
+![Fig. 4: Stochastic Length 对指标的影响](/images/blog/generative-recommenders-hstu/hstu-fig04-stochastic-length-metrics.webp)
 
 *Source: Zhai et al., ICML 2024, Fig. 4, CC BY 4.0.*
 
@@ -268,11 +268,11 @@ Fig. 4 展示 Stochastic Length 对指标的影响。
 
 附录还给了 60 天和 90 天历史的 sparsity 表。
 
-![Table 14: 60 天用户历史下 Stochastic Length 对稀疏性的影响](/images/blog/generative-recommenders-hstu/hstu-table14-sl-sparsity-60d.png)
+![Table 14: 60 天用户历史下 Stochastic Length 对稀疏性的影响](/images/blog/generative-recommenders-hstu/hstu-table14-sl-sparsity-60d.webp)
 
 *Source: Zhai et al., ICML 2024, Table 14, CC BY 4.0.*
 
-![Table 15: 90 天用户历史下 Stochastic Length 对稀疏性的影响](/images/blog/generative-recommenders-hstu/hstu-table15-sl-sparsity-90d.png)
+![Table 15: 90 天用户历史下 Stochastic Length 对稀疏性的影响](/images/blog/generative-recommenders-hstu/hstu-table15-sl-sparsity-90d.webp)
 
 *Source: Zhai et al., ICML 2024, Table 15, CC BY 4.0.*
 
@@ -282,7 +282,7 @@ Fig. 4 展示 Stochastic Length 对指标的影响。
 
 附录 Table 16 对比了 Stochastic Length 和已有 length extrapolation 技术。
 
-![Table 16: Stochastic Length 与 sequence length extrapolation 方法对比](/images/blog/generative-recommenders-hstu/hstu-table16-sl-vs-length-extrapolation.png)
+![Table 16: Stochastic Length 与 sequence length extrapolation 方法对比](/images/blog/generative-recommenders-hstu/hstu-table16-sl-vs-length-extrapolation.webp)
 
 *Source: Zhai et al., ICML 2024, Table 16, CC BY 4.0.*
 
@@ -290,7 +290,7 @@ Fig. 4 展示 Stochastic Length 对指标的影响。
 
 Fig. 10 展示了 ranking metrics 上的附加结果。
 
-![Fig. 10: Stochastic Length 对 ranking metrics 的影响](/images/blog/generative-recommenders-hstu/hstu-fig10-sl-ranking-metrics.png)
+![Fig. 10: Stochastic Length 对 ranking metrics 的影响](/images/blog/generative-recommenders-hstu/hstu-fig10-sl-ranking-metrics.webp)
 
 *Source: Zhai et al., ICML 2024, Fig. 10, CC BY 4.0.*
 
@@ -309,7 +309,7 @@ GR 的 ranking 模型把候选 $\Phi_{i+1}$ 放进条件里，这会带来一个
 
 M-FALCON 解决的是这个问题。
 
-![Fig. 11: M-FALCON 训练与推理示意](/images/blog/generative-recommenders-hstu/hstu-fig11-mfalcon-illustration.png)
+![Fig. 11: M-FALCON 训练与推理示意](/images/blog/generative-recommenders-hstu/hstu-fig11-mfalcon-illustration.webp)
 
 *Source: Zhai et al., ICML 2024, Fig. 11, CC BY 4.0.*
 
@@ -323,7 +323,7 @@ M-FALCON 的三个关键思想是：
 
 Algorithm 1 给出伪代码。
 
-![Algorithm 1: M-FALCON pseudocode](/images/blog/generative-recommenders-hstu/hstu-algorithm01-mfalcon.png)
+![Algorithm 1: M-FALCON pseudocode](/images/blog/generative-recommenders-hstu/hstu-algorithm01-mfalcon.webp)
 
 *Source: Zhai et al., ICML 2024, Algorithm 1, CC BY 4.0.*
 
@@ -348,7 +348,7 @@ for microbatch in chunk(candidates):
 
 Fig. 6 是主文中的推理吞吐结果。
 
-![Fig. 6: 不同候选评分设置下的 inference throughput](/images/blog/generative-recommenders-hstu/hstu-fig06-inference-throughput-main.png)
+![Fig. 6: 不同候选评分设置下的 inference throughput](/images/blog/generative-recommenders-hstu/hstu-fig06-inference-throughput-main.webp)
 
 *Source: Zhai et al., ICML 2024, Fig. 6, CC BY 4.0.*
 
@@ -356,13 +356,13 @@ Fig. 6 是主文中的推理吞吐结果。
 
 附录 Fig. 12 展示端到端吞吐。
 
-![Fig. 12: GR w/ M-FALCON 与 DLRM 的端到端吞吐](/images/blog/generative-recommenders-hstu/hstu-fig12-end-to-end-throughput.png)
+![Fig. 12: GR w/ M-FALCON 与 DLRM 的端到端吞吐](/images/blog/generative-recommenders-hstu/hstu-fig12-end-to-end-throughput.webp)
 
 *Source: Zhai et al., ICML 2024, Fig. 12, CC BY 4.0.*
 
 Fig. 13 则进一步看 microbatch scaling。
 
-![Fig. 13: M-FALCON microbatch throughput scaling](/images/blog/generative-recommenders-hstu/hstu-fig13-mfalcon-throughput-scaling.png)
+![Fig. 13: M-FALCON microbatch throughput scaling](/images/blog/generative-recommenders-hstu/hstu-fig13-mfalcon-throughput-scaling.webp)
 
 *Source: Zhai et al., ICML 2024, Fig. 13, CC BY 4.0.*
 
@@ -374,7 +374,7 @@ Fig. 13 则进一步看 microbatch scaling。
 
 Fig. 5 对比 HSTU 与 FlashAttention2-based Transformers 的 encoder-level efficiency。
 
-![Fig. 5: HSTU vs FlashAttention2 Transformer 的 encoder-level efficiency](/images/blog/generative-recommenders-hstu/hstu-fig05-encoder-efficiency.png)
+![Fig. 5: HSTU vs FlashAttention2 Transformer 的 encoder-level efficiency](/images/blog/generative-recommenders-hstu/hstu-fig05-encoder-efficiency.webp)
 
 *Source: Zhai et al., ICML 2024, Fig. 5, CC BY 4.0.*
 
@@ -392,7 +392,7 @@ HSTU 更快的原因包括：
 
 Table 4 是主文公开数据集结果。
 
-![Table 4: 公开数据集多轮 full-shuffle 设置结果](/images/blog/generative-recommenders-hstu/hstu-table04-public-datasets.png)
+![Table 4: 公开数据集多轮 full-shuffle 设置结果](/images/blog/generative-recommenders-hstu/hstu-table04-public-datasets.webp)
 
 *Source: Zhai et al., ICML 2024, Table 4, CC BY 4.0.*
 
@@ -408,7 +408,7 @@ Table 4 是主文公开数据集结果。
 
 附录 Table 12 加入 GRU4Rec 和 BERT4Rec 作为补充比较。
 
-![Table 12: traditional sequential recommender 设置下补充比较](/images/blog/generative-recommenders-hstu/hstu-table12-traditional-sequential-results.png)
+![Table 12: traditional sequential recommender 设置下补充比较](/images/blog/generative-recommenders-hstu/hstu-table12-traditional-sequential-results.webp)
 
 *Source: Zhai et al., ICML 2024, Table 12, CC BY 4.0.*
 
@@ -422,13 +422,13 @@ Table 4 是主文公开数据集结果。
 
 Table 6 是 retrieval 模型对比。
 
-![Table 6: retrieval model offline/online 对比](/images/blog/generative-recommenders-hstu/hstu-table06-retrieval-offline-online.png)
+![Table 6: retrieval model offline/online 对比](/images/blog/generative-recommenders-hstu/hstu-table06-retrieval-offline-online.webp)
 
 *Source: Zhai et al., ICML 2024, Table 6, CC BY 4.0.*
 
 Table 7 是 ranking 模型对比。
 
-![Table 7: ranking model offline/online 对比](/images/blog/generative-recommenders-hstu/hstu-table07-ranking-offline-online.png)
+![Table 7: ranking model offline/online 对比](/images/blog/generative-recommenders-hstu/hstu-table07-ranking-offline-online.webp)
 
 *Source: Zhai et al., ICML 2024, Table 7, CC BY 4.0.*
 
@@ -446,7 +446,7 @@ Table 7 是 ranking 模型对比。
 
 Fig. 7 是全文最有野心的结果。
 
-![Fig. 7: DLRM 与 GR 在大规模工业设置下的 scaling behavior](/images/blog/generative-recommenders-hstu/hstu-fig07-industrial-scaling.png)
+![Fig. 7: DLRM 与 GR 在大规模工业设置下的 scaling behavior](/images/blog/generative-recommenders-hstu/hstu-fig07-industrial-scaling.webp)
 
 *Source: Zhai et al., ICML 2024, Fig. 7, CC BY 4.0.*
 
@@ -467,7 +467,7 @@ Fig. 7 是全文最有野心的结果。
 
 附录 Fig. 9 展示了一个 DLRM ranking baseline。
 
-![Fig. 9: DLRM DIN+DCN baseline architecture](/images/blog/generative-recommenders-hstu/hstu-fig09-dlrm-din-dcn-baseline.png)
+![Fig. 9: DLRM DIN+DCN baseline architecture](/images/blog/generative-recommenders-hstu/hstu-fig09-dlrm-din-dcn-baseline.webp)
 
 *Source: Zhai et al., ICML 2024, Fig. 9, CC BY 4.0.*
 
@@ -481,7 +481,7 @@ Fig. 7 是全文最有野心的结果。
 
 Stochastic Length 依赖 subsequence selection。Table 13 比较了不同选择方法。
 
-![Table 13: Stochastic Length 中 subsequence selection 方法对比](/images/blog/generative-recommenders-hstu/hstu-table13-subsequence-selection.png)
+![Table 13: Stochastic Length 中 subsequence selection 方法对比](/images/blog/generative-recommenders-hstu/hstu-table13-subsequence-selection.webp)
 
 *Source: Zhai et al., ICML 2024, Table 13, CC BY 4.0.*
 

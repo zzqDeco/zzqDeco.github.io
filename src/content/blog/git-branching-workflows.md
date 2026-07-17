@@ -16,7 +16,7 @@ draft: false
 
 所以没有一个 flow 是永远正确的。真正要问的是：这个 flow 把复杂度放在了哪里，团队有没有能力在那里承受它。
 
-![Git branching workflow flowchart](/images/blog/git-branching-workflows/git-workflows-flowchart.png)
+![Git branching workflow flowchart](/images/blog/git-branching-workflows/git-workflows-flowchart.webp)
 
 图里的颜色保持一致：蓝色表示 `main`，绿色表示 `prod` 或 Git Flow 中的 `develop`，紫色表示 feature/hotfix 类临时分支，橙色表示 release 类发布分支。
 
@@ -46,7 +46,7 @@ GitHub Flow 的核心非常简单：`main` 永远是可部署状态；任何工�
 
 它的分支结构通常是这样：
 
-![GitHub Flow branch structure](/images/blog/git-branching-workflows/github-flow.png)
+![GitHub Flow branch structure](/images/blog/git-branching-workflows/github-flow.webp)
 
 这个模型最大的优点是认知负担低。开发者只需要理解一个长期分支和短期 feature branch。团队的协作焦点不在“我应该合到 develop 还是 release”，而在“这个 PR 是否足够小、是否被测试覆盖、是否可以安全进入 main”。
 
@@ -74,7 +74,7 @@ GitLab Flow 试图解决一个很现实的问题：代码合并和代码发布�
 
 环境分支或者 release 分支的典型关系可以抽象成这样：
 
-![GitLab Flow branch structure](/images/blog/git-branching-workflows/gitlab-flow.png)
+![GitLab Flow branch structure](/images/blog/git-branching-workflows/gitlab-flow.webp)
 
 它的价值在于可解释性很强。一个提交在 `main`，代表它已经完成开发集成；一个提交在 `pre-production`，代表它已经进入预生产验证；一个提交在 `production`，代表它已经上线。分支不只是代码容器，也变成了发布状态的表达。
 
@@ -95,7 +95,7 @@ OneFlow 可以理解成对 Git Flow 的一次瘦身：保留 release branch、ho
 
 它的基本思想是：长期主线只留一条，其他分支都是临时的。
 
-![OneFlow branch structure](/images/blog/git-branching-workflows/oneflow.png)
+![OneFlow branch structure](/images/blog/git-branching-workflows/oneflow.webp)
 
 OneFlow 解决的是 Git Flow 的一个典型痛点：`main` 和 `develop` 长期分离后，团队要不断回答“这次修复到底该先进哪里”。在 OneFlow 里，`main` 是事实主线，release branch 是为了稳定某个即将发布的版本而临时切出来的隔离区。
 
@@ -116,7 +116,7 @@ Trunk-Based Development 的立场最激进也最现代：开发者应该频繁�
 
 它不是“不建分支”。很多团队仍然会使用短生命周期 feature branch，但分支生命周期要足够短，通常以小时或一两天计算，而不是以周计算。更极端的团队会直接向 trunk 提交，但这要求测试和 review 机制非常成熟。
 
-![Trunk-Based Development branch structure](/images/blog/git-branching-workflows/trunk-based.png)
+![Trunk-Based Development branch structure](/images/blog/git-branching-workflows/trunk-based.webp)
 
 Trunk-Based 的优势来自高频集成。冲突会更早暴露，集成测试会更早运行，功能拆分会被迫变小。它的目标不是让 Git 历史更漂亮，而是让软件一直处在接近可发布的状态。
 
@@ -146,7 +146,7 @@ Git Flow 是最经典、也最容易被滥用的模型。它定义了多种分�
 
 它的模型大概是这样：
 
-![Git Flow branch structure](/images/blog/git-branching-workflows/git-flow.png)
+![Git Flow branch structure](/images/blog/git-branching-workflows/git-flow.webp)
 
 Git Flow 的优势是语义非常明确。发布前有 release 分支稳定版本，线上紧急问题有 hotfix 分支，正式发布历史在 `main` 上可追踪。对于传统客户端、嵌入式、SDK、on-premise 产品、多版本维护产品，这些语义仍然有价值。
 

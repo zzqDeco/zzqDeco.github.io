@@ -175,7 +175,7 @@ DSpark 的设计目标是：
 
 ## 6. DSpark 总览：Draft Better + Verify Smarter
 
-![DSpark architecture and decoding cycle](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig1-architecture-cycle.png)
+![DSpark architecture and decoding cycle](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig1-architecture-cycle.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Fig. 1.*
 
@@ -302,7 +302,7 @@ $$
 
 ## 10. Hardware-Aware Prefix Scheduler
 
-![Hardware-Aware Prefix Scheduler](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-algorithm1-hardware-aware-prefix-scheduler.png)
+![Hardware-Aware Prefix Scheduler](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-algorithm1-hardware-aware-prefix-scheduler.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Algorithm 1.*
 
@@ -494,7 +494,7 @@ README 列出的 benchmark 包括：
 
 ## 16. Table 1 主结果精读
 
-![Main speculative decoding results](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-table1-main-results.png)
+![Main speculative decoding results](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-table1-main-results.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Table 1.*
 
@@ -514,7 +514,7 @@ Table 1 报告的是每轮 decoding 的 accepted length $\tau$，越高越好。
 
 ## 17. Fig. 2：条件接受率揭示 Suffix Decay
 
-![Position-wise conditional acceptance](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig2-position-wise-conditional-acceptance.png)
+![Position-wise conditional acceptance](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig2-position-wise-conditional-acceptance.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Fig. 2.*
 
@@ -534,7 +534,7 @@ DSpark 的曲线介于两者优点之间：保留第一位置的高 capacity，�
 
 ## 18. Fig. 3/4：一点点自回归的性价比
 
-![Effect of drafter depth](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig3-drafter-depth.png)
+![Effect of drafter depth](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig3-drafter-depth.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Fig. 3.*
 
@@ -542,7 +542,7 @@ Fig. 3 比较 drafter depth。绿色是 DSpark，蓝色是 DFlash；点大小或
 
 关键结论是：DSpark 增加层数会提升 accepted length，而且 2-layer DSpark 就能超过 5-layer DFlash baseline。这说明顺序依赖不是只能靠堆更多 parallel layers 解决。一个轻量 sequential head 可以比单纯增加 backbone depth 更高效地修正 suffix。
 
-![Effect of proposal length and latency overhead](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig4-proposal-length-latency.png)
+![Effect of proposal length and latency overhead](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig4-proposal-length-latency.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Fig. 4.*
 
@@ -556,7 +556,7 @@ Fig. 4 研究 proposal length 和 latency overhead。左侧三个 panel 分别�
 
 ## 19. Fig. 5/6：置信度、阈值与校准
 
-![Confidence threshold sweep](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig5-confidence-threshold-sweep.png)
+![Confidence threshold sweep](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig5-confidence-threshold-sweep.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Fig. 5.*
 
@@ -566,7 +566,7 @@ Fig. 5 是 confidence threshold sweep。横轴是 threshold，柱子分为 accep
 
 但这不是说 threshold 越高越好。threshold 提高会减少被验证的 token 数。如果太保守，即使 acceptance rate 高，也可能每轮推进 token 太少。正确目标不是最大化 acceptance rate，而是最大化系统吞吐和用户速度。
 
-![Reliability diagram on Alpaca](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig6-reliability-diagram-alpaca.png)
+![Reliability diagram on Alpaca](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig6-reliability-diagram-alpaca.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Fig. 6.*
 
@@ -584,7 +584,7 @@ DeepSpec 中 `deepspec/eval/dspark/confidence_head.py` 实现了 ECE、AUROC、B
 
 ## 20. DeepSeek-V4 线上部署结果
 
-![Throughput vs TPS](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig7-throughput-vs-tps.png)
+![Throughput vs TPS](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig7-throughput-vs-tps.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Fig. 7.*
 
@@ -600,7 +600,7 @@ Fig. 7 是 DSpark 最有系统价值的一张图。横轴是单用户生成速�
 
 ## 21. Fig. 8：Load-Adaptive Verification Budget
 
-![Load-adaptive throughput and verification budgets](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig8-load-adaptive-throughput-budget.png)
+![Load-adaptive throughput and verification budgets](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig8-load-adaptive-throughput-budget.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Fig. 8.*
 

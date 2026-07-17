@@ -20,14 +20,15 @@ issue #6 的可复现图片管线。pilot 范围：Diorama 一篇文章；全站
 git mv public/images/blog/<slug> assets/img-src/blog/<slug>
 mkdir -p public/images/blog/<slug>
 
-# 2. 转换（参数见脚本头部注释；档位 1920/1600/1280/768 可调）
+# 2. 转换（多档 srcset：最大档保持 <stem>.webp，小档 <stem>-<w>w.webp；
+#    源宽 <768px 只出单档；lossy 产物大于原图时自动回退无损 WebP）
 python3 tools/image-pipeline/convert_images.py \
   --src assets/img-src/blog/<slug> \
   --out-webp public/images/blog/<slug> \
-  --out-png assets/img-opt-png/blog/<slug> \
+  --out-png - \
   --url-prefix /images/blog/<slug> \
   --manifest src/lib/image-manifest.json \
-  --max-width 1920 --quality 80
+  --widths 768,1280,1920 --quality 80
 
 # 3. markdown 引用 .png → .webp（注意别把代码块里的文字误改）
 
@@ -35,8 +36,9 @@ python3 tools/image-pipeline/convert_images.py \
 ```
 
 `src/lib/rehype-image-attrs.mjs` 在构建期读 manifest，自动为 markdown 产物 `<img>`
-注入 `width/height`、`decoding="async"`，并按位置注入 `loading`
-（文档第一张内容图 `eager` + `fetchpriority="high"`，其余 `lazy`），无需手动标注。
+注入 `width/height`、`decoding="async"`，按位置注入 `loading`
+（文档第一张内容图 `eager` + `fetchpriority="high"`，其余 `lazy`），
+并为多档产物注入 `srcset` + `sizes="(max-width: 760px) 100vw, 760px"`，无需手动标注。
 
 ## 文件
 
@@ -44,3 +46,4 @@ python3 tools/image-pipeline/convert_images.py \
 - `VISUAL-CHECKLIST.md` — 转换后必做的视觉抽查清单
 - `PILOT-REPORT-diorama.md` — Diorama pilot 数据与结论
 - `pilot-diorama-conversion.log` — pilot 转换的原始输出留档
+- `ROLLOUT-REPORT.md` — 全量推广数据与验证记录（20 目录 281 张 + srcset + 头像本地化）

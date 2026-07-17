@@ -84,7 +84,7 @@ AssetGen 的系统设计就是围绕这个表展开的。MeshGen 负责生成高
 
 ## 4. Fig. 1：论文真正的目标对象
 
-![AssetGen teaser](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig01-teaser.png)
+![AssetGen teaser](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig01-teaser.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 1, arXiv perpetual non-exclusive license.*
 
@@ -107,7 +107,7 @@ input image
 
 ## 5. Fig. 2：系统总览与两种运行模式
 
-![AssetGen system overview](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig02-system-overview.png)
+![AssetGen system overview](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig02-system-overview.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 2, arXiv perpetual non-exclusive license.*
 
@@ -128,7 +128,7 @@ Fig. 2 是全文最重要的流程图。它把 AssetGen 拆成三大阶段：
 
 ## 6. 数据过滤：可部署质量从数据开始
 
-![AssetGen data filtering](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig03-data-filtering.png)
+![AssetGen data filtering](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig03-data-filtering.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 3, arXiv perpetual non-exclusive license.*
 
@@ -145,7 +145,7 @@ Fig. 3 展示了 semantic filtering 移除的资产类型：背景几何、3D sc
 
 ## 7. Flood-fill sign estimation：SDF 训练的地基
 
-![Flood-fill sign estimation](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig04-flood-fill-sign-estimation.png)
+![Flood-fill sign estimation](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig04-flood-fill-sign-estimation.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 4, arXiv perpetual non-exclusive license.*
 
@@ -227,7 +227,7 @@ $$
 
 ## 10. Coarse-to-refine MeshGen
 
-![MeshGen dense meshes](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig05-meshgen-dense-meshes.png)
+![MeshGen dense meshes](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig05-meshgen-dense-meshes.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 5, arXiv perpetual non-exclusive license.*
 
@@ -254,7 +254,7 @@ refinement stage 还用更高分辨率 image conditioning：DINOv2 encoder 在 1
 
 训练 student 时，teacher 从随机 student timestep 开始跑多个 deterministic DDIM steps，得到 multi-step target；student 用单步 MSE 去匹配这个 target。
 
-![MeshGen distillation human evaluation](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table01-meshgen-distillation-human-eval.png)
+![MeshGen distillation human evaluation](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table01-meshgen-distillation-human-eval.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 1, arXiv perpetual non-exclusive license.*
 
@@ -279,7 +279,7 @@ dense mesh
 
 ## 13. Mesh simplification：控制 polygon budget
 
-![Mesh simplification table](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table02-mesh-simplification.png)
+![Mesh simplification table](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table02-mesh-simplification.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 2, arXiv perpetual non-exclusive license.*
 
@@ -312,7 +312,7 @@ AssetGen 使用 xatlas 做 UV parameterization，并进一步探索 parallel cha
 
 论文实际有一张 `Table3`，PDF 文本中排版为无空格的 `Table3`。它比较 serial 和 parallel xatlas 的 UV unwrapping 人评质量与速度。
 
-![UV unwrapping human evaluation](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table03-uv-unwrapping-human-eval.png)
+![UV unwrapping human evaluation](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table03-uv-unwrapping-human-eval.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 3, arXiv perpetual non-exclusive license.*
 
@@ -320,7 +320,7 @@ AssetGen 使用 xatlas 做 UV parameterization，并进一步探索 parallel cha
 
 ## 16. Normal baking：把高模细节搬到低模
 
-![Normal baking table](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table04-normal-baking.png)
+![Normal baking table](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table04-normal-baking.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 4, arXiv perpetual non-exclusive license.*
 
@@ -451,7 +451,7 @@ AssetGen 的 latency 部分非常值得细读。论文反复强调：表格里�
 
 ## 24. Table 5：MeshGen + geometry critical path
 
-![MeshGen latency breakdown](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table05-meshgen-latency.png)
+![MeshGen latency breakdown](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table05-meshgen-latency.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 5, arXiv perpetual non-exclusive license.*
 
@@ -468,7 +468,7 @@ Table 5 把 MeshGen 和 geometry processing 拆成多个 stage。默认 AssetGen
 
 ## 25. Table 6：TextureGen critical path
 
-![TextureGen latency breakdown](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table06-texturegen-latency.png)
+![TextureGen latency breakdown](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table06-texturegen-latency.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 6, arXiv perpetual non-exclusive license.*
 
@@ -489,7 +489,7 @@ Table 6 展示 TextureGen 的耗时。默认 AssetGen 使用 1024px diffusion、
 
 ## 26. Table 7：端到端延迟对比
 
-![End-to-end latency](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table07-end-to-end-latency.png)
+![End-to-end latency](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table07-end-to-end-latency.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 7, arXiv perpetual non-exclusive license.*
 
@@ -505,7 +505,7 @@ Table 7 报告端到端 wall-clock latency：AssetGen 约 30 秒，AssetGen Flas
 
 ## 27. Table 8：优化 ladder
 
-![Latency ablation](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table08-latency-ablation.png)
+![Latency ablation](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table08-latency-ablation.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 8, arXiv perpetual non-exclusive license.*
 
@@ -528,7 +528,7 @@ TextureGen 从 117.68s 降到 17.85s，最大收益来自 progressive distillati
 
 论文提出 AssetBench：101 个由 technical artists 手工挑选和审核的高质量 3D assets，覆盖 vehicles、daily-use objects、animals 和部分 characters。评估时渲染 isometric/frontal reference view 作为 image prompt。
 
-![AssetBench quantitative results](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table09-assetbench.png)
+![AssetBench quantitative results](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table09-assetbench.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 9, arXiv perpetual non-exclusive license.*
 
@@ -545,7 +545,7 @@ Table 9 指标包括：
 
 ## 29. Fig. 6：商业 baseline 定性对比
 
-![Commercial baseline comparison](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig06-commercial-comparison.png)
+![Commercial baseline comparison](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig06-commercial-comparison.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 6, arXiv perpetual non-exclusive license.*
 
@@ -563,7 +563,7 @@ Fig. 6 展示 AssetGen 与 Commercial Model A-D 的定性对比。论文匿名�
 - 身份和 reference fidelity。
 - 是否适合后续 rigging 或动画。
 
-![CharacterBench results](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table10-characterbench.png)
+![CharacterBench results](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table10-characterbench.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 10, arXiv perpetual non-exclusive license.*
 
@@ -573,7 +573,7 @@ Table 10 显示 AssetGen 在 frontal face quality、face CLIP、face ref、finge
 
 ## 31. Human evaluation：低延迟下达到可比质量
 
-![Human evaluation](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table11-human-eval.png)
+![Human evaluation](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table11-human-eval.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 11, arXiv perpetual non-exclusive license.*
 
@@ -585,7 +585,7 @@ Table 11 是 195 assets 的 blind human evaluation，评分维度包括 general�
 
 ## 32. 与 Trellis 2 的对比
 
-![Trellis 2 comparison](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig07-trellis2-comparison.png)
+![Trellis 2 comparison](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig07-trellis2-comparison.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 7, arXiv perpetual non-exclusive license.*
 
@@ -602,19 +602,19 @@ Fig. 7 对比 AssetGen 和 Trellis 2。论文指出 Trellis 2 输出按推荐方
 
 ## 33. AssetGen galleries
 
-![AssetGen sand gallery](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig08-gallery-sand.png)
+![AssetGen sand gallery](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig08-gallery-sand.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 8, arXiv perpetual non-exclusive license.*
 
 Fig. 8 是默认 AssetGen 的 sand-themed gallery。它展示的是质量优先配置：two-stage MeshGen + high-fidelity TextureGen，约 30 秒输出。
 
-![AssetGen ice gallery](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig09-gallery-ice.png)
+![AssetGen ice gallery](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig09-gallery-ice.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 9, arXiv perpetual non-exclusive license.*
 
 Fig. 9 展示 ice-themed assets。可以看到几何和材质风格的一致性，但也要记住这些是论文 gallery，不能替代大规模失败案例分析。
 
-![AssetGen Flash gallery](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig10-flash-gallery.png)
+![AssetGen Flash gallery](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig10-flash-gallery.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 10, arXiv perpetual non-exclusive license.*
 
@@ -622,7 +622,7 @@ Fig. 10 是 AssetGen Flash 的 magic forest gallery。Flash 的价值是快速 p
 
 ## 34. Real-world inputs
 
-![Real-world input results](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig11-real-world-inputs.png)
+![Real-world input results](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig11-real-world-inputs.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 11, arXiv perpetual non-exclusive license.*
 

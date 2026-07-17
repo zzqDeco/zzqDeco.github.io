@@ -66,7 +66,7 @@ user history and context
 
 这篇论文的“新”不在今天看起来普通的 ReLU MLP，而在于它把 DNN 放进了真实系统闭环：如何采样、如何上线、如何控制延迟、如何处理新鲜内容、如何用 A/B 校准离线指标。这也是很多论文读起来像模型文章，而这篇更像工程文章的原因。
 
-![Figure 1: YouTube mobile home recommendations](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig1-mobile-home.png)
+![Figure 1: YouTube mobile home recommendations](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig1-mobile-home.webp)
 
 *Source: Covington et al., RecSys 2016, Fig. 1, CC BY-NC-ND 4.0.*
 
@@ -124,7 +124,7 @@ YouTube 有点赞、点踩、问卷等显式反馈，但这些反馈稀疏。大
 
 论文最重要的一张图是 Fig. 2。
 
-![Figure 2: Two-stage recommendation funnel](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig2-two-stage-funnel.png)
+![Figure 2: Two-stage recommendation funnel](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig2-two-stage-funnel.webp)
 
 *Source: Covington et al., RecSys 2016, Fig. 2, CC BY-NC-ND 4.0.*
 
@@ -250,7 +250,7 @@ $$
 
 Fig. 3 展示了 candidate generation 的模型结构。
 
-![Figure 3: Candidate generation architecture](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig3-candidate-generation.png)
+![Figure 3: Candidate generation architecture](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig3-candidate-generation.webp)
 
 *Source: Covington et al., RecSys 2016, Fig. 3, CC BY-NC-ND 4.0.*
 
@@ -345,7 +345,7 @@ serving: nearest neighbor index -> approx. top N
 
 Fig. 4 是论文里最有工程味道的一张图。
 
-![Figure 4: Example age feature for freshness](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig4-example-age.png)
+![Figure 4: Example age feature for freshness](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig4-example-age.webp)
 
 *Source: Covington et al., RecSys 2016, Fig. 4, CC BY-NC-ND 4.0.*
 
@@ -419,7 +419,7 @@ YouTube DNN 的 example age 是其中一个经典切入点：把时间非平稳�
 
 Fig. 5 讲的是 label 和 input context 怎么选。
 
-![Figure 5: Label and context selection](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig5-label-context-selection.png)
+![Figure 5: Label and context selection](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig5-label-context-selection.webp)
 
 *Source: Covington et al., RecSys 2016, Fig. 5, CC BY-NC-ND 4.0.*
 
@@ -494,7 +494,7 @@ $$
 
 Fig. 6 展示了 candidate generation 的离线实验。
 
-![Figure 6: Candidate feature and depth experiment](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig6-feature-depth-map.png)
+![Figure 6: Candidate feature and depth experiment](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig6-feature-depth-map.webp)
 
 *Source: Covington et al., RecSys 2016, Fig. 6, CC BY-NC-ND 4.0.*
 
@@ -578,7 +578,7 @@ Candidate generation 返回几百个候选后，ranking 才开始工作。论文
 
 Fig. 7 展示了 ranking 网络。
 
-![Figure 7: Ranking network architecture](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig7-ranking-network.png)
+![Figure 7: Ranking network architecture](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig7-ranking-network.webp)
 
 *Source: Covington et al., RecSys 2016, Fig. 7, CC BY-NC-ND 4.0.*
 
@@ -752,7 +752,7 @@ $$
 
 Table 1 是 ranking 部分的主要实验结果。
 
-![Table 1: Ranking hidden layer depth and weighted per-user loss](/images/blog/youtube-dnn-recommendations/youtube-dnn-table1-ranking-depth-loss.png)
+![Table 1: Ranking hidden layer depth and weighted per-user loss](/images/blog/youtube-dnn-recommendations/youtube-dnn-table1-ranking-depth-loss.webp)
 
 *Source: Covington et al., RecSys 2016, Table 1, CC BY-NC-ND 4.0.*
 
