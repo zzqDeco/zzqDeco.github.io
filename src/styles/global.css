@@ -1014,9 +1014,7 @@ hr {
   line-height: var(--lh-body);
 }
 
-.article-body::before {
-  content: 'document';
-  display: block;
+.article-body-label {
   margin-bottom: var(--space-5);
   color: var(--fg-muted);
   font-family: var(--font-mono);
@@ -1025,7 +1023,8 @@ hr {
   text-transform: uppercase;
 }
 
-.article-body > :first-child {
+.article-body > :first-child,
+.article-body > .article-body-label + * {
   margin-top: 0;
 }
 
