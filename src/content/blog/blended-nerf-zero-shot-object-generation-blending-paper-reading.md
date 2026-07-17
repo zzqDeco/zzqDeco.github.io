@@ -65,7 +65,7 @@ Ori Gordon、Omri Avrahami 和 Dani Lischinski 的 **Blended-NeRF: Zero-Shot Obj
 
 Fig. 1 是全文最重要的概览图。左侧是训练阶段，右侧是 blending 阶段。
 
-![Fig. 1: Blended-NeRF overview](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig01-overview.png)
+![Fig. 1: Blended-NeRF overview](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig01-overview.webp)
 
 *Source: Gordon et al., arXiv:2306.12760v2, Fig. 1, CC BY-NC-ND 4.0.*
 
@@ -120,7 +120,7 @@ Blended-NeRF 的设计正是围绕这些问题展开：ROI box 提供对象边�
 
 Fig. 2 展示了 Blender ship 场景中的大对象替换。论文将 ROI box 放在海面和船底区域，用文本 prompt 引导模型把沙地/海面替换成新的视觉内容。
 
-![Fig. 2: Large object replacement](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig02-large-object-replacement.png)
+![Fig. 2: Large object replacement](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig02-large-object-replacement.webp)
 
 *Source: Gordon et al., arXiv:2306.12760v2, Fig. 2, CC BY-NC-ND 4.0.*
 
@@ -235,7 +235,7 @@ README 描述的流程是：给定 config，从不同角度和距离观察原始
 
 如果在 box 内完全用 $F^G_\theta$，box 外完全用 $F^O_\theta$，边界处容易出现明显接缝。Fig. 3 展示了论文提出的 distance smoothing operator。
 
-![Fig. 3: Distance Smoothing Operator](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig03-distance-smoothing.png)
+![Fig. 3: Distance Smoothing Operator](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig03-distance-smoothing.webp)
 
 *Source: Gordon et al., arXiv:2306.12760v2, Fig. 3, CC BY-NC-ND 4.0.*
 
@@ -279,7 +279,7 @@ Blended-NeRF 的应用可以分成三类。
 
 Fig. 4 展示了 object blending 的两种 density 设计。prompt 是让绿色、白色和蓝色花朵与 Lego 轮子融合。
 
-![Fig. 4: Blending Modes](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig04-blending-modes.png)
+![Fig. 4: Blending Modes](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig04-blending-modes.webp)
 
 *Source: Gordon et al., arXiv:2306.12760v2, Fig. 4, CC BY-NC-ND 4.0.*
 
@@ -343,7 +343,7 @@ $$
 
 论文使用 Volumetric Disentanglement 作为对象替换 baseline。Fig. 5 展示 fern 场景中把树干替换成 “aspen tree” 和 “strawberry” 的结果。
 
-![Fig. 5: Comparison to Volumetric Disentanglement for object replacement](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig05-volumetric-disentanglement-comparison.png)
+![Fig. 5: Comparison to Volumetric Disentanglement for object replacement](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig05-volumetric-disentanglement-comparison.webp)
 
 *Source: Gordon et al., arXiv:2306.12760v2, Fig. 5, CC BY-NC-ND 4.0.*
 
@@ -351,7 +351,7 @@ $$
 
 论文的定量表如下。
 
-![Table 1: Quantitative Evaluation](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-table01-quantitative-evaluation.png)
+![Table 1: Quantitative Evaluation](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-table01-quantitative-evaluation.webp)
 
 *Source: Gordon et al., arXiv:2306.12760v2, Table 1, CC BY-NC-ND 4.0.*
 
@@ -431,7 +431,7 @@ $$
 
 Fig. 6 对比了有无 depth loss 时的结果。
 
-![Fig. 6: Depth Loss Impact](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig06-depth-loss-impact.png)
+![Fig. 6: Depth Loss Impact](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig06-depth-loss-impact.webp)
 
 *Source: Gordon et al., arXiv:2306.12760v2, Fig. 6, CC BY-NC-ND 4.0.*
 
@@ -439,7 +439,7 @@ Fig. 6 对比了有无 depth loss 时的结果。
 
 Table 2 从指标上补充了 priors 和 augmentations 的影响。
 
-![Table 2: Ablation study](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-table02-ablation-study.png)
+![Table 2: Ablation study](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-table02-ablation-study.webp)
 
 *Source: Gordon et al., arXiv:2306.12760v2, Table 2, CC BY-NC-ND 4.0.*
 
@@ -455,7 +455,7 @@ Table 2 从指标上补充了 priors 和 augmentations 的影响。
 
 Fig. 7 展示了材质/纹理编辑。比如把 pinecone 改成燃烧、冰冻、粉色羊毛；把 vase 改成玻璃、石头、水彩风格。
 
-![Fig. 7: Texture Editing](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig07-texture-editing.png)
+![Fig. 7: Texture Editing](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig07-texture-editing.webp)
 
 *Source: Gordon et al., arXiv:2306.12760v2, Fig. 7, CC BY-NC-ND 4.0.*
 
@@ -467,7 +467,7 @@ Fig. 7 展示了材质/纹理编辑。比如把 pinecone 改成燃烧、冰冻�
 
 Fig. 8 是 Fig. 4 的补充，展示在 LLFF fern 场景中使用 Eq. 8 进行 blending 的效果。
 
-![Fig. 8: Blending densities inside activation](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig08-blending-densities-inside-activation.png)
+![Fig. 8: Blending densities inside activation](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig08-blending-densities-inside-activation.webp)
 
 *Source: Gordon et al., arXiv:2306.12760v2, Fig. 8, CC BY-NC-ND 4.0.*
 
@@ -485,7 +485,7 @@ Fig. 8 是 Fig. 4 的补充，展示在 LLFF fern 场景中使用 Eq. 8 进行 b
 
 Fig. 9 给出了 fern 场景对象替换的更多视角。
 
-![Fig. 9: Additional views for object replacement comparison](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig09-additional-object-replacement-views.png)
+![Fig. 9: Additional views for object replacement comparison](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig09-additional-object-replacement-views.webp)
 
 *Source: Gordon et al., arXiv:2306.12760v2, Fig. 9, CC BY-NC-ND 4.0.*
 
@@ -493,7 +493,7 @@ Fig. 9 给出了 fern 场景对象替换的更多视角。
 
 Fig. 10 展示 object insertion。每一列是同一个编辑场景的两个视角。
 
-![Fig. 10: Object Insertion](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig10-object-insertion.png)
+![Fig. 10: Object Insertion](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig10-object-insertion.webp)
 
 *Source: Gordon et al., arXiv:2306.12760v2, Fig. 10, CC BY-NC-ND 4.0.*
 
@@ -503,7 +503,7 @@ Fig. 10 展示 object insertion。每一列是同一个编辑场景的两个视�
 
 Fig. 11 展示在 vasedeck 360 scene 中插入花瓣对象。
 
-![Fig. 11: Object insertion in vasedeck 360 scene](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig11-vasedeck-object-insertion.png)
+![Fig. 11: Object insertion in vasedeck 360 scene](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig11-vasedeck-object-insertion.webp)
 
 *Source: Gordon et al., arXiv:2306.12760v2, Fig. 11, CC BY-NC-ND 4.0.*
 
@@ -511,7 +511,7 @@ Real 360 scene 比 synthetic scene 更难，因为真实采集数据有遮挡、
 
 Fig. 12 展示 pinecone 360 scene 中把松果替换成菠萝。
 
-![Fig. 12: Object replacement in 360 pinecone scene](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig12-pinecone-object-replacement.png)
+![Fig. 12: Object replacement in 360 pinecone scene](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig12-pinecone-object-replacement.webp)
 
 *Source: Gordon et al., arXiv:2306.12760v2, Fig. 12, CC BY-NC-ND 4.0.*
 
@@ -521,7 +521,7 @@ Fig. 12 展示 pinecone 360 scene 中把松果替换成菠萝。
 
 Fig. 13 展示 pinecone 的材质转换。
 
-![Fig. 13: Texture conversion on 360 pinecone scene](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig13-pinecone-texture-conversion.png)
+![Fig. 13: Texture conversion on 360 pinecone scene](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig13-pinecone-texture-conversion.webp)
 
 *Source: Gordon et al., arXiv:2306.12760v2, Fig. 13, CC BY-NC-ND 4.0.*
 
@@ -529,7 +529,7 @@ Fig. 13 展示 pinecone 的材质转换。
 
 Fig. 14 展示 vasedeck 场景中的花瓶材质转换。
 
-![Fig. 14: Texture conversion on 360 vasedeck scene](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig14-vasedeck-texture-conversion.png)
+![Fig. 14: Texture conversion on 360 vasedeck scene](/images/blog/blended-nerf-zero-shot-object-generation-blending/blended-nerf-fig14-vasedeck-texture-conversion.webp)
 
 *Source: Gordon et al., arXiv:2306.12760v2, Fig. 14, CC BY-NC-ND 4.0.*
 

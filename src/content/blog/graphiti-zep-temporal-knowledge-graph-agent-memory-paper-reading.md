@@ -25,7 +25,7 @@ draft: false
 
 本文严格区分三类对象：论文评测的是 2025 年初的 **Zep 系统**；本文源码阅读固定在 Apache-2.0 的 **Graphiti `v0.29.2`**；当前商业产品 **Zep Context Lake** 则包含托管基础设施和专有能力。三者相关，但不是同一份部署物。本文没有启动 Neo4j、FalkorDB 或 Neptune，没有调用模型，也没有复现论文远程 Zep API 实验。
 
-![Zep paper title and abstract](/images/blog/graphiti-zep-temporal-knowledge-graph-agent-memory/graphiti-zep-paper-title-abstract.png)
+![Zep paper title and abstract](/images/blog/graphiti-zep-temporal-knowledge-graph-agent-memory/graphiti-zep-paper-title-abstract.webp)
 
 *论文题名、作者与摘要。Source: Rasmussen et al., arXiv:2501.13956v1, paper excerpt, CC BY-NC-SA 4.0.*
 
@@ -360,7 +360,7 @@ $$
 
 论文给出一个样例 context string。它把相关事实连同有效日期范围放在 `<FACTS>` 区块，把相关实体及摘要放在 `<ENTITIES>` 区块。这个模板说明图检索不是终点：Agent 的生成模型通常仍消费线性 token 序列。
 
-![Zep sample context template](/images/blog/graphiti-zep-temporal-knowledge-graph-agent-memory/graphiti-zep-paper-context-template.png)
+![Zep sample context template](/images/blog/graphiti-zep-temporal-knowledge-graph-agent-memory/graphiti-zep-paper-context-template.webp)
 
 *论文中的上下文模板，事实显式包含有效日期范围。Source: Rasmussen et al., arXiv:2501.13956v1, paper excerpt, CC BY-NC-SA 4.0.*
 
@@ -674,7 +674,7 @@ LongMemEval 比较的是：
 
 ## 32. Table 1：DMR 的 `94.8%` 到底说明什么
 
-![DMR results](/images/blog/graphiti-zep-temporal-knowledge-graph-agent-memory/graphiti-zep-table01-dmr.png)
+![DMR results](/images/blog/graphiti-zep-temporal-knowledge-graph-agent-memory/graphiti-zep-table01-dmr.webp)
 
 *Deep Memory Retrieval 结果。Source: Rasmussen et al., arXiv:2501.13956v1, Table 1, CC BY-NC-SA 4.0.*
 
@@ -713,7 +713,7 @@ DMR 的任务目标是从一段对话中找出某个早期事实。它适合测�
 
 ## 34. Table 2：LongMemEval 的准确率、延迟和 token 三重结果
 
-![LongMemEval overview](/images/blog/graphiti-zep-temporal-knowledge-graph-agent-memory/graphiti-zep-table02-longmemeval-overview.png)
+![LongMemEval overview](/images/blog/graphiti-zep-temporal-knowledge-graph-agent-memory/graphiti-zep-table02-longmemeval-overview.webp)
 
 *LongMemEval 总体结果。Source: Rasmussen et al., arXiv:2501.13956v1, Table 2, CC BY-NC-SA 4.0.*
 
@@ -770,7 +770,7 @@ $$
 
 ## 36. Table 3：偏好与时态提升明显，但存在真实回退
 
-![LongMemEval breakdown](/images/blog/graphiti-zep-temporal-knowledge-graph-agent-memory/graphiti-zep-table03-longmemeval-breakdown.png)
+![LongMemEval breakdown](/images/blog/graphiti-zep-temporal-knowledge-graph-agent-memory/graphiti-zep-table03-longmemeval-breakdown.webp)
 
 *LongMemEval 分类型结果。Source: Rasmussen et al., arXiv:2501.13956v1, Table 3, CC BY-NC-SA 4.0.*
 

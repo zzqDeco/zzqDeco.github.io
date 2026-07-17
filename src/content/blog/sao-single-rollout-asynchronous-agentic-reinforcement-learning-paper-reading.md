@@ -78,7 +78,7 @@ SAO 不是通用强化学习算法的完整替代品。它针对的是一组相�
 
 ## 4. Fig. 1：先看论文最想展示的结果
 
-![SAO benchmark results](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-fig01-benchmark-results.png)
+![SAO benchmark results](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-fig01-benchmark-results.webp)
 
 *Source: Hou et al., arXiv:2607.07508v1, Fig. 1, CC BY 4.0.*
 
@@ -210,7 +210,7 @@ $$
 
 ## 10. Fig. 2：SAO 的单轨迹异步设计
 
-![SAO single-rollout overview](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-fig02-single-rollout-overview.png)
+![SAO single-rollout overview](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-fig02-single-rollout-overview.webp)
 
 *Source: Hou et al., arXiv:2607.07508v1, Fig. 2, CC BY 4.0.*
 
@@ -709,7 +709,7 @@ SWE-Bench Verified 直接从 Qwen3-30B-A3B-Thinking-2507 开始 RL，并使用 O
 
 ## 27. Table 1：数学推理主结果
 
-![SAO math reasoning results](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-table01-math-reasoning-results.png)
+![SAO math reasoning results](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-table01-math-reasoning-results.webp)
 
 *Source: Hou et al., arXiv:2607.07508v1, Table 1, CC BY 4.0.*
 
@@ -731,7 +731,7 @@ SAO 相对 SFT 的绝对提升分别为 `+16.9`、`+21.5`、`+13.1` 和 `+20.7` 
 
 ## 28. Table 2：SWE-Bench Verified
 
-![SAO SWE-Bench Verified results](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-table02-swe-bench-verified.png)
+![SAO SWE-Bench Verified results](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-table02-swe-bench-verified.webp)
 
 *Source: Hou et al., arXiv:2607.07508v1, Table 2, CC BY 4.0.*
 
@@ -747,7 +747,7 @@ SWE-Bench 结果强依赖 Agent scaffold、工具权限、上下文管理、测�
 
 ## 29. Fig. 3：一千步训练曲线
 
-![SAO training performance](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-fig03-training-performance.png)
+![SAO training performance](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-fig03-training-performance.webp)
 
 *Source: Hou et al., arXiv:2607.07508v1, Fig. 3, CC BY 4.0.*
 
@@ -764,7 +764,7 @@ SAO 与 GRPO+DIS 在约 400 step 前相近，之后逐渐拉开。这一形状�
 
 ## 30. Table 3：Value 训练策略与更新频率
 
-![SAO value training ablation](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-table03-value-training-ablation.png)
+![SAO value training ablation](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-table03-value-training-ablation.webp)
 
 *Source: Hou et al., arXiv:2607.07508v1, Table 3, CC BY 4.0.*
 
@@ -780,7 +780,7 @@ SAO 与 GRPO+DIS 在约 400 step 前相近，之后逐渐拉开。这一形状�
 
 ## 31. Table 4：完整消融与 Baseline
 
-![SAO main ablation](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-table04-main-ablation.png)
+![SAO main ablation](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-table04-main-ablation.webp)
 
 *Source: Hou et al., arXiv:2607.07508v1, Table 4, CC BY 4.0.*
 
@@ -798,7 +798,7 @@ Vanilla VAPO 在约 90 step 崩溃，说明把一个同步 reasoning RL 方法�
 
 ## 32. Fig. 4：训练动态为什么支持这些设计
 
-![SAO training dynamics](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-fig04-training-dynamics.png)
+![SAO training dynamics](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-fig04-training-dynamics.webp)
 
 *Source: Hou et al., arXiv:2607.07508v1, Fig. 4, CC BY 4.0.*
 
@@ -843,7 +843,7 @@ $$
 
 ## 34. Fig. 5：非平稳偏好下的适应
 
-![SAO online learning simulation](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-fig05-online-learning.png)
+![SAO online learning simulation](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-fig05-online-learning.webp)
 
 *Source: Hou et al., arXiv:2607.07508v1, Fig. 5, CC BY 4.0.*
 
@@ -855,13 +855,13 @@ $$
 
 ## 35. Fig. 6 与 Table 5：Token 还是 Agent Step
 
-![SAO token-level versus step-level training](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-fig06-token-vs-step-training.png)
+![SAO token-level versus step-level training](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-fig06-token-vs-step-training.webp)
 
 *Source: Hou et al., arXiv:2607.07508v1, Fig. 6, CC BY 4.0.*
 
 Fig. 6 比较主线 Token-level SAO、Step-level Average 和 Step-level Last-Token。三条曲线早期接近，约 150 step 后 Token-level reward 持续上升，两个 step variant 停留在较低区间。
 
-![SAO action granularity ablation](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-table05-action-granularity.png)
+![SAO action granularity ablation](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-table05-action-granularity.webp)
 
 *Source: Hou et al., arXiv:2607.07508v1, Table 5, CC BY 4.0.*
 

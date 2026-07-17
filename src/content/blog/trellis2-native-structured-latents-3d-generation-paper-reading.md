@@ -54,7 +54,7 @@ TRELLIS.2 的回答是先重做表示。论文提出一种 field-free 的稀疏�
 
 ## 2. Fig. 1 总览：论文卖点是什么
 
-![Fig. 1: TRELLIS.2 teaser](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig01-teaser.png)
+![Fig. 1: TRELLIS.2 teaser](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig01-teaser.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Fig. 1, arXiv non-exclusive distribution license.*
 
@@ -94,7 +94,7 @@ TRELLIS.2 的立场是：如果表示层必须先把 3D 资产转成 SDF、隐�
 
 ## 4. Fig. 2 Pipeline：O-Voxel、SC-VAE、Flow Models
 
-![Fig. 2: TRELLIS.2 method overview](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig02-method-overview.png)
+![Fig. 2: TRELLIS.2 method overview](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig02-method-overview.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Fig. 2, arXiv non-exclusive distribution license.*
 
@@ -136,7 +136,7 @@ $$
 
 ## 6. Fig. 3：Flexible Dual Grid 与 PBR 属性
 
-![Fig. 3: O-Voxel conversion](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig03-ovoxel-conversion.png)
+![Fig. 3: O-Voxel conversion](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig03-ovoxel-conversion.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Fig. 3, arXiv non-exclusive distribution license.*
 
@@ -162,7 +162,7 @@ O-Voxel 的关键不是“把 mesh 体素化”这么简单，而是体素化以
 
 ## 7. Mesh-to-O-Voxel：QEF 不是细节，而是表示的根
 
-![Algorithm 1: Mesh-to-O-Voxel conversion](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-algorithm01-mesh-to-ovoxel.png)
+![Algorithm 1: Mesh-to-O-Voxel conversion](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-algorithm01-mesh-to-ovoxel.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Algorithm 1, arXiv non-exclusive distribution license.*
 
@@ -182,7 +182,7 @@ Algorithm 1 说明 mesh 如何转成 O-Voxel shape feature。流程可以拆成�
 
 ## 8. O-Voxel-to-Mesh：从 sparse features 回到资产格式
 
-![Algorithm 2: O-Voxel-to-Mesh conversion](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-algorithm02-ovoxel-to-mesh.png)
+![Algorithm 2: O-Voxel-to-Mesh conversion](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-algorithm02-ovoxel-to-mesh.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Algorithm 2, arXiv non-exclusive distribution license.*
 
@@ -198,7 +198,7 @@ O-Voxel-to-Mesh 的逻辑比 mesh-to-O-Voxel 更直接。
 
 ## 9. Texture-to-O-Voxel 与 O-Voxel-to-Texture
 
-![Algorithm 3: Texture-to-O-Voxel conversion](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-algorithm03-texture-to-ovoxel.png)
+![Algorithm 3: Texture-to-O-Voxel conversion](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-algorithm03-texture-to-ovoxel.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Algorithm 3, arXiv non-exclusive distribution license.*
 
@@ -206,7 +206,7 @@ Texture-to-O-Voxel 的输入是带 PBR texture 的 mesh 和已知 O-Voxel shape 
 
 这一步解决的是一个常被忽略的问题：如果训练数据是 textured mesh，材质存储在 UV texture 上，而模型 latent 又在 sparse voxel 上，必须有一个稳定的对齐方法。Algorithm 3 正是把 surface texture 转成 voxel-aligned material feature。
 
-![Algorithm 4: O-Voxel-to-Texture conversion](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-algorithm04-ovoxel-to-texture.png)
+![Algorithm 4: O-Voxel-to-Texture conversion](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-algorithm04-ovoxel-to-texture.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Algorithm 4, arXiv non-exclusive distribution license.*
 
@@ -232,7 +232,7 @@ $$
 
 其中 $f$ 是 O-Voxel features，$z$ 是 compressed sparse latent，$\hat f$ 是重建的 O-Voxel。论文强调 16x spatial downsampling，即 latent 的空间分辨率比原始 O-Voxel 粗 16 倍，但 decoder 仍要恢复高保真的 shape 和 material。
 
-![Fig. 4: SC-VAE architecture](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig04-scvae-architecture.png)
+![Fig. 4: SC-VAE architecture](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig04-scvae-architecture.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Fig. 4, arXiv non-exclusive distribution license.*
 
@@ -269,7 +269,7 @@ $$
 
 ## 12. Table 4/5：架构并不复杂，但规模很大
 
-![Table 4: SC-VAE architecture](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table04-scvae-architecture.png)
+![Table 4: SC-VAE architecture](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table04-scvae-architecture.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Table 4, arXiv non-exclusive distribution license.*
 
@@ -277,7 +277,7 @@ Table 4 展示 SC-VAE encoder。可以看到从 `1x` 到 `16x` 的下采样路�
 
 这解释了为什么本文说 TRELLIS.2 的“大”不只在最后生成模型。表示学习层本身已经是大型 sparse-convolutional autoencoder。
 
-![Table 5: Generative model architecture](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table05-generative-model-architecture.png)
+![Table 5: Generative model architecture](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table05-generative-model-architecture.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Table 5, arXiv non-exclusive distribution license.*
 
@@ -339,7 +339,7 @@ $$
 
 ## 15. Test-time Resolution Scaling
 
-![Fig. 8: Test-time scaling](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig08-test-time-scaling.png)
+![Fig. 8: Test-time scaling](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig08-test-time-scaling.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Fig. 8, arXiv non-exclusive distribution license.*
 
@@ -356,7 +356,7 @@ Fig. 8 解释了 TRELLIS.2 的高分辨率策略。左侧是 scale up resolution
 
 ## 16. FlexGEMM：系统性能不是附属品
 
-![Fig. 9: FlexGEMM speed comparison](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig09-flexgemm-speed.png)
+![Fig. 9: FlexGEMM speed comparison](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig09-flexgemm-speed.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Fig. 9, arXiv non-exclusive distribution license.*
 
@@ -372,7 +372,7 @@ Fig. 8 解释了 TRELLIS.2 的高分辨率策略。左侧是 scale up resolution
 
 ## 17. 数据准备：不是随便抓一些 3D 模型
 
-![Table 6: Dataset composition](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table06-dataset.png)
+![Table 6: Dataset composition](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table06-dataset.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Table 6, arXiv non-exclusive distribution license.*
 
@@ -406,7 +406,7 @@ build_metadata
 
 ## 18. Reconstruction 实验：看 Table 1 要看三类指标
 
-![Table 1: Reconstruction comparison](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table01-reconstruction.png)
+![Table 1: Reconstruction comparison](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table01-reconstruction.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Table 1, arXiv non-exclusive distribution license.*
 
@@ -426,19 +426,19 @@ Table 1 是全文最重要的定量表之一。它比较 shape reconstruction �
 
 ## 19. Image-to-3D 生成：Table 2 与 Fig. 6
 
-![Fig. 5: Generated assets](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig05-generated-assets.png)
+![Fig. 5: Generated assets](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig05-generated-assets.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Fig. 5, arXiv non-exclusive distribution license.*
 
 Fig. 5 是 TRELLIS.2 的定性展示。它突出三类能力：复杂几何、开放曲面、半透明/反射材质。比如植物、机械、角色盔甲和 steampunk 设备，都不是简单 watertight toy shapes。
 
-![Fig. 6: Generation comparison](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig06-generation-comparison.png)
+![Fig. 6: Generation comparison](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig06-generation-comparison.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Fig. 6, arXiv non-exclusive distribution license.*
 
 Fig. 6 将 Ours 与 Hunyuan3D 2.1、Step1X-3D、TRELLIS、Direct3D-S2、Hi3DGen 做可视化对比。它不仅展示 normal，还展示最终 render、base color、metallic、roughness 等小图。图中 “No PBR” 的标记提醒我们，有些 baseline 并不输出完整 PBR 材质，因此不能只用 RGB 渲染图比较。
 
-![Table 2: Image-to-3D generation results](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table02-generation.png)
+![Table 2: Image-to-3D generation results](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table02-generation.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Table 2, arXiv non-exclusive distribution license.*
 
@@ -455,7 +455,7 @@ Ours 在表中达到 CLIP `0.894`、CLIP-N `0.758`、ULIP-2 `0.477`、Uni3D `0.4
 
 ## 20. Shape-conditioned PBR Texture Generation
 
-![Fig. 7: PBR texture generation](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig07-pbr-texture-generation.png)
+![Fig. 7: PBR texture generation](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig07-pbr-texture-generation.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Fig. 7, arXiv non-exclusive distribution license.*
 
@@ -478,7 +478,7 @@ Fig. 7 展示 shape-conditioned texture generation。输入给定几何和图像
 
 ## 21. Ablation：SC-VAE 设计到底影响什么
 
-![Table 3: SC-VAE ablation](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table03-scvae-ablation.png)
+![Table 3: SC-VAE ablation](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table03-scvae-ablation.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Table 3, arXiv non-exclusive distribution license.*
 
@@ -494,13 +494,13 @@ Table 3 比较 SC-VAE 架构设计。主线配置是 `SC-VAE f16c32`，代表 16
 
 ## 22. User Study：主观偏好怎么读
 
-![Fig. 10: User study interface](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig10-user-study-interface.png)
+![Fig. 10: User study interface](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig10-user-study-interface.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Fig. 10, arXiv non-exclusive distribution license.*
 
 Fig. 10 展示用户研究界面。参与者面对两类问题：整体质量和形状质量。整体质量看 fully rendered asset，形状质量看 normal map，以减少材质对几何判断的干扰。
 
-![Table 7: User study statistics](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table07-user-study.png)
+![Table 7: User study statistics](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table07-user-study.webp)
 
 *Source: Xiang et al., arXiv:2512.14692v1, Table 7, arXiv non-exclusive distribution license.*
 

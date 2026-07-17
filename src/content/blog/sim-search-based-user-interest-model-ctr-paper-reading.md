@@ -97,7 +97,7 @@ SIM 的设计正好把 DIN 的 target-aware 思路和 MIMN 的长序列工程约
 
 ## 4. SIM 总览
 
-![SIM model overview](/images/blog/sim-search-based-user-interest-model-ctr/sim-fig01-model-overview.png)
+![SIM model overview](/images/blog/sim-search-based-user-interest-model-ctr/sim-fig01-model-overview.webp)
 
 *Source: Qi et al., arXiv:2006.05639v2, Fig. 1, arXiv non-exclusive distribution license.*
 
@@ -291,7 +291,7 @@ $$
 
 ## 11. 原 RTP 系统的压力
 
-![Current RTP system](/images/blog/sim-search-based-user-interest-model-ctr/sim-fig02-current-rtp-system.png)
+![Current RTP system](/images/blog/sim-search-based-user-interest-model-ctr/sim-fig02-current-rtp-system.webp)
 
 *Source: Qi et al., arXiv:2006.05639v2, Fig. 2, arXiv non-exclusive distribution license.*
 
@@ -305,7 +305,7 @@ Fig. 2 展示的是原实时预测系统。它由 computation node 和 predictio
 
 ## 12. SIM RTP 系统
 
-![SIM RTP system](/images/blog/sim-search-based-user-interest-model-ctr/sim-fig03-sim-rtp-system.png)
+![SIM RTP system](/images/blog/sim-search-based-user-interest-model-ctr/sim-fig03-sim-rtp-system.webp)
 
 *Source: Qi et al., arXiv:2006.05639v2, Fig. 3, arXiv non-exclusive distribution license.*
 
@@ -327,7 +327,7 @@ user_id
 
 ## 13. Dataset 设置
 
-![Dataset statistics](/images/blog/sim-search-based-user-interest-model-ctr/sim-table01-dataset-statistics.png)
+![Dataset statistics](/images/blog/sim-search-based-user-interest-model-ctr/sim-table01-dataset-statistics.webp)
 
 *Source: Qi et al., arXiv:2006.05639v2, Table 1, arXiv non-exclusive distribution license.*
 
@@ -345,7 +345,7 @@ Amazon Books 用评论行为构造序列，最大行为长度为 `100`；Taobao 
 
 ## 14. Public AUC 结果
 
-![Public dataset AUC](/images/blog/sim-search-based-user-interest-model-ctr/sim-table02-public-auc.png)
+![Public dataset AUC](/images/blog/sim-search-based-user-interest-model-ctr/sim-table02-public-auc.webp)
 
 *Source: Qi et al., arXiv:2006.05639v2, Table 2, arXiv non-exclusive distribution license.*
 
@@ -373,7 +373,7 @@ Amazon 上没有 Timeinfo 结果，因为论文说明该数据集没有 timestam
 
 ## 15. 两阶段搜索消融
 
-![Two-stage search ablation](/images/blog/sim-search-based-user-interest-model-ctr/sim-table03-two-stage-search-ablation.png)
+![Two-stage search ablation](/images/blog/sim-search-based-user-interest-model-ctr/sim-table03-two-stage-search-ablation.webp)
 
 *Source: Qi et al., arXiv:2006.05639v2, Table 3, arXiv non-exclusive distribution license.*
 
@@ -399,7 +399,7 @@ Table 3 是理解 SIM 是否真的需要“两阶段”的关键。
 
 ## 16. 工业数据 AUC
 
-![Industrial AUC](/images/blog/sim-search-based-user-interest-model-ctr/sim-table04-industrial-auc.png)
+![Industrial AUC](/images/blog/sim-search-based-user-interest-model-ctr/sim-table04-industrial-auc.webp)
 
 *Source: Qi et al., arXiv:2006.05639v2, Table 4, arXiv non-exclusive distribution license.*
 
@@ -425,7 +425,7 @@ Table 3 是理解 SIM 是否真的需要“两阶段”的关键。
 
 ## 17. Long-term Interest 分布
 
-![Click distribution](/images/blog/sim-search-based-user-interest-model-ctr/sim-fig04-click-distribution.png)
+![Click distribution](/images/blog/sim-search-based-user-interest-model-ctr/sim-fig04-click-distribution.webp)
 
 *Source: Qi et al., arXiv:2006.05639v2, Fig. 4, arXiv non-exclusive distribution license.*
 
@@ -442,7 +442,7 @@ d_category 越大，当前点击越可能依赖长期兴趣。
 
 ## 18. 线上 A/B 结果
 
-![Online lift](/images/blog/sim-search-based-user-interest-model-ctr/sim-table05-online-lift.png)
+![Online lift](/images/blog/sim-search-based-user-interest-model-ctr/sim-table05-online-lift.webp)
 
 *Source: Qi et al., arXiv:2006.05639v2, Table 5, arXiv non-exclusive distribution license.*
 
@@ -459,7 +459,7 @@ CTR lift 表示点击率提升，RPM 通常表示每千次展示收入。CTR 提
 
 ## 19. d_category 统计
 
-![d_category statistics](/images/blog/sim-search-based-user-interest-model-ctr/sim-table06-d-category-statistics.png)
+![d_category statistics](/images/blog/sim-search-based-user-interest-model-ctr/sim-table06-d-category-statistics.webp)
 
 *Source: Qi et al., arXiv:2006.05639v2, Table 6, arXiv non-exclusive distribution license.*
 
@@ -476,7 +476,7 @@ Table 6 从另一个角度说明 SIM 更能利用长期兴趣。
 
 ## 20. System Performance 精读
 
-![QPS and RT](/images/blog/sim-search-based-user-interest-model-ctr/sim-fig05-qps-rt.png)
+![QPS and RT](/images/blog/sim-search-based-user-interest-model-ctr/sim-fig05-qps-rt.webp)
 
 *Source: Qi et al., arXiv:2006.05639v2, Fig. 5, arXiv non-exclusive distribution license.*
 

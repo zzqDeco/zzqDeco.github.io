@@ -84,7 +84,7 @@ loss curvature is steep
 
 论文先把 loss divergence 分成两类：micro-divergence 和 full divergence。
 
-![Fig. 1: Loss divergence examples](/images/blog/clippy-multitask-ranking-stability/clippy-fig1-loss-divergence.png)
+![Fig. 1: Loss divergence examples](/images/blog/clippy-multitask-ranking-stability/clippy-fig1-loss-divergence.webp)
 
 *Source: Tang et al., KDD 2023, Fig. 1, CC BY 4.0.*
 
@@ -129,7 +129,7 @@ Fig. 1 的关键不是曲线形状，而是它给了一个工程判据：训练�
 
 论文研究的是 YouTube 推荐系统里的 ranking model，而不是 candidate generation model。
 
-![Fig. 2: Multitask ranking model](/images/blog/clippy-multitask-ranking-stability/clippy-fig2-multitask-ranking-model.png)
+![Fig. 2: Multitask ranking model](/images/blog/clippy-multitask-ranking-stability/clippy-fig2-multitask-ranking-model.webp)
 
 *Source: Tang et al., KDD 2023, Fig. 2, CC BY 4.0.*
 
@@ -213,7 +213,7 @@ $$
 
 其中 $\alpha^\ast$ 是 loss Hessian 的最大特征值，也可以理解为局部曲率或 sharpness 的代表。如果 $\eta > 2/\alpha^\ast$，训练就可能进入不稳定状态。
 
-![Fig. 3: Edge of stability in a quadratic model](/images/blog/clippy-multitask-ranking-stability/clippy-fig3-edge-of-stability.png)
+![Fig. 3: Edge of stability in a quadratic model](/images/blog/clippy-multitask-ranking-stability/clippy-fig3-edge-of-stability.webp)
 
 *Source: Tang et al., KDD 2023, Fig. 3, CC BY 4.0.*
 
@@ -322,7 +322,7 @@ Clippy 就是在这些限制上设计的。
 
 Fig. 4 是整篇论文最关键的图。
 
-![Fig. 4: Training dynamics and clipping factors](/images/blog/clippy-multitask-ranking-stability/clippy-fig4-training-dynamics.png)
+![Fig. 4: Training dynamics and clipping factors](/images/blog/clippy-multitask-ranking-stability/clippy-fig4-training-dynamics.webp)
 
 *Source: Tang et al., KDD 2023, Fig. 4, CC BY 4.0.*
 
@@ -368,7 +368,7 @@ take the smallest scale that satisfies all coordinates
 
 论文给出的 Algorithm 1 是 Clippy 的核心。
 
-![Algorithm 1: Adagrad with Clippy](/images/blog/clippy-multitask-ranking-stability/clippy-algorithm1-adagrad-with-clippy.png)
+![Algorithm 1: Adagrad with Clippy](/images/blog/clippy-multitask-ranking-stability/clippy-algorithm1-adagrad-with-clippy.webp)
 
 *Source: Tang et al., KDD 2023, Algorithm 1, CC BY 4.0.*
 
@@ -490,7 +490,7 @@ Clippy 有三个显著特征。
 
 论文实验不是直接拿完整 production model 做所有对比，而是构建了简化但足够有代表性的 ranking model testbed。
 
-![Table 1: Model settings](/images/blog/clippy-multitask-ranking-stability/clippy-table1-model-settings.png)
+![Table 1: Model settings](/images/blog/clippy-multitask-ranking-stability/clippy-table1-model-settings.webp)
 
 *Source: Tang et al., KDD 2023, Table 1, CC BY 4.0.*
 
@@ -518,7 +518,7 @@ Large+DCN: bigger + cross structure
 
 Table 2 是论文最重要的结果表。
 
-![Table 2: Overall performance](/images/blog/clippy-multitask-ranking-stability/clippy-table2-overall-performance.png)
+![Table 2: Overall performance](/images/blog/clippy-multitask-ranking-stability/clippy-table2-overall-performance.webp)
 
 *Source: Tang et al., KDD 2023, Table 2, CC BY 4.0.*
 
@@ -566,7 +566,7 @@ Clippy 在三个模型上都能使用 2x learning rate，并且不牺牲收敛�
 
 Table 2 给最终结果，Fig. 5 展示训练过程。
 
-![Fig. 5: AUC curves](/images/blog/clippy-multitask-ranking-stability/clippy-fig5-auc-training-curves.png)
+![Fig. 5: AUC curves](/images/blog/clippy-multitask-ranking-stability/clippy-fig5-auc-training-curves.webp)
 
 *Source: Tang et al., KDD 2023, Fig. 5, CC BY 4.0.*
 
@@ -586,7 +586,7 @@ Fig. 5b 比较 Clippy 和最强 baseline GC 在不同模型设置下的 AUC。�
 
 Fig. 6 看 Clippy 在不同层上的 clipping factor。
 
-![Fig. 6: Clipping factors by layer](/images/blog/clippy-multitask-ranking-stability/clippy-fig6-layer-clipping-factors.png)
+![Fig. 6: Clipping factors by layer](/images/blog/clippy-multitask-ranking-stability/clippy-fig6-layer-clipping-factors.webp)
 
 *Source: Tang et al., KDD 2023, Fig. 6, CC BY 4.0.*
 
@@ -612,7 +612,7 @@ clipping factor $\sigma \in (0,1]$，越小表示裁剪越强。
 
 论文补充材料 Table 3 用 ablation 支持 Section 3.2 的原因分析。
 
-![Table 3: Divergence ratio ablation](/images/blog/clippy-multitask-ranking-stability/clippy-table3-divergence-ratio.png)
+![Table 3: Divergence ratio ablation](/images/blog/clippy-multitask-ranking-stability/clippy-table3-divergence-ratio.webp)
 
 *Source: Tang et al., KDD 2023, Table 3, CC BY 4.0.*
 
@@ -642,7 +642,7 @@ clipping factor $\sigma \in (0,1]$，越小表示裁剪越强。
 
 Fig. 4 只展示 top hidden layer。补充材料 Fig. 8 展示其他层。
 
-![Fig. 8: Statistics from other layers](/images/blog/clippy-multitask-ranking-stability/clippy-fig8-other-layer-stats.png)
+![Fig. 8: Statistics from other layers](/images/blog/clippy-multitask-ranking-stability/clippy-fig8-other-layer-stats.webp)
 
 *Source: Tang et al., KDD 2023, Fig. 8, CC BY 4.0.*
 
@@ -660,7 +660,7 @@ Fig. 8 包括：
 
 论文还在一个 Transformer 翻译任务上做了附加实验。
 
-![Fig. 7: Transformer translation experiment](/images/blog/clippy-multitask-ranking-stability/clippy-fig7-transformer-translation.png)
+![Fig. 7: Transformer translation experiment](/images/blog/clippy-multitask-ranking-stability/clippy-fig7-transformer-translation.webp)
 
 *Source: Tang et al., KDD 2023, Fig. 7, CC BY 4.0.*
 

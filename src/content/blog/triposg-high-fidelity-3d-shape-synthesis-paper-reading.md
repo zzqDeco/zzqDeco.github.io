@@ -21,7 +21,7 @@ TripoSG 这篇论文真正值得精读的地方，不是它又做了一个 image
 
 官方材料已经公开：项目页为 [TripoSG Project Page](https://yg256li.github.io/TripoSG-Page/)，官方仓库为 [VAST-AI-Research/TripoSG](https://github.com/VAST-AI-Research/TripoSG)，Hugging Face 模型为 [VAST-AI/TripoSG](https://huggingface.co/VAST-AI/TripoSG)，Demo 为 [VAST-AI/TripoSG Space](https://huggingface.co/spaces/VAST-AI/TripoSG)。本文做论文级精读和官方代码静态阅读，不下载权重，不运行推理，不声称复现实验。
 
-![TripoSG teaser](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig01-teaser.png)
+![TripoSG teaser](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig01-teaser.webp)
 
 *Source: Li et al., arXiv:2502.06608v3 / ICML 2025, Fig. 1, arXiv non-exclusive distribution license.*
 
@@ -87,7 +87,7 @@ Fig. 1 展示了 TripoSG 最大模型生成的高质量 3D shape samples。图�
 
 ## 5. Fig. 2 方法总览
 
-![TripoSG method overview](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig02-method-overview.png)
+![TripoSG method overview](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig02-method-overview.webp)
 
 *Source: Li et al., arXiv:2502.06608v3 / ICML 2025, Fig. 2, arXiv non-exclusive distribution license.*
 
@@ -136,7 +136,7 @@ TripoSG 的生成模型并不直接在 mesh 顶点或体素网格上扩散，而
 
 ## 8. Fig. 3 Rectified Flow Transformer 总览
 
-![TripoSG shape generation pipeline](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig03-shapegen-pipeline.png)
+![TripoSG shape generation pipeline](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig03-shapegen-pipeline.webp)
 
 *Source: Li et al., arXiv:2502.06608v3 / ICML 2025, Fig. 3, arXiv non-exclusive distribution license.*
 
@@ -285,7 +285,7 @@ $$
 
 ## 16. Fig. 4 VAE 架构精读
 
-![TripoSG VAE architecture](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig04-vae-architecture.png)
+![TripoSG VAE architecture](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig04-vae-architecture.webp)
 
 *Source: Li et al., arXiv:2502.06608v3 / ICML 2025, Fig. 4, arXiv non-exclusive distribution license.*
 
@@ -303,7 +303,7 @@ Fig. 4 展示了 TripoSG 的 transformer-based VAE。上半部分是 encoder，�
 
 ## 17. Occupancy vs SDF
 
-![Occupancy vs SDF](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig05-occ-vs-sdf.png)
+![Occupancy vs SDF](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig05-occ-vs-sdf.webp)
 
 *Source: Li et al., arXiv:2502.06608v3 / ICML 2025, Fig. 5, arXiv non-exclusive distribution license.*
 
@@ -404,7 +404,7 @@ $$
 
 ## 21. Data-Building System
 
-![TripoSG data process pipeline](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig06-data-process-pipeline.png)
+![TripoSG data process pipeline](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig06-data-process-pipeline.webp)
 
 *Source: Li et al., arXiv:2502.06608v3 / ICML 2025, Fig. 6, arXiv non-exclusive distribution license.*
 
@@ -503,7 +503,7 @@ VAE reconstruction 使用 Chamfer distance、F-score 和 normal consistency。
 
 ## 28. Fig. 7 定性对比
 
-![TripoSG demo comparison](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig07-demo-comparison.png)
+![TripoSG demo comparison](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig07-demo-comparison.webp)
 
 *Source: Li et al., arXiv:2502.06608v3 / ICML 2025, Fig. 7, arXiv non-exclusive distribution license.*
 
@@ -521,7 +521,7 @@ TripoSG 的优势主要体现在复杂结构和细节上。需要注意，Fig. 7
 
 ## 29. Fig. 8 雷达图
 
-![TripoSG radar chart](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig08-radar-chart.png)
+![TripoSG radar chart](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig08-radar-chart.webp)
 
 *Source: Li et al., arXiv:2502.06608v3 / ICML 2025, Fig. 8, arXiv non-exclusive distribution license.*
 
@@ -543,7 +543,7 @@ Fig. 8 使用 LMM 评估不同方法在五个维度上的得分：
 
 ## 30. Table 1 Flow Improvement 消融
 
-![TripoSG flow improvement ablation](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-table01-flow-improvements.png)
+![TripoSG flow improvement ablation](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-table01-flow-improvements.webp)
 
 *Source: Li et al., arXiv:2502.06608v3 / ICML 2025, Table 1, arXiv non-exclusive distribution license.*
 
@@ -567,7 +567,7 @@ Table 1 比较了 condition、skip connection 和 sampling schedule。
 
 ## 31. Table 2 Scaling 消融
 
-![TripoSG scaling ablation](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-table02-flow-scaling.png)
+![TripoSG scaling ablation](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-table02-flow-scaling.webp)
 
 *Source: Li et al., arXiv:2502.06608v3 / ICML 2025, Table 2, arXiv non-exclusive distribution license.*
 
@@ -587,11 +587,11 @@ Table 2 展示了 token resolution、MoE 和数据规模的贡献。
 
 ## 32. Table 3 + Fig. 9 VAE 消融
 
-![TripoSG VAE ablation table](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-table03-vae-ablation.png)
+![TripoSG VAE ablation table](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-table03-vae-ablation.webp)
 
 *Source: Li et al., arXiv:2502.06608v3 / ICML 2025, Table 3, arXiv non-exclusive distribution license.*
 
-![TripoSG VAE ablation visualization](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig09-vae-ablation.png)
+![TripoSG VAE ablation visualization](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig09-vae-ablation.webp)
 
 *Source: Li et al., arXiv:2502.06608v3 / ICML 2025, Fig. 9, arXiv non-exclusive distribution license.*
 
@@ -611,11 +611,11 @@ Table 3 比较 occupancy、SDF、surface normal loss、eikonal regularization �
 
 ## 33. Table 4 + Fig. 10 数据消融
 
-![TripoSG data quality quantity ablation](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-table04-data-quality-quantity.png)
+![TripoSG data quality quantity ablation](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-table04-data-quality-quantity.webp)
 
 *Source: Li et al., arXiv:2502.06608v3 / ICML 2025, Table 4, arXiv non-exclusive distribution license.*
 
-![TripoSG flow ablation visualization](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig10-flow-ablation-visualization.png)
+![TripoSG flow ablation visualization](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig10-flow-ablation-visualization.webp)
 
 *Source: Li et al., arXiv:2502.06608v3 / ICML 2025, Fig. 10, arXiv non-exclusive distribution license.*
 
@@ -652,13 +652,13 @@ TripoSG 的主贡献不是 texture model 本身，而是提供足够好的几何
 
 ## 35. Fig. 11/12 更多结果
 
-![TripoSG texture-free results](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig11-texture-free-results.png)
+![TripoSG texture-free results](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig11-texture-free-results.webp)
 
 *Source: Li et al., arXiv:2502.06608v3 / ICML 2025, Fig. 11, arXiv non-exclusive distribution license.*
 
 Fig. 11 展示 texture-free 结果。每个 case 的第一张图是输入图，后面四张是生成 3D model 的多视角渲染。它更直接反映 shape generation 能力。
 
-![TripoSG textured results](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig12-textured-results.png)
+![TripoSG textured results](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig12-textured-results.webp)
 
 *Source: Li et al., arXiv:2502.06608v3 / ICML 2025, Fig. 12, arXiv non-exclusive distribution license.*
 

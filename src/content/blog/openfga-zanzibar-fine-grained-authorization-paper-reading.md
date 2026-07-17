@@ -105,7 +105,7 @@ doc:readme#parent@folder:A
 
 这个模型的关键是：`user` 不一定是单个用户。它可以是 `group:eng#member` 这样的用户集合。于是“eng 组成员可以看 readme 文档”不需要展开成 N 条用户 tuple，而是可以用一条对象到用户集合的关系表达。
 
-![Example relation tuples](/images/blog/openfga-zanzibar-fine-grained-authorization/zanzibar-table01-relation-tuples.png)
+![Example relation tuples](/images/blog/openfga-zanzibar-fine-grained-authorization/zanzibar-table01-relation-tuples.webp)
 
 *Source: Pang et al., USENIX ATC 2019, Table 1.*
 
@@ -127,7 +127,7 @@ OpenFGA 继承了这个核心思想。它的关系元组同样由 `user`、`rela
 
 Zanzibar 论文用 namespace configuration 表达这些规则。
 
-![Simple namespace configuration](/images/blog/openfga-zanzibar-fine-grained-authorization/zanzibar-fig01-namespace-config.png)
+![Simple namespace configuration](/images/blog/openfga-zanzibar-fine-grained-authorization/zanzibar-fig01-namespace-config.webp)
 
 *Source: Pang et al., USENIX ATC 2019, Fig. 1.*
 
@@ -442,7 +442,7 @@ OpenFGA 也提供一致性相关能力，但不能把它简单等同于 Google Z
 
 Zanzibar 的总体架构如下。
 
-![Zanzibar architecture](/images/blog/openfga-zanzibar-fine-grained-authorization/zanzibar-fig02-architecture.png)
+![Zanzibar architecture](/images/blog/openfga-zanzibar-fine-grained-authorization/zanzibar-fig02-architecture.webp)
 
 *Source: Pang et al., USENIX ATC 2019, Fig. 2.*
 
@@ -712,15 +712,15 @@ Shadow 阶段特别关键。权限系统最怕“看起来模型正确，但历�
 
 Zanzibar 论文报告了非常高的生产规模和低延迟。
 
-![Rate of Check Safe and Check Recent requests](/images/blog/openfga-zanzibar-fine-grained-authorization/zanzibar-fig03-check-safe-recent-rate.png)
+![Rate of Check Safe and Check Recent requests](/images/blog/openfga-zanzibar-fine-grained-authorization/zanzibar-fig03-check-safe-recent-rate.webp)
 
 *Source: Pang et al., USENIX ATC 2019, Fig. 3.*
 
-![Latency of Check Safe responses](/images/blog/openfga-zanzibar-fine-grained-authorization/zanzibar-fig04-check-safe-latency.png)
+![Latency of Check Safe responses](/images/blog/openfga-zanzibar-fine-grained-authorization/zanzibar-fig04-check-safe-latency.webp)
 
 *Source: Pang et al., USENIX ATC 2019, Fig. 4.*
 
-![RPC response latency](/images/blog/openfga-zanzibar-fine-grained-authorization/zanzibar-table02-rpc-latency.png)
+![RPC response latency](/images/blog/openfga-zanzibar-fine-grained-authorization/zanzibar-table02-rpc-latency.webp)
 
 *Source: Pang et al., USENIX ATC 2019, Table 2.*
 
@@ -741,7 +741,7 @@ Zanzibar 论文报告了非常高的生产规模和低延迟。
 
 Zanzibar 论文里的可用性图也要按边界理解。
 
-![Zanzibar availability](/images/blog/openfga-zanzibar-fine-grained-authorization/zanzibar-fig05-availability.png)
+![Zanzibar availability](/images/blog/openfga-zanzibar-fine-grained-authorization/zanzibar-fig05-availability.webp)
 
 *Source: Pang et al., USENIX ATC 2019, Fig. 5.*
 

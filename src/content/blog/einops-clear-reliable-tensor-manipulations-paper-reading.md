@@ -19,7 +19,7 @@ Einops 的价值正是从这个不起眼的薄弱点开始。它没有发明新�
 
 本文精读 Alex Rogozhnikov 的 **Einops: Clear and Reliable Tensor Manipulations with Einstein-like Notation**，该文发表于 ICLR 2022 并入选 Oral。文章同时对照 einops 稳定版 `v0.8.2` 的源码，固定 commit 为 [`8e911db71f2e693a0c434b041180388c685ed06f`](https://github.com/arogozhnikov/einops/tree/8e911db71f2e693a0c434b041180388c685ed06f)。这很重要：论文时代的核心是 `rearrange / reduce / repeat`；今天常见的 `einsum`、`pack / unpack`、Array API、`torch.compile` 和 MLX backend 都是论文之后的演进，不能倒写成 ICLR 2022 已经完成的能力。
 
-![Einops paper title and abstract](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-title-abstract.png)
+![Einops paper title and abstract](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-title-abstract.webp)
 
 *Source: Rogozhnikov, ICLR 2022, title and abstract excerpt via OpenReview archival copy.*
 
@@ -83,7 +83,7 @@ Einops 借用了“用轴名描述计算关系”的思想，但 `rearrange / re
 
 论文把主流张量操作概括为三点：tensor 是带 shape 和 dtype 的 n 维数组；不同 tensor 的轴通常按位置对齐；操作通过轴编号或固定布局约定来指定特殊轴。这套接口简单、高效、普及，却把轴语义留在程序员脑中。
 
-![Mainstream tensor operations in the paper](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-mainstream-tensor-operations.png)
+![Mainstream tensor operations in the paper](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-mainstream-tensor-operations.webp)
 
 *Source: Rogozhnikov, ICLR 2022, mainstream tensor operations excerpt via OpenReview archival copy.*
 
@@ -138,7 +138,7 @@ x = rearrange(x, 'batch heads seq dim -> batch seq (heads dim)')
 
 论文 Figure 1 用图像张量展示了最具说服力的失败案例。同一个底层元素序列，在两个合法 reshape 中可以得到完全不同的结构：一个只混合局部颜色，另一个把所有轴打散。结果 shape 都合法，程序不会报错。
 
-![Breaking tensor structure with reshape](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-figure1-broken-tensor-structure.png)
+![Breaking tensor structure with reshape](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-figure1-broken-tensor-structure.webp)
 
 *Source: Rogozhnikov, ICLR 2022, Fig. 1 via OpenReview archival copy.*
 
@@ -194,7 +194,7 @@ y = rearrange(x, 'batch channel height width -> batch height width channel')
 
 单个标识符代表一个 elementary axis；空格分隔轴；括号把多个 elementary axes 合成一个 composite axis。轴名不存入 tensor，它只在本次操作中建立对应关系。
 
-![Einops pattern language](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-pattern-language.png)
+![Einops pattern language](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-pattern-language.webp)
 
 *Source: Rogozhnikov, ICLR 2022, pattern-language excerpt via OpenReview archival copy.*
 
@@ -516,7 +516,7 @@ token_mixing = EinMix(
 
 论文主文的第一个 case study 是 Vision Permutator，不是 ShuffleNet。原代码要在 height mixing 与 width mixing 之间同时修改多次 reshape、permute 和 projection 前后布局；einops 版本只需要交换 pattern 中的 `h` 和 `w`。
 
-![Vision Permutator case study](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-vision-permutator-case-study.png)
+![Vision Permutator case study](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-vision-permutator-case-study.webp)
 
 *Source: Rogozhnikov, ICLR 2022, Vision Permutator case-study excerpt via OpenReview archival copy.*
 
@@ -567,7 +567,7 @@ x = rearrange(
 
 Glow 的 squeeze 把空间分辨率换成通道数，是 normalizing flow 中常见的可逆结构变换。原始实现包含多次 reshape 和 transpose，逆变换还要重新推导另一套位置编号。
 
-![Glow reversible squeeze and unsqueeze](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-glow-reversible-rearrangement.png)
+![Glow reversible squeeze and unsqueeze](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-glow-reversible-rearrangement.webp)
 
 *Source: Rogozhnikov, ICLR 2022, Glow squeeze/unsqueeze excerpt via OpenReview archival copy.*
 
@@ -637,7 +637,7 @@ Round-trip test 会验证元素顺序，不只是 shape。这里尤其要注意 
 
 论文附录把一个 58 行左右、依赖大量 `view/permute/contiguous` 和 shape comment 的多头注意力实现，与一版轴名清晰的实现并列。论文版本使用 `torch.einsum`，今天也可以用 `einops.einsum` 的多字符轴名进一步提高可读性。
 
-![Multi-head attention case study](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-multi-head-attention-case-study.png)
+![Multi-head attention case study](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-multi-head-attention-case-study.webp)
 
 *Source: Rogozhnikov, ICLR 2022, multi-head-attention case-study excerpt via OpenReview archival copy.*
 
@@ -823,7 +823,7 @@ y = rearrange(x, 'a b c d -> (a b) (c d)')
 
 论文缓存实验故意构造 10,000 个不同 pattern，让缓存无法命中，再与重复同一 pattern 比较。结果约为 `663 ms` 对 `37.1 ms`。这个十几倍差异证明 parser cache 对极小数组的 Python 开销很重要，但不能解释成真实神经网络整体加速十几倍。真实模型中卷积、矩阵乘法和 attention kernel 通常占主导。
 
-![Einops caching and applicability study](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-caching-and-flexibility.png)
+![Einops caching and applicability study](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-caching-and-flexibility.webp)
 
 *Source: Rogozhnikov, ICLR 2022, caching and applicability excerpt via OpenReview archival copy.*
 
@@ -839,7 +839,7 @@ y = rearrange(x, 'a b c d -> (a b) (c d)')
 
 论文用多个框架不同的 transpose API 展示适配价值：`np.transpose`、`tf.transpose`、Keras `permute_dimensions`、PyTorch `permute` 参数形式各不相同，einops pattern 保持一致。
 
-![Backend API comparison](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-backend-api-comparison.png)
+![Backend API comparison](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-backend-api-comparison.webp)
 
 *Source: Rogozhnikov, ICLR 2022, backend API comparison excerpt via OpenReview archival copy.*
 
@@ -1027,7 +1027,7 @@ def split_heads(x, heads: int):
 
 论文 Table 1 比较了 attention、Vision Permutator 和 Glow unsqueeze 的原始 PyTorch 与 einops 版本，在 CPU/CUDA、有无 JIT、不同输入大小下的耗时。
 
-![Einops performance comparison](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-performance-table.png)
+![Einops performance comparison](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-performance-table.webp)
 
 *Source: Rogozhnikov, ICLR 2022, Table 1 via OpenReview archival copy.*
 
@@ -1419,7 +1419,7 @@ y = rearrange(x, '... heads dim -> ... (heads dim)')
 
 论文 Listing 1 把 NumPy 中 transpose、reshape、squeeze、expand_dims、stack、concatenate、flatten、split、max、mean、repeat 和 tile 的常见形式放在一张对应表中。
 
-![Correspondence between mainstream operations and einops](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-mainstream-operations.png)
+![Correspondence between mainstream operations and einops](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-mainstream-operations.webp)
 
 *Source: Rogozhnikov, ICLR 2022, Listing 1 excerpt via OpenReview archival copy.*
 

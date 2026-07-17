@@ -21,7 +21,7 @@ SF3D 这篇论文真正值得精读的地方，不只是把单图 3D 重建做�
 
 官方材料是公开的：项目页为 [stable-fast-3d.github.io](https://stable-fast-3d.github.io)，官方仓库为 [Stability-AI/stable-fast-3d](https://github.com/Stability-AI/stable-fast-3d)，Hugging Face 模型为 [stabilityai/stable-fast-3d](https://huggingface.co/stabilityai/stable-fast-3d)。不过要注意两个边界：第一，HF 模型是 gated，需要同意条件后访问；第二，模型卡显示 Stability AI Community License，并非“无限制商业开源”。本文做论文级精读和源码静态阅读，不下载 gated 权重，不运行推理，不声称复现实验。
 
-![SF3D teaser](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig01-teaser.png)
+![SF3D teaser](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig01-teaser.webp)
 
 *Source: Boss et al., arXiv:2408.00653v1, Fig. 1, arXiv non-exclusive distribution license.*
 
@@ -92,7 +92,7 @@ stable-fast-3d/
 
 SF3D 的动机就是把这些“看起来像后处理”的问题前移到模型设计和训练目标中。
 
-![SF3D prevalent issues](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig02-current-issues.png)
+![SF3D prevalent issues](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig02-current-issues.webp)
 
 *Source: Boss et al., arXiv:2408.00653v1, Fig. 2, arXiv non-exclusive distribution license.*
 
@@ -100,7 +100,7 @@ Fig. 2 是整篇论文的诊断图。第一行说明 TripoSR 类模型容易把�
 
 ## 4. 总体 pipeline
 
-![SF3D method overview](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig03-method-overview.png)
+![SF3D method overview](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig03-method-overview.webp)
 
 *Source: Boss et al., arXiv:2408.00653v1, Fig. 3, arXiv non-exclusive distribution license.*
 
@@ -131,7 +131,7 @@ $$
 
 这个表示很高效，因为它避免了完整 3D voxel grid 的三次方开销。但 triplane 的分辨率会直接限制高频纹理和几何细节。若平面只有 64x64 或 96x96，细节丰富、对比强烈的纹理会出现 aliasing。
 
-![SF3D aliasing issue](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig04-aliasing-issue.png)
+![SF3D aliasing issue](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig04-aliasing-issue.webp)
 
 *Source: Boss et al., arXiv:2408.00653v1, Fig. 4, arXiv non-exclusive distribution license.*
 
@@ -215,7 +215,7 @@ $$
 
 ## 9. Export Pipeline：为什么 UV 是主线不是后处理
 
-![SF3D export pipeline](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig05-export-overview.png)
+![SF3D export pipeline](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig05-export-overview.webp)
 
 *Source: Boss et al., arXiv:2408.00653v1, Fig. 5, arXiv non-exclusive distribution license.*
 
@@ -233,7 +233,7 @@ SF3D 的 export pipeline 是整篇论文最工程化的部分。流程是：
 
 ## 10. Fast UV Unwrapping：box projection 的取舍
 
-![SF3D UV unwrapping](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig06-uv-unwrapping.png)
+![SF3D UV unwrapping](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig06-uv-unwrapping.webp)
 
 *Source: Boss et al., arXiv:2408.00653v1, Fig. 6, arXiv non-exclusive distribution license.*
 
@@ -335,7 +335,7 @@ baseline 包括 ZeroShape、OpenLRM、TripoSR、LGM、CRM、InstantMesh 等。�
 
 这里要注意：这类评估本身很难完全公平。不同模型输出格式不同、mesh scale 和 orientation 不同、是否有 texture / material / UV 也不同。SF3D 的优势不只来自几何指标，还来自输出资产结构更接近图形管线。但自动指标很难直接衡量“这个 GLB 是否更好用”。
 
-![SF3D qualitative comparison](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig07-gso-omni-comparison.png)
+![SF3D qualitative comparison](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig07-gso-omni-comparison.webp)
 
 *Source: Boss et al., arXiv:2408.00653v1, Fig. 7, arXiv non-exclusive distribution license.*
 
@@ -343,7 +343,7 @@ Fig. 7 展示了 GSO 和 OmniObject3D 上的定性对比。可以看到 SF3D 在
 
 ## 14. Table 1：3D 指标精读
 
-![SF3D 3D metrics comparison](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-table01-3d-comparison.png)
+![SF3D 3D metrics comparison](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-table01-3d-comparison.webp)
 
 *Source: Boss et al., arXiv:2408.00653v1, Table 1, arXiv non-exclusive distribution license.*
 
@@ -353,7 +353,7 @@ Table 1 的指标包括 CD 和 F-score。CD 越低越好，F-score 越高越好�
 
 ## 15. Derendering 与 relighting
 
-![SF3D derendering results](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig08-derendering-results.png)
+![SF3D derendering results](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig08-derendering-results.webp)
 
 *Source: Boss et al., arXiv:2408.00653v1, Fig. 8, arXiv non-exclusive distribution license.*
 
@@ -363,7 +363,7 @@ Fig. 8 展示 render、diffuse、roughness-metallic、normal 和不同 relight �
 
 ## 16. Speed vs Quality
 
-![SF3D speed quality plot](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig09-speed-vs-quality.png)
+![SF3D speed quality plot](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig09-speed-vs-quality.webp)
 
 *Source: Boss et al., arXiv:2408.00653v1, Fig. 9, arXiv non-exclusive distribution license.*
 
@@ -377,7 +377,7 @@ Fig. 9 把推理时间和 F-score 放在同一张图里。理想模型位于左�
 
 ## 17. Table 2：消融实验
 
-![SF3D ablation](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-table02-ablation.png)
+![SF3D ablation](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-table02-ablation.webp)
 
 *Source: Boss et al., arXiv:2408.00653v1, Table 2, arXiv non-exclusive distribution license.*
 
@@ -387,7 +387,7 @@ Table 2 用 TripoSR、SF3D without enhanced transformer、SF3D 完整模型做�
 
 ## 18. 附录：Enhanced Transformer 结构
 
-![SF3D enhanced transformer](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig10-enhanced-transformer.png)
+![SF3D enhanced transformer](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig10-enhanced-transformer.webp)
 
 *Source: Boss et al., arXiv:2408.00653v1, Fig. A1, arXiv non-exclusive distribution license.*
 
@@ -399,7 +399,7 @@ Table 2 用 TripoSR、SF3D without enhanced transformer、SF3D 完整模型做�
 
 ## 19. 附录：Image metrics
 
-![SF3D image metrics](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-table03-mesh-render-comparison.png)
+![SF3D image metrics](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-table03-mesh-render-comparison.webp)
 
 *Source: Boss et al., arXiv:2408.00653v1, Table A1, arXiv non-exclusive distribution license.*
 

@@ -98,7 +98,7 @@ Qwen3-VL-Seg 的四个 decoder 模块正好一一对应这四件事。
 
 ## 5. Fig. 1：总体架构
 
-![Qwen3-VL-Seg architecture](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig01-architecture.png)
+![Qwen3-VL-Seg architecture](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig01-architecture.webp)
 
 *Source: Yao et al., arXiv:2605.07141v1, Fig. 1.*
 
@@ -151,7 +151,7 @@ $$
 
 ## 7. Fig. 2：轻量 Mask Decoder 总览
 
-![Qwen3-VL-Seg mask decoder](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig02-mask-decoder.png)
+![Qwen3-VL-Seg mask decoder](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig02-mask-decoder.webp)
 
 *Source: Yao et al., arXiv:2605.07141v1, Fig. 2.*
 
@@ -460,7 +460,7 @@ BCE 提供局部像素梯度，Dice 抵抗类别不平衡并直接推动区域�
 
 ## 17. SA1B-ORS：开放世界能力的数据基础
 
-![SA1B-ORS examples](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig03-sa1b-ors-examples.png)
+![SA1B-ORS examples](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig03-sa1b-ors-examples.webp)
 
 *Source: Yao et al., arXiv:2605.07141v1, Fig. 3.*
 
@@ -479,7 +479,7 @@ CoRS 训练模型回答“把所有狗分出来”“找到建筑”；DeRS 训�
 
 ## 18. SA1B-CoRS：从碎片 Mask 到类别级监督
 
-![SA1B-CoRS pipeline](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig04-sa1b-cors-pipeline.png)
+![SA1B-CoRS pipeline](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig04-sa1b-cors-pipeline.webp)
 
 *Source: Yao et al., arXiv:2605.07141v1, Fig. 4.*
 
@@ -547,7 +547,7 @@ IoF 的分母是 fragment 面积，不是并集。假设完整目标是一辆自
 
 ## 21. SA1B-DeRS：描述性实例消歧
 
-![SA1B-DeRS pipeline](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig05-sa1b-ders-pipeline.png)
+![SA1B-DeRS pipeline](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig05-sa1b-ders-pipeline.webp)
 
 *Source: Yao et al., arXiv:2605.07141v1, Fig. 5.*
 
@@ -579,7 +579,7 @@ DeRS 的价值不只是让句子更长，而是把监督从 category-level class
 
 ## 22. Fig. 6：SA1B-ORS 的数据分布
 
-![SA1B-ORS statistics](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig06-sa1b-ors-statistics.png)
+![SA1B-ORS statistics](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig06-sa1b-ors-statistics.webp)
 
 *Source: Yao et al., arXiv:2605.07141v1, Fig. 6.*
 
@@ -629,7 +629,7 @@ ORS-ID-Bench 的四个桶应分别阅读。single-instance category 高分可能
 
 ## 25. ORS-OOD-Bench：六类分布偏移
 
-![ORS-OOD-Bench examples](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig07-ors-ood-bench.png)
+![ORS-OOD-Bench examples](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig07-ors-ood-bench.webp)
 
 *Source: Yao et al., arXiv:2605.07141v1, Fig. 7.*
 
@@ -752,7 +752,7 @@ REC 评估 box IoU 是否超过 `0.5`，不直接评价 mask。Qwen3-VL-Seg 在 
 
 ## 29. Table 1：Referring Expression Segmentation
 
-![Referring Expression Segmentation results](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-table01-res.png)
+![Referring Expression Segmentation results](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-table01-res.webp)
 
 *Source: Yao et al., arXiv:2605.07141v1, Table 1.*
 
@@ -772,7 +772,7 @@ Table 1 比较 RefCOCO、RefCOCO+ 和 RefCOCOg 共 8 个 split 的 cIoU。Qwen3-
 
 ## 30. Table 2：Referring Expression Comprehension
 
-![Referring Expression Comprehension results](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-table02-rec.png)
+![Referring Expression Comprehension results](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-table02-rec.webp)
 
 *Source: Yao et al., arXiv:2605.07141v1, Table 2.*
 
@@ -791,7 +791,7 @@ Qwen3-VL-Seg 相比基础 Qwen3-VL-4B 在所有 split 上都有提升。例如�
 
 ## 31. Table 3：ORS-ID-Bench 的真正优势在哪里
 
-![ORS-ID-Bench results](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-table03-ors-id-bench.png)
+![ORS-ID-Bench results](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-table03-ors-id-bench.webp)
 
 *Source: Yao et al., arXiv:2605.07141v1, Table 3.*
 
@@ -815,7 +815,7 @@ Qwen3-VL-Seg 在 8 个指标中拿到 7 个最佳。唯一没有最佳的是 mul
 
 ## 32. Fig. 8：单实例类别指令
 
-![Single-instance category results](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig08-single-instance-results.png)
+![Single-instance category results](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig08-single-instance-results.webp)
 
 *Source: Yao et al., arXiv:2605.07141v1, Fig. 8.*
 
@@ -832,7 +832,7 @@ Fig. 8 比较 Gemini-2.5-pro、Gemini-3-flash、Seed-2.0-pro、UFO、Youtu-VL、
 
 ## 33. Fig. 9：多实例类别指令
 
-![Multiple-instance category results](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig09-multiple-instance-results.png)
+![Multiple-instance category results](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig09-multiple-instance-results.webp)
 
 *Source: Yao et al., arXiv:2605.07141v1, Fig. 9.*
 
@@ -850,7 +850,7 @@ Qwen3-VL-Seg 的 P@0.5 略高于 SAM3，cIoU 却略低，可能意味着它在�
 
 ## 34. Fig. 10：Phrasal 与 Descriptive Instruction
 
-![Phrasal and descriptive results](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig10-phrasal-descriptive-results.png)
+![Phrasal and descriptive results](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig10-phrasal-descriptive-results.webp)
 
 *Source: Yao et al., arXiv:2605.07141v1, Fig. 10.*
 
@@ -866,7 +866,7 @@ Qwen3-VL-Seg 的架构让这三层至少部分可观察：JSON label 和 box 可
 
 ## 35. Fig. 11：ORS-OOD-Bench 不能只读“领先”
 
-![ORS-OOD cIoU comparison](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig11-ood-ciou-comparison.png)
+![ORS-OOD cIoU comparison](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-fig11-ood-ciou-comparison.webp)
 
 *Source: Yao et al., arXiv:2605.07141v1, Fig. 11.*
 
@@ -889,7 +889,7 @@ Instruction OOD 达到 `86.22`，高于 Category 和 Area，说明语言形式�
 
 ## 36. Table 4：通用多模态能力的损失与恢复
 
-![General multimodal benchmark results](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-table04-general-multimodal.png)
+![General multimodal benchmark results](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-table04-general-multimodal.webp)
 
 *Source: Yao et al., arXiv:2605.07141v1, Table 4.*
 
@@ -918,7 +918,7 @@ Stage 1 后 MMBench-EN 从 `83.9` 升到 `86.2`，RefCOCO Val 从表中基础值
 
 ## 37. Table 5：哪一部分真正改善严格边界
 
-![Mask decoder ablation](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-table05-ablation.png)
+![Mask decoder ablation](/images/blog/qwen3-vl-seg-open-world-referring-segmentation/qwen3-vl-seg-table05-ablation.webp)
 
 *Source: Yao et al., arXiv:2605.07141v1, Table 5.*
 

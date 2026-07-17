@@ -3,6 +3,9 @@ import { Building2, ExternalLink, FolderGit2, GitFork, Github, MapPin, Star } fr
 import { getGitHubProfile } from '../lib/githubProfile';
 
 const profile = await getGitHubProfile();
+// 头像使用提交的本地静态资产（issue #6 全量推广），不再渲染 GitHub 外链，
+// 避免首屏第三方请求；API 返回的 avatarUrl 仍保留在 profile 数据中。
+const avatarSrc = '/images/avatar.webp';
 const bioLines = profile.bio
   .split(/\r?\n/)
   .map((line) => line.trim())
@@ -20,7 +23,7 @@ const stats = [
 <aside class="profile inspector-panel" aria-label="GitHub profile inspector">
   <header class="profile-head">
     <a class="profile-avatar-link" href={profile.url} aria-label={`打开 ${profile.login} 的 GitHub 主页`}>
-      <img class="profile-avatar" src={profile.avatarUrl} alt={`${profile.login} avatar`} width="72" height="72" loading="lazy" />
+      <img class="profile-avatar" src={avatarSrc} alt={`${profile.login} avatar`} width="72" height="72" loading="lazy" />
     </a>
     <div class="profile-title">
       <p class="profile-kicker">GitHub inspector</p>

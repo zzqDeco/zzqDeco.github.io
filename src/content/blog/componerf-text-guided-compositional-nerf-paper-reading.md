@@ -58,7 +58,7 @@ CompoNeRF 的回答是把场景显式拆成多个对象级 NeRF，并用可编�
 
 Fig. 1 是论文的总览图。它给出了 CompoNeRF 想要支持的三个动作：compose、decompose、recompose。
 
-![Fig. 1: CompoNeRF 总览、compose/decompose/recompose 与 baseline 对比](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig01-overview-editing.png)
+![Fig. 1: CompoNeRF 总览、compose/decompose/recompose 与 baseline 对比](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig01-overview-editing.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Fig. 1, CC BY 4.0.*
 
@@ -138,7 +138,7 @@ CompoNeRF 将文本引导拆成两层：
 
 Fig. 2 是全文最重要的诊断图之一。它说明为什么仅靠 frozen Stable Diffusion 的全局文本监督会失败，以及 CompoNeRF 为什么要引入局部 subtext 和全局 refinement。
 
-![Fig. 2: guidance collapse 与局部/全局引导策略](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig02-guidance-collapse-solutions.png)
+![Fig. 2: guidance collapse 与局部/全局引导策略](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig02-guidance-collapse-solutions.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Fig. 2, CC BY 4.0.*
 
@@ -164,7 +164,7 @@ CompoNeRF 的解决路径对应图里的 dashed box：
 
 Table 1 把 CompoNeRF 放在 text-to-3D 和 scene editing 方法中比较。
 
-![Table 1: 与 text-to-3D / scene editing 相关工作的能力对比](/images/blog/componerf-text-guided-compositional-nerf/componerf-table01-related-work-comparison.png)
+![Table 1: 与 text-to-3D / scene editing 相关工作的能力对比](/images/blog/componerf-text-guided-compositional-nerf/componerf-table01-related-work-comparison.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Table 1, CC BY 4.0.*
 
@@ -182,7 +182,7 @@ Table 1 把 CompoNeRF 放在 text-to-3D 和 scene editing 方法中比较。
 
 Fig. 3 是方法总图。它把 CompoNeRF 拆成 editing 3D scene、scene rendering、joint optimization 三阶段。
 
-![Fig. 3: editing layout、scene rendering、joint optimization 三阶段框架](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig03-framework-overview.png)
+![Fig. 3: editing layout、scene rendering、joint optimization 三阶段框架](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig03-framework-overview.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Fig. 3, CC BY 4.0.*
 
@@ -291,7 +291,7 @@ $$
 
 Fig. 5 展示了 density-based composition module 的细节。
 
-![Fig. 5: density-based composition module 细节](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig05-density-composition-detail.png)
+![Fig. 5: density-based composition module 细节](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig05-density-composition-detail.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Fig. 5, CC BY 4.0.*
 
@@ -331,7 +331,7 @@ $$
 
 Fig. 4 对比了 density-based 与 color-based 组合。
 
-![Fig. 4: density-based 与 color-based 设计影响](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig04-density-vs-color-design.png)
+![Fig. 4: density-based 与 color-based 设计影响](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig04-density-vs-color-design.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Fig. 4, CC BY 4.0.*
 
@@ -397,7 +397,7 @@ $$
 
 附录 Algorithm 1 给出了训练过程。
 
-![Algorithm 1: CompoNeRF Training](/images/blog/componerf-text-guided-compositional-nerf/componerf-algorithm01-training.png)
+![Algorithm 1: CompoNeRF Training](/images/blog/componerf-text-guided-compositional-nerf/componerf-algorithm01-training.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Algorithm 1, CC BY 4.0.*
 
@@ -486,7 +486,7 @@ baseline 重点包括：
 
 Fig. 6 是主实验中最核心的定性结果。
 
-![Fig. 6: 多物体文本 prompt 的定性对比](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig06-qualitative-comparison.png)
+![Fig. 6: 多物体文本 prompt 的定性对比](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig06-qualitative-comparison.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Fig. 6, CC BY 4.0.*
 
@@ -512,7 +512,7 @@ Fig. 6 的强结论是：显式对象槽位和局部 prompt 可以显著缓解�
 
 Table 2 给出不同 case 的 CLIP score。
 
-![Table 2: 不同 3D scene 的 CLIP score 对比](/images/blog/componerf-text-guided-compositional-nerf/componerf-table02-clip-score-scenes.png)
+![Table 2: 不同 3D scene 的 CLIP score 对比](/images/blog/componerf-text-guided-compositional-nerf/componerf-table02-clip-score-scenes.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Table 2, CC BY 4.0.*
 
@@ -531,7 +531,7 @@ Table 2 给出不同 case 的 CLIP score。
 
 Fig. 7 展示了场景编辑和重组。
 
-![Fig. 7: scene editing / recomposition 结果](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig07-scene-editing-outcome.png)
+![Fig. 7: scene editing / recomposition 结果](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig07-scene-editing-outcome.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Fig. 7, CC BY 4.0.*
 
@@ -557,7 +557,7 @@ Fig. 7 展示了场景编辑和重组。
 
 Fig. 8 对比了去掉模块后的结果。
 
-![Fig. 8: global calibration、global text loss、color/density design 消融](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig08-ablation-bedroom.png)
+![Fig. 8: global calibration、global text loss、color/density design 消融](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig08-ablation-bedroom.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Fig. 8, CC BY 4.0.*
 
@@ -578,7 +578,7 @@ Fig. 8 对比了去掉模块后的结果。
 
 Fig. 9 给出多视角结果，进一步说明这些差异不是单视角偶然现象。
 
-![Fig. 9: 多视角结果](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig09-multiview-results.png)
+![Fig. 9: 多视角结果](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig09-multiview-results.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Fig. 9, CC BY 4.0.*
 
@@ -590,7 +590,7 @@ Fig. 9 的意义在于：density-based composition 不只是让某一张渲染�
 
 Fig. 10 讨论训练 guidance resolution 与 global frame scale。
 
-![Fig. 10: global frame scaling / guidance resolution](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig10-guidance-resolution.png)
+![Fig. 10: global frame scaling / guidance resolution](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig10-guidance-resolution.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Fig. 10, CC BY 4.0.*
 
@@ -604,7 +604,7 @@ Fig. 10 讨论训练 guidance resolution 与 global frame scale。
 
 Fig. 11 展示 recomposition finetuning 不同迭代步的变化。
 
-![Fig. 11: recomposition finetuning steps](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig11-recomposition-finetuning.png)
+![Fig. 11: recomposition finetuning steps](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig11-recomposition-finetuning.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Fig. 11, CC BY 4.0.*
 
@@ -623,7 +623,7 @@ Fig. 11 展示 recomposition finetuning 不同迭代步的变化。
 
 Fig. 12 比较不同 global MLP 层数对组合能力的影响。
 
-![Fig. 12: MLP learning capability 消融](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig12-mlp-learning-capability.png)
+![Fig. 12: MLP learning capability 消融](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig12-mlp-learning-capability.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Fig. 12, CC BY 4.0.*
 
@@ -641,7 +641,7 @@ CompoNeRF 的 global MLP 是 residual calibration，不应该变成替代 local 
 
 Fig. 13 展示了 text-to-3D 中常见的 multi-face 问题。
 
-![Fig. 13: multi-face failure 与 mesh guidance](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig13-multiface-mesh-guidance.png)
+![Fig. 13: multi-face failure 与 mesh guidance](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig13-multiface-mesh-guidance.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Fig. 13, CC BY 4.0.*
 
@@ -657,7 +657,7 @@ multi-face 问题指的是物体在多个视角上都试图呈现“正面”或
 
 Fig. 14 讨论 floating objects。
 
-![Fig. 14: layout editing 与 floating object](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig14-layout-floating-objects.png)
+![Fig. 14: layout editing 与 floating object](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig14-layout-floating-objects.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Fig. 14, CC BY 4.0.*
 
@@ -679,7 +679,7 @@ Fig. 14 讨论 floating objects。
 
 Fig. 15 将失败案例分为 scene reconstruction 和 scene editing 两类。
 
-![Fig. 15: scene reconstruction / scene editing failure cases](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig15-failure-cases.png)
+![Fig. 15: scene reconstruction / scene editing failure cases](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig15-failure-cases.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Fig. 15, CC BY 4.0.*
 
@@ -687,7 +687,7 @@ Fig. 15 将失败案例分为 scene reconstruction 和 scene editing 两类。
 
 Fig. 16 进一步展示全局/局部 loss 权重对失败的影响。
 
-![Fig. 16: 失败案例和局部 NeRF 组件](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig16-failure-color-labeled-nerfs.png)
+![Fig. 16: 失败案例和局部 NeRF 组件](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig16-failure-color-labeled-nerfs.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Fig. 16, CC BY 4.0.*
 
@@ -707,7 +707,7 @@ $$
 
 Fig. 17 给出更多多物体结果。原论文中该图跨第 19-20 页，下面图片为两个相关区域的拼接展示。
 
-![Fig. 17: 更多多物体结果](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig17-more-qualitative-results.png)
+![Fig. 17: 更多多物体结果](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig17-more-qualitative-results.webp)
 
 *Source: Bai et al., arXiv:2303.13843v3, Fig. 17, CC BY 4.0. This blog stitches the cross-page figure regions for readability.*
 

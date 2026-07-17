@@ -89,13 +89,13 @@ AgentRL 的设计可以看作对这五类变化的逐项响应。
 
 ## 4. Table 1/2：论文如何界定问题空间
 
-![AgentRL 与其他强化学习框架和方法的能力对比](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table01-framework-comparison.png)
+![AgentRL 与其他强化学习框架和方法的能力对比](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table01-framework-comparison.webp)
 
 *Source: Zhang et al., arXiv:2510.04206v1, Table 1, CC BY 4.0.*
 
 Table 1 把已有工作按 Multi-Turn、Multi-Task、Full-Async、Interactive Environments 和 Heterogeneous Environments 五个维度分类。它想表达的是：训练算法、异步基础设施和环境系统需要同时存在，而不是说所有被列为叉号的方法完全不能处理对应任务。表中的能力判断来自作者定义和论文比较，不是独立兼容性认证；不同项目在论文之后也可能增加新功能。
 
-![单轮强化学习与 Agentic RL 的挑战对比](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table02-challenges.png)
+![单轮强化学习与 Agentic RL 的挑战对比](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table02-challenges.webp)
 
 *Source: Zhang et al., arXiv:2510.04206v1, Table 2, CC BY 4.0.*
 
@@ -187,7 +187,7 @@ GRPO 的好处是省掉与 actor 规模接近的 value model，代价是每个 p
 
 ## 7. Fig. 1：论文先展示了什么结果
 
-![AgentRL 在五个环境上的增益和训练过程](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig01-overall-performance.png)
+![AgentRL 在五个环境上的增益和训练过程](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig01-overall-performance.webp)
 
 *Source: Zhang et al., arXiv:2510.04206v1, Fig. 1, CC BY 4.0.*
 
@@ -199,7 +199,7 @@ Fig. 1b 把五任务平均成功率随训练样本数的变化画成曲线。起
 
 ## 8. Fig. 2：一张图中的四条数据流
 
-![AgentRL 总体框架](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig02-framework-overview.png)
+![AgentRL 总体框架](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig02-framework-overview.webp)
 
 *Source: Zhang et al., arXiv:2510.04206v1, Fig. 2, CC BY 4.0.*
 
@@ -243,7 +243,7 @@ parameter stream:                         push latest actor weights ------>
 
 ## 10. Fig. 3：同步屏障如何形成 GPU 空泡
 
-![同步与全异步训练架构对比](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig03-sync-vs-async.png)
+![同步与全异步训练架构对比](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig03-sync-vs-async.webp)
 
 *Source: Zhang et al., arXiv:2510.04206v1, Fig. 3, CC BY 4.0.*
 
@@ -261,7 +261,7 @@ Fig. 3b 把 GPU 资源拆成 rollout 组和 training 组。任务协程持续填
 
 ## 11. Fig. 4：论文确实测了吞吐，但结论有范围
 
-![AgentRL 异步训练吞吐与同步基线对比](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig04-throughput.png)
+![AgentRL 异步训练吞吐与同步基线对比](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig04-throughput.webp)
 
 *Source: Zhang et al., arXiv:2510.04206v1, Fig. 4, CC BY 4.0.*
 
@@ -313,7 +313,7 @@ class Buffer:
 
 ## 13. Fig. 5：训练框架与环境部署框架的边界
 
-![AgentRL 训练框架与环境部署框架](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig05-environment-deployment-framework.png)
+![AgentRL 训练框架与环境部署框架](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig05-environment-deployment-framework.webp)
 
 *Source: Zhang et al., arXiv:2510.04206v1, Fig. 5, CC BY 4.0.*
 
@@ -461,7 +461,7 @@ $$
 
 ## 19. Fig. 6：Single、Mix 与 Cross 不能混用
 
-![Single、Mix 与 Cross-Policy 三种采样策略](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig06-rollout-strategies.png)
+![Single、Mix 与 Cross-Policy 三种采样策略](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig06-rollout-strategies.webp)
 
 *Source: Zhang et al., arXiv:2510.04206v1, Fig. 6, CC BY 4.0.*
 
@@ -671,7 +671,7 @@ Cross-Policy 下只保存轨迹级 policy id 不够，因为同一 episode 的�
 
 ## 27. Table 3：主结果应该怎样读
 
-![AgentRL 五任务主实验结果](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table03-main-results.png)
+![AgentRL 五任务主实验结果](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table03-main-results.webp)
 
 *Source: Zhang et al., arXiv:2510.04206v1, Table 3, CC BY 4.0.*
 
@@ -702,7 +702,7 @@ Table 3 同时列出 API prompting、开源模型 prompting、已有 Agent train
 
 ## 28. Table 4：一个多任务模型是否真的等于五个专家
 
-![AgentRL 单任务训练与多任务训练对比](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table04-single-vs-multitask.png)
+![AgentRL 单任务训练与多任务训练对比](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table04-single-vs-multitask.webp)
 
 *Source: Zhang et al., arXiv:2510.04206v1, Table 4, CC BY 4.0.*
 
@@ -721,7 +721,7 @@ Table 4 训练五个 Qwen2.5-14B 单任务模型，再与一个五任务联合�
 
 ## 29. Table 5：BFCL-v3 泛化提升存在，但幅度有限
 
-![AgentRL 在 BFCL-v3 上的泛化结果](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table05-bfcl-generalization.png)
+![AgentRL 在 BFCL-v3 上的泛化结果](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table05-bfcl-generalization.webp)
 
 *Source: Zhang et al., arXiv:2510.04206v1, Table 5, CC BY 4.0.*
 
@@ -741,7 +741,7 @@ BFCL 还只是一个 OOD benchmark。真正部署前，应额外检查 schema �
 
 ## 30. Table 6 与 Fig. 7：两个算法部件贡献了什么
 
-![Cross-Policy Sampling 与 Task Advantage Normalization 消融表](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table06-ablation.png)
+![Cross-Policy Sampling 与 Task Advantage Normalization 消融表](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table06-ablation.webp)
 
 *Source: Zhang et al., arXiv:2510.04206v1, Table 6, CC BY 4.0.*
 
@@ -753,7 +753,7 @@ BFCL 还只是一个 OOD benchmark。真正部署前，应额外检查 schema �
 
 去掉 Cross-Policy 后平均下降 `4.3`，KG 下降 `12.0`；去掉任务归一化后平均下降 `5.6`，KG、OS 和 WebShop 都明显回退。两者并非只影响同一任务。
 
-![AgentRL Cross-Policy 与任务归一化训练曲线消融](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig07-ablation.png)
+![AgentRL Cross-Policy 与任务归一化训练曲线消融](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig07-ablation.webp)
 
 *Source: Zhang et al., arXiv:2510.04206v1, Fig. 7, CC BY 4.0.*
 
@@ -765,7 +765,7 @@ Fig. 7b 中，去掉 Task Advantage Normalization 的 ALFWorld 曲线学习较�
 
 ## 31. Fig. 8：先用异构模型验证，再用 stale policy 训练
 
-![Cross-Policy Sampling 在 WebShop 推理和训练中的效果](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig08-cross-policy-webshop.png)
+![Cross-Policy Sampling 在 WebShop 推理和训练中的效果](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig08-cross-policy-webshop.webp)
 
 *Source: Zhang et al., arXiv:2510.04206v1, Fig. 8, CC BY 4.0.*
 
@@ -779,7 +779,7 @@ Fig. 8b 是 WebShop 上的初步训练实验。带 Cross-Policy 的模型从起�
 
 ## 32. Fig. 9 与 Table 7：案例和错误状态怎样限制结论
 
-![KG 任务中 GLM、Llama 与 Cross-Policy 的案例](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig09-cross-policy-kg-case-study.png)
+![KG 任务中 GLM、Llama 与 Cross-Policy 的案例](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig09-cross-policy-kg-case-study.webp)
 
 *Source: Zhang et al., arXiv:2510.04206v1, Fig. 9, CC BY 4.0.*
 
@@ -789,7 +789,7 @@ Fig. 9 的问题是“同时实践藏传佛教和道教的宗教实践数量”�
 
 它仍只是精选案例，不能说明随机切换平均都会产生互补。实际系统需要统计：成功轨迹切换次数、切换发生的 turn、不同 policy 顺序、无效切换率和额外推理成本。
 
-![基础模型与 AgentRL 的主要终止状态对比](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table07-failure-modes.png)
+![基础模型与 AgentRL 的主要终止状态对比](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table07-failure-modes.webp)
 
 *Source: Zhang et al., arXiv:2510.04206v1, Table 7, CC BY 4.0.*
 

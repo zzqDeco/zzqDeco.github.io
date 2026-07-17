@@ -59,7 +59,7 @@ Layout2Scene 的回答是把输入从单纯文本升级为 **3D semantic layout 
 
 Fig. 1 展示了 Layout2Scene 的输入和输出。左侧是 3D semantic layout，右侧是沿导航轨迹渲染出的 RGB、normal、depth。
 
-![Fig. 1: Layout2Scene teaser](/images/blog/layout2scene-semantic-layout-guided-scene-generation/layout2scene-fig01-teaser.png)
+![Fig. 1: Layout2Scene teaser](/images/blog/layout2scene-semantic-layout-guided-scene-generation/layout2scene-fig01-teaser.webp)
 
 *Source: Chen et al., arXiv:2501.02519v1, Fig. 1, CC BY 4.0.*
 
@@ -125,7 +125,7 @@ $$
 
 Fig. 2 是方法总览。它把 Layout2Scene 分为初始化、混合表示、相机采样、几何优化、外观优化几部分。
 
-![Fig. 2: Overview of Layout2Scene](/images/blog/layout2scene-semantic-layout-guided-scene-generation/layout2scene-fig02-pipeline.png)
+![Fig. 2: Overview of Layout2Scene](/images/blog/layout2scene-semantic-layout-guided-scene-generation/layout2scene-fig02-pipeline.webp)
 
 *Source: Chen et al., arXiv:2501.02519v1, Fig. 2, CC BY 4.0.*
 
@@ -642,7 +642,7 @@ SunRGBD 这一路线的优势是数据现实：RGB、depth、semantic segmentati
 
 Fig. 3 展示了定性对比，包含 bedroom 和 living room 两类场景。
 
-![Fig. 3: Qualitative comparisons](/images/blog/layout2scene-semantic-layout-guided-scene-generation/layout2scene-fig03-qualitative-comparison.png)
+![Fig. 3: Qualitative comparisons](/images/blog/layout2scene-semantic-layout-guided-scene-generation/layout2scene-fig03-qualitative-comparison.webp)
 
 *Source: Chen et al., arXiv:2501.02519v1, Fig. 3, CC BY 4.0.*
 
@@ -666,7 +666,7 @@ Layout2Scene 的优势在图中体现为两点：第一，布局更符合 scene 
 
 Fig. 4 展示 living room 和 bathroom 两类 scene。
 
-![Fig. 4: Various scenes](/images/blog/layout2scene-semantic-layout-guided-scene-generation/layout2scene-fig04-various-scenes.png)
+![Fig. 4: Various scenes](/images/blog/layout2scene-semantic-layout-guided-scene-generation/layout2scene-fig04-various-scenes.webp)
 
 *Source: Chen et al., arXiv:2501.02519v1, Fig. 4, CC BY 4.0.*
 
@@ -680,7 +680,7 @@ RGB 看 appearance，normal 看局部表面方向，depth 看空间层次。三�
 
 Table 1 汇总了 CS、IS、training time 和 FPS。
 
-![Table 1: Quantitative comparison](/images/blog/layout2scene-semantic-layout-guided-scene-generation/layout2scene-table01-quantitative-comparison.png)
+![Table 1: Quantitative comparison](/images/blog/layout2scene-semantic-layout-guided-scene-generation/layout2scene-table01-quantitative-comparison.webp)
 
 *Source: Chen et al., arXiv:2501.02519v1, Table 1, CC BY 4.0.*
 
@@ -726,7 +726,7 @@ IS, Inception score, 衡量图像可识别性和多样性，更多是 2D image r
 
 Fig. 5 对比了有无 geometry diffusion prior 的 normal/depth。
 
-![Fig. 5: Geometry prior ablation](/images/blog/layout2scene-semantic-layout-guided-scene-generation/layout2scene-fig05-geometry-prior-ablation.png)
+![Fig. 5: Geometry prior ablation](/images/blog/layout2scene-semantic-layout-guided-scene-generation/layout2scene-fig05-geometry-prior-ablation.webp)
 
 *Source: Chen et al., arXiv:2501.02519v1, Fig. 5, CC BY 4.0.*
 
@@ -740,7 +740,7 @@ Fig. 5 对比了有无 geometry diffusion prior 的 normal/depth。
 
 Fig. 6 对比了原始 ControlNet 和论文的 semantic-geometry guided diffusion。
 
-![Fig. 6: Appearance prior ablation](/images/blog/layout2scene-semantic-layout-guided-scene-generation/layout2scene-fig06-appearance-prior-ablation.png)
+![Fig. 6: Appearance prior ablation](/images/blog/layout2scene-semantic-layout-guided-scene-generation/layout2scene-fig06-appearance-prior-ablation.webp)
 
 *Source: Chen et al., arXiv:2501.02519v1, Fig. 6, CC BY 4.0.*
 
