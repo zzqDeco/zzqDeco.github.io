@@ -1,6 +1,5 @@
 ---
 import '../styles/global.css';
-import 'katex/dist/katex.min.css';
 import Header from '../components/Header.astro';
 import ProfileSidebar from '../components/ProfileSidebar.astro';
 
@@ -94,6 +93,7 @@ const displayPath = pathname === '/' ? '~/blog' : `~${pathname}`;
         document.documentElement.dataset.theme = storedTheme ?? (prefersDark ? 'dark' : 'light');
       })();
     </script>
+    <slot name="head" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">跳到正文</a>

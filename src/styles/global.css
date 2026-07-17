@@ -1176,12 +1176,6 @@ hr {
   border-bottom: 0;
 }
 
-.article-body .katex-display {
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: var(--space-2) 0;
-}
-
 .comments-panel {
   display: grid;
   width: 100%;
