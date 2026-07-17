@@ -5,17 +5,27 @@ import { CalendarDays, Tags, Terminal, TableOfContents } from 'lucide-astro';
 import { render } from 'astro:content';
 import { formatBlogDateTime } from '../../lib/date';
 import { getBlogTagHref, getVisibleBlogPosts } from '../../lib/blog';
+import { markdownHasMath } from '../../lib/math';
+import katexCssUrl from 'katex/dist/katex.min.css?url';
 
 export async function getStaticPaths() {
   const posts = await getVisibleBlogPosts();
 
-  return posts.map((post) => ({
-    params: { slug: post.id },
-    props: { post },
-  }));
+  return posts.map((post) => {
+    if (post.body === undefined) {
+      // glob loader 当前恒有 body；若未来更换 loader 导致缺失，宁可构建失败
+      // 也不能静默按"无公式"处理而丢失 KaTeX CSS
+      throw new Error(`Blog post "${post.id}" has no body; cannot determine hasMath.`);
+    }
+
+    return {
+      params: { slug: post.id },
+      props: { post, hasMath: markdownHasMath(post.body) },
+    };
+  });
 }
 
-const { post } = Astro.props;
+const { post, hasMath } = Astro.props;
 const { Content, headings } = await render(post);
 const pubDate = formatBlogDateTime(post.data.pubDate);
 const updated = post.data.updatedDate ? formatBlogDateTime(post.data.updatedDate) : undefined;
@@ -30,6 +40,15 @@ const tocHeadings = headings.filter((heading) => heading.depth <= 3);
   publishedTime={post.data.pubDate.toISOString()}
   modifiedTime={post.data.updatedDate?.toISOString()}
 >
+  {hasMath && (
+    <Fragment slot="head">
+      <link rel="stylesheet" href={katexCssUrl} />
+      {/* 行间公式溢出保护（原 global.css 规则，仅随 KaTeX 页面加载） */}
+      <style is:inline>
+        .article-body .katex-display { overflow-x: auto; overflow-y: hidden; padding: var(--space-2) 0; }
+      </style>
+    </Fragment>
+  )}
   <article class:list={['article-page', tocHeadings.length > 0 && 'has-toc']}>
     <header class="article-head">
       <nav class="crumbs" aria-label="breadcrumbs">
