@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 680" role="img" aria-labelledby="title desc">
+  <title id="title">Graphiti episode ingestion pipeline</title>
+  <desc id="desc">A reconstructed ingestion pipeline from episode input through extraction, resolution, temporal invalidation, persistence, and community maintenance.</desc>
+  <style>
+    text { font-family: Inter, ui-sans-serif, system-ui, sans-serif; fill: #17202a; }
+    .title { font-size: 30px; font-weight: 700; }
+    .subtitle { font-size: 16px; fill: #4f5b66; }
+    .step { font-size: 17px; font-weight: 700; }
+    .small { font-size: 13px; fill: #4f5b66; }
+    .edge { stroke: #63717c; stroke-width: 2.5; fill: none; }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#63717c"/></marker>
+  </defs>
+  <rect width="1200" height="680" fill="#ffffff"/>
+  <text x="55" y="58" class="title">Incremental episode ingestion</text>
+  <text x="55" y="87" class="subtitle">Paper concepts mapped to Graphiti v0.29.2's add_episode() orchestration</text>
+
+  <rect x="60" y="145" width="175" height="95" rx="8" fill="#e8f3ec" stroke="#4f8c63" stroke-width="2"/>
+  <text x="147" y="180" text-anchor="middle" class="step">1. Episode</text>
+  <text x="147" y="205" text-anchor="middle" class="small">message / text / JSON</text>
+  <text x="147" y="224" text-anchor="middle" class="small">fact_triple in v0.29.2</text>
+  <path d="M235 192 H283" class="edge" marker-end="url(#arrow)"/>
+
+  <rect x="285" y="130" width="190" height="125" rx="8" fill="#f7f1e6" stroke="#ad7b2c" stroke-width="2"/>
+  <text x="380" y="164" text-anchor="middle" class="step">2. Extract</text>
+  <text x="380" y="190" text-anchor="middle" class="small">entities and facts</text>
+  <text x="380" y="210" text-anchor="middle" class="small">reflection for omissions</text>
+  <text x="380" y="230" text-anchor="middle" class="small">reference time parsing</text>
+  <path d="M475 192 H523" class="edge" marker-end="url(#arrow)"/>
+
+  <rect x="525" y="130" width="190" height="125" rx="8" fill="#f3eef8" stroke="#8b66a8" stroke-width="2"/>
+  <text x="620" y="164" text-anchor="middle" class="step">3. Resolve</text>
+  <text x="620" y="190" text-anchor="middle" class="small">vector + full-text recall</text>
+  <text x="620" y="210" text-anchor="middle" class="small">entity deduplication</text>
+  <text x="620" y="230" text-anchor="middle" class="small">fact deduplication</text>
+  <path d="M715 192 H763" class="edge" marker-end="url(#arrow)"/>
+
+  <rect x="765" y="130" width="190" height="125" rx="8" fill="#fceeed" stroke="#b45c55" stroke-width="2"/>
+  <text x="860" y="164" text-anchor="middle" class="step">4. Invalidate</text>
+  <text x="860" y="190" text-anchor="middle" class="small">detect contradictions</text>
+  <text x="860" y="210" text-anchor="middle" class="small">close time intervals</text>
+  <text x="860" y="230" text-anchor="middle" class="small">preserve old provenance</text>
+  <path d="M955 192 H1003" class="edge" marker-end="url(#arrow)"/>
+
+  <rect x="1005" y="145" width="145" height="95" rx="8" fill="#e8f1f8" stroke="#4f7fa3" stroke-width="2"/>
+  <text x="1077" y="180" text-anchor="middle" class="step">5. Persist</text>
+  <text x="1077" y="205" text-anchor="middle" class="small">nodes, edges,</text>
+  <text x="1077" y="224" text-anchor="middle" class="small">embeddings</text>
+
+  <path d="M1077 240 V325 H880" class="edge" marker-end="url(#arrow)"/>
+  <rect x="720" y="300" width="200" height="90" rx="8" fill="#eef7f1" stroke="#5a936c" stroke-width="2"/>
+  <text x="820" y="334" text-anchor="middle" class="step">6. Communities</text>
+  <text x="820" y="359" text-anchor="middle" class="small">incremental labels and</text>
+  <text x="820" y="378" text-anchor="middle" class="small">summary maintenance</text>
+
+  <rect x="65" y="455" width="1070" height="150" rx="8" fill="#f7f9fa" stroke="#9aa5ad" stroke-width="2"/>
+  <text x="90" y="492" class="step">Engineering boundary</text>
+  <text x="90" y="526" class="small">Core add_episode() orchestrates the work and writes to the graph driver.</text>
+  <text x="90" y="551" class="small">For production ingestion, callers should place this operation behind a durable background queue with retries and idempotency.</text>
+  <text x="90" y="576" class="small">The v0.29.2 MCP server includes a queue layer; that queue is not part of the paper's graph model.</text>
+</svg>

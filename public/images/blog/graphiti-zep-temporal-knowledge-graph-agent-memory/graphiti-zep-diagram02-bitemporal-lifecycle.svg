@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 660" role="img" aria-labelledby="title desc">
+  <title id="title">Bitemporal fact lifecycle</title>
+  <desc id="desc">Two aligned timelines distinguish when a fact is valid in the modeled world from when the system knows it.</desc>
+  <style>
+    text { font-family: Inter, ui-sans-serif, system-ui, sans-serif; fill: #17202a; }
+    .title { font-size: 30px; font-weight: 700; }
+    .subtitle { font-size: 16px; fill: #4f5b66; }
+    .lane { font-size: 20px; font-weight: 700; }
+    .label { font-size: 15px; font-weight: 600; }
+    .small { font-size: 13px; fill: #4f5b66; }
+    .axis { stroke: #586773; stroke-width: 3; }
+    .tick { stroke: #586773; stroke-width: 2; }
+    .guide { stroke: #9aa5ad; stroke-width: 1.5; stroke-dasharray: 6 6; }
+  </style>
+  <rect width="1200" height="660" fill="#ffffff"/>
+  <text x="60" y="58" class="title">A fact has two clocks</text>
+  <text x="60" y="87" class="subtitle">Valid time describes the world; transaction time describes the memory system</text>
+
+  <rect x="55" y="120" width="1090" height="190" rx="8" fill="#f7f4fb" stroke="#9a7db7" stroke-width="2"/>
+  <text x="80" y="157" class="lane">World / valid timeline T</text>
+  <line x1="220" y1="230" x2="1080" y2="230" class="axis"/>
+  <line x1="360" y1="218" x2="360" y2="243" class="tick"/>
+  <line x1="835" y1="218" x2="835" y2="243" class="tick"/>
+  <text x="360" y="267" text-anchor="middle" class="label">valid_at</text>
+  <text x="835" y="267" text-anchor="middle" class="label">invalid_at</text>
+  <rect x="360" y="196" width="475" height="25" rx="5" fill="#cdb6df"/>
+  <text x="598" y="188" text-anchor="middle" class="small">"Alice works at Acme" is true in the modeled world</text>
+
+  <rect x="55" y="335" width="1090" height="190" rx="8" fill="#f2f8fb" stroke="#6d9bb8" stroke-width="2"/>
+  <text x="80" y="372" class="lane">System / transaction timeline T'</text>
+  <line x1="220" y1="445" x2="1080" y2="445" class="axis"/>
+  <line x1="520" y1="433" x2="520" y2="458" class="tick"/>
+  <line x1="970" y1="433" x2="970" y2="458" class="tick"/>
+  <text x="520" y="482" text-anchor="middle" class="label">created_at</text>
+  <text x="970" y="482" text-anchor="middle" class="label">expired_at</text>
+  <rect x="520" y="411" width="450" height="25" rx="5" fill="#b9d9e8"/>
+  <text x="745" y="403" text-anchor="middle" class="small">the system stores this edge as the current assertion</text>
+
+  <line x1="360" y1="242" x2="520" y2="433" class="guide"/>
+  <line x1="835" y1="242" x2="970" y2="433" class="guide"/>
+  <rect x="165" y="558" width="870" height="60" rx="8" fill="#fff8e8" stroke="#c59a38"/>
+  <text x="600" y="583" text-anchor="middle" class="label">Correction does not require physical deletion</text>
+  <text x="600" y="606" text-anchor="middle" class="small">A contradicting episode closes validity and transaction intervals while provenance remains auditable</text>
+</svg>

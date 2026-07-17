@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Graphiti v0.29.2 code architecture</title>
+  <desc id="desc">The public API, orchestration modules, provider adapters, graph drivers, and optional server layers of Graphiti v0.29.2.</desc>
+  <style>
+    text { font-family: Inter, ui-sans-serif, system-ui, sans-serif; fill: #17202a; }
+    .title { font-size: 30px; font-weight: 700; }
+    .subtitle { font-size: 16px; fill: #4f5b66; }
+    .head { font-size: 18px; font-weight: 700; }
+    .label { font-size: 14px; font-weight: 600; }
+    .small { font-size: 12px; fill: #4f5b66; }
+    .edge { stroke: #687680; stroke-width: 2.2; fill: none; }
+  </style>
+  <defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#687680"/></marker></defs>
+  <rect width="1200" height="720" fill="#ffffff"/>
+  <text x="50" y="55" class="title">Graphiti v0.29.2: stable code boundary</text>
+  <text x="50" y="84" class="subtitle">Pinned to ff7e29c; managed Zep services sit outside this repository</text>
+
+  <rect x="55" y="120" width="1090" height="90" rx="8" fill="#eef4f7" stroke="#587f96" stroke-width="2"/>
+  <text x="80" y="153" class="head">Public orchestration</text>
+  <text x="80" y="181" class="small">graphiti_core/graphiti.py</text>
+  <rect x="285" y="139" width="150" height="48" rx="6" fill="#d9e9f1" stroke="#587f96"/>
+  <text x="360" y="169" text-anchor="middle" class="label">add_episode</text>
+  <rect x="455" y="139" width="150" height="48" rx="6" fill="#d9e9f1" stroke="#587f96"/>
+  <text x="530" y="169" text-anchor="middle" class="label">add_triplet</text>
+  <rect x="625" y="139" width="150" height="48" rx="6" fill="#d9e9f1" stroke="#587f96"/>
+  <text x="700" y="169" text-anchor="middle" class="label">search / search_</text>
+  <rect x="795" y="139" width="150" height="48" rx="6" fill="#d9e9f1" stroke="#587f96"/>
+  <text x="870" y="169" text-anchor="middle" class="label">communities</text>
+  <rect x="965" y="139" width="150" height="48" rx="6" fill="#d9e9f1" stroke="#587f96"/>
+  <text x="1040" y="169" text-anchor="middle" class="label">sagas</text>
+
+  <rect x="55" y="245" width="520" height="200" rx="8" fill="#f8f3e9" stroke="#b1843c" stroke-width="2"/>
+  <text x="80" y="280" class="head">Domain and maintenance</text>
+  <rect x="85" y="305" width="135" height="50" rx="6" fill="#f2dfb8" stroke="#a27a31"/>
+  <text x="152" y="335" text-anchor="middle" class="label">nodes.py</text>
+  <rect x="240" y="305" width="135" height="50" rx="6" fill="#f2dfb8" stroke="#a27a31"/>
+  <text x="307" y="335" text-anchor="middle" class="label">edges.py</text>
+  <rect x="395" y="305" width="145" height="50" rx="6" fill="#f2dfb8" stroke="#a27a31"/>
+  <text x="467" y="335" text-anchor="middle" class="label">prompts/</text>
+  <rect x="85" y="375" width="210" height="48" rx="6" fill="#f2dfb8" stroke="#a27a31"/>
+  <text x="190" y="405" text-anchor="middle" class="label">utils/maintenance/</text>
+  <rect x="315" y="375" width="225" height="48" rx="6" fill="#f2dfb8" stroke="#a27a31"/>
+  <text x="427" y="405" text-anchor="middle" class="label">utils/ontology_utils/</text>
+
+  <rect x="605" y="245" width="540" height="200" rx="8" fill="#f4f0f8" stroke="#8b6aa3" stroke-width="2"/>
+  <text x="630" y="280" class="head">Search and provider adapters</text>
+  <rect x="635" y="305" width="150" height="50" rx="6" fill="#e5d9ed" stroke="#81629a"/>
+  <text x="710" y="335" text-anchor="middle" class="label">search/</text>
+  <rect x="805" y="305" width="150" height="50" rx="6" fill="#e5d9ed" stroke="#81629a"/>
+  <text x="880" y="335" text-anchor="middle" class="label">llm_client/</text>
+  <rect x="975" y="305" width="140" height="50" rx="6" fill="#e5d9ed" stroke="#81629a"/>
+  <text x="1045" y="335" text-anchor="middle" class="label">embedder/</text>
+  <rect x="720" y="375" width="310" height="48" rx="6" fill="#e5d9ed" stroke="#81629a"/>
+  <text x="875" y="405" text-anchor="middle" class="label">cross_encoder/ and recipes</text>
+
+  <path d="M315 210 V245" class="edge" marker-end="url(#arrow)"/>
+  <path d="M875 210 V245" class="edge" marker-end="url(#arrow)"/>
+
+  <rect x="55" y="480" width="1090" height="105" rx="8" fill="#eef7f1" stroke="#5a906b" stroke-width="2"/>
+  <text x="80" y="515" class="head">GraphDriver implementations</text>
+  <rect x="280" y="503" width="170" height="55" rx="6" fill="#d8ecde" stroke="#4f865f"/>
+  <text x="365" y="536" text-anchor="middle" class="label">Neo4j</text>
+  <rect x="470" y="503" width="170" height="55" rx="6" fill="#d8ecde" stroke="#4f865f"/>
+  <text x="555" y="536" text-anchor="middle" class="label">FalkorDB</text>
+  <rect x="660" y="503" width="215" height="55" rx="6" fill="#d8ecde" stroke="#4f865f"/>
+  <text x="767" y="527" text-anchor="middle" class="label">Amazon Neptune</text>
+  <text x="767" y="545" text-anchor="middle" class="small">with OpenSearch</text>
+  <rect x="895" y="503" width="170" height="55" rx="6" fill="#f4e5e4" stroke="#ad635d"/>
+  <text x="980" y="527" text-anchor="middle" class="label">Kuzu</text>
+  <text x="980" y="545" text-anchor="middle" class="small">deprecated</text>
+  <path d="M600 445 V480" class="edge" marker-end="url(#arrow)"/>
+
+  <rect x="170" y="625" width="350" height="55" rx="8" fill="#f7f9fa" stroke="#87939b" stroke-width="2"/>
+  <text x="345" y="648" text-anchor="middle" class="head">Optional MCP server</text>
+  <text x="345" y="668" text-anchor="middle" class="small">queue, tools, HTTP or stdio</text>
+  <rect x="680" y="625" width="350" height="55" rx="8" fill="#f7f9fa" stroke="#87939b" stroke-width="2"/>
+  <text x="855" y="648" text-anchor="middle" class="head">Optional FastAPI server</text>
+  <text x="855" y="668" text-anchor="middle" class="small">deployment shell, not the graph model</text>
+  <path d="M345 625 V585" class="edge" marker-end="url(#arrow)"/>
+  <path d="M855 625 V585" class="edge" marker-end="url(#arrow)"/>
+</svg>
