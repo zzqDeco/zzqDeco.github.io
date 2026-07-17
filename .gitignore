@@ -3,3 +3,8 @@ dist
 .astro
 .trash
 .DS_Store
+
+# Local agent configuration
+/.claude/
+/.mcp.json
+/.omc/
