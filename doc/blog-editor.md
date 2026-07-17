@@ -4,11 +4,14 @@
 
 本地 Blog Editor 是一个面向 `src/content/blog/*.md` 的 Markdown 写作工具。它让 frontmatter、正文编辑和文章图片上传集中在同一个本地页面中，但不会改变线上站点的构建方式。
 
-启动命令：
+启动命令（首次使用前需先安装编辑器自己的依赖，见下）：
 
 ```bash
+npm --prefix tools/blog-editor install  # 首次使用
 npm run editor
 ```
+
+编辑器是 `tools/blog-editor/` 下的独立 npm package（独立 lockfile），根目录安装不会带入它的依赖。服务器基于自身文件位置推导仓库根，从任意 cwd 启动均可。
 
 默认地址：
 

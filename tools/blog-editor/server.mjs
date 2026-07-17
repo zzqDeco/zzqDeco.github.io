@@ -7,7 +7,9 @@ import matter from 'gray-matter';
 import { build } from 'esbuild';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = process.cwd();
+// 仓库根固定为 server.mjs 所在目录（tools/blog-editor/）的上两级，
+// 不依赖 process.cwd()，从根目录或子目录启动路径都正确。
+const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
 const blogDir = path.join(repoRoot, 'src/content/blog');
 const trashDir = path.join(repoRoot, '.trash/blog');
 const assetDir = path.join(repoRoot, 'public/images/blog');

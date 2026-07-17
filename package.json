@@ -17,10 +17,7 @@
   "dependencies": {
     "@astrojs/rss": "^4.0.18",
     "@astrojs/sitemap": "^3.7.2",
-    "@milkdown/crepe": "^7.20.0",
-    "@milkdown/kit": "^7.20.0",
     "astro": "^6.1.6",
-    "gray-matter": "^4.0.3",
     "katex": "^0.16.45",
     "lucide-astro": "^0.556.0",
     "rehype-katex": "^7.0.1",
@@ -30,7 +27,6 @@
     "unified": "^11.0.5"
   },
   "devDependencies": {
-    "esbuild": "^0.28.0",
     "typescript": "^5.9.3"
   }
 }

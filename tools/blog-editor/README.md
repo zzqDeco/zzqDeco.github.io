@@ -6,9 +6,19 @@ It is intentionally not part of the Astro site build and is not deployed to GitH
 
 ## Start
 
+The editor is a standalone npm package with its own lockfile. Install its dependencies once (they are not installed by the root `npm install`):
+
+```bash
+npm --prefix tools/blog-editor install
+```
+
+Then start from the repo root:
+
 ```bash
 npm run editor
 ```
+
+`cd tools/blog-editor && npm run dev` works too; the server resolves repo paths from its own location, so the working directory does not matter.
 
 Open:
 

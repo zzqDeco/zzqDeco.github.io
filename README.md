@@ -23,6 +23,7 @@ npm install
 npm run dev
 npm run build
 npm run preview
+npm --prefix tools/blog-editor install  # 首次使用编辑器前
 npm run editor
 ```
 
