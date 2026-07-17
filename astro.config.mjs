@@ -14,6 +14,7 @@ export default defineConfig({
         light: 'github-light',
         dark: 'github-dark-dimmed',
       },
+      defaultColor: false,
       wrap: true,
     },
     remarkPlugins: [remarkGfm, remarkMath],
