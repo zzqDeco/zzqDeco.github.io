@@ -32,7 +32,7 @@ const { page, tags, archiveGroups } = Astro.props;
 const summary = `${page.total} entries sorted by pubDate desc. Page ${page.currentPage} / ${page.lastPage}. Markdown remains the source of truth; production filters drafts.`;
 ---
 
-<BaseLayout title={`文章 - 第 ${page.currentPage} 页`} description="zzqDeco Blog 文章列表" variant="archive">
+<BaseLayout title={`文章 - 第 ${page.currentPage} 页`} description="zzqDeco Blog 文章列表">
   <BlogArchiveView
     heading="文章归档"
     terminalCommand={`find ./src/content/blog -type f | sort --reverse | sed -n '${page.start + 1},${page.end + 1}p'`}

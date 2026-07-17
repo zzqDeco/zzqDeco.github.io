@@ -1,8 +1,7 @@
 ---
 import { ArrowLeft, ArrowRight, CalendarDays, Hash, Terminal } from 'lucide-astro';
 import type { BlogPage, BlogTag, BlogYearGroup } from '../lib/blog';
-import { formatBlogDateTime } from '../lib/date';
-import { getBlogTagHref } from '../lib/blog';
+import PostEntry from './PostEntry.astro';
 
 interface Props {
   heading: string;
@@ -72,28 +71,7 @@ const {
 
             <ol class="post-list archive-list">
               {monthGroup.posts.map((post) => (
-                <li class="post-entry">
-                  <div class="post-entry-head">
-                    <time class="post-date" datetime={post.data.pubDate.toISOString()}>
-                      {formatBlogDateTime(post.data.pubDate)}
-                    </time>
-                    <span class="sep">·</span>
-                    <span class="post-path">/blog/{post.id}</span>
-                  </div>
-                  <h3 class="post-entry-title"><a href={`/blog/${post.id}/`}>{post.data.title}</a></h3>
-                  {post.data.description && (
-                    <p class="post-entry-summary">{post.data.description}</p>
-                  )}
-                  {post.data.tags.length > 0 && (
-                    <div class="post-entry-tags" aria-label="标签">
-                      {post.data.tags.map((tag) => <a href={getBlogTagHref(tag)}>{tag}</a>)}
-                    </div>
-                  )}
-                  <a class="post-entry-read" href={`/blog/${post.id}/`}>
-                    read
-                    <ArrowRight size={13} strokeWidth={1.8} aria-hidden="true" />
-                  </a>
-                </li>
+                <PostEntry post={post} actionLabel="read" />
               ))}
             </ol>
           </div>

@@ -45,7 +45,7 @@ const title = `标签 ${tag.name}`;
 const summary = `${page.total} entries tagged "${tag.name}". Page ${page.currentPage} / ${page.lastPage}. Markdown remains the source of truth; production filters drafts.`;
 ---
 
-<BaseLayout title={title} description={`zzqDeco Blog 标签 ${tag.name} 文章列表`} variant="archive">
+<BaseLayout title={title} description={`zzqDeco Blog 标签 ${tag.name} 文章列表`}>
   <BlogArchiveView
     heading={title}
     terminalCommand={`rg -l '^- ${tag.name}$' src/content/blog`}

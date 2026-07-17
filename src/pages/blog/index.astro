@@ -16,7 +16,7 @@ const archiveGroups = groupBlogPostsByArchive(page.data);
 const summary = `${page.total} entries sorted by pubDate desc. Page ${page.currentPage} / ${page.lastPage}. Markdown remains the source of truth; production filters drafts.`;
 ---
 
-<BaseLayout title="文章" description="zzqDeco Blog 文章列表" variant="archive">
+<BaseLayout title="文章" description="zzqDeco Blog 文章列表">
   <BlogArchiveView
     heading="文章归档"
     terminalCommand="find ./src/content/blog -type f | sort --reverse"

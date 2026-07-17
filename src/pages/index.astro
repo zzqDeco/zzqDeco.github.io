@@ -1,15 +1,15 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import PostEntry from '../components/PostEntry.astro';
 import { ArrowRight, FileText, Rss, Terminal, UserRound } from 'lucide-astro';
-import { formatBlogDateTime } from '../lib/date';
-import { getBlogTagHref, getVisibleBlogPosts } from '../lib/blog';
+import { getVisibleBlogPosts } from '../lib/blog';
 
 const posts = await getVisibleBlogPosts();
 
 const latestPosts = posts.slice(0, 5);
 ---
 
-<BaseLayout title="首页" description="zzqDeco Blog 首页" variant="home">
+<BaseLayout title="首页" description="zzqDeco Blog 首页">
   <section class="home-hero" aria-label="介绍">
     <div class="hero-console">
       <p class="terminal-line">
@@ -52,28 +52,7 @@ const latestPosts = posts.slice(0, 5);
 
     <ol class="post-list">
       {latestPosts.map((post) => (
-        <li class="post-entry">
-          <div class="post-entry-head">
-            <time class="post-date" datetime={post.data.pubDate.toISOString()}>
-              {formatBlogDateTime(post.data.pubDate)}
-            </time>
-            <span class="sep">·</span>
-            <span class="post-path">/blog/{post.id}</span>
-          </div>
-          <h3 class="post-entry-title"><a href={`/blog/${post.id}/`}>{post.data.title}</a></h3>
-          {post.data.description && (
-            <p class="post-entry-summary">{post.data.description}</p>
-          )}
-          {post.data.tags.length > 0 && (
-            <div class="post-entry-tags" aria-label="标签">
-              {post.data.tags.map((tag) => <a href={getBlogTagHref(tag)}>{tag}</a>)}
-            </div>
-          )}
-          <a class="post-entry-read" href={`/blog/${post.id}/`}>
-            open file
-            <ArrowRight size={13} strokeWidth={1.8} aria-hidden="true" />
-          </a>
-        </li>
+        <PostEntry post={post} actionLabel="open file" />
       ))}
     </ol>
   </section>
