@@ -24,15 +24,49 @@ import { Moon, Sun } from 'lucide-astro';
     button.dataset.theme = theme;
   };
 
-  const setTheme = (theme) => {
+  const applyTheme = (theme) => {
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem('theme', theme);
     updateButton(theme);
+  };
+
+  const setTheme = (theme) => {
+    applyTheme(theme);
+    try {
+      window.localStorage.setItem('theme', theme);
+    } catch {
+      // 存储被禁用时选择只在当前页面生命周期内有效
+    }
   };
 
   updateButton(getTheme());
 
+  // 内存标志：一经手动选择即停止跟随系统主题，与存储写入是否成功无关
+  let manualSelected = false;
+
+  // 无存储偏好时跟随系统主题；禁用存储时读取按失败处理，等同无偏好。
+  // 跟随时只改当前页面（applyTheme），不写存储，否则会把系统主题固化成用户偏好
+  let storedTheme = null;
+  try {
+    storedTheme = window.localStorage.getItem('theme');
+  } catch {
+    // 静默降级为仅内存状态
+  }
+  if (storedTheme == null) {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleSystemThemeChange = (event) => {
+      if (manualSelected) return;
+      applyTheme(event.matches ? 'dark' : 'light');
+    };
+    // 旧版 Safari 的 MediaQueryList 只有 addListener，需回退兼容
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleSystemThemeChange);
+    } else if (typeof mediaQuery.addListener === 'function') {
+      mediaQuery.addListener(handleSystemThemeChange);
+    }
+  }
+
   button?.addEventListener('click', () => {
+    manualSelected = true;
     setTheme(getTheme() === 'dark' ? 'light' : 'dark');
   });
 </script>
