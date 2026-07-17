@@ -34,6 +34,6 @@ export function getBlogDateParts(date: Date): BlogDateParts {
 }
 
 export function formatBlogDateTime(date: Date): string {
-  const { year, month, day, hour, minute, second } = getBlogDateParts(date);
-  return `${year}/${month}/${day} ${hour}:${minute}:${second}`;
+  const { year, month, day, hour, minute } = getBlogDateParts(date);
+  return `${year}/${month}/${day} ${hour}:${minute}`;
 }
