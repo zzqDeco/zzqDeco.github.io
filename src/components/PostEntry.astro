@@ -20,7 +20,7 @@ const { post, actionLabel } = Astro.props;
     <span class="sep">·</span>
     <span class="post-path">/blog/{post.id}</span>
   </div>
-  <h3 class="post-entry-title"><a href={`/blog/${post.id}/`}>{post.data.title}</a></h3>
+  <h3 class="post-entry-title"><a href={`/blog/${post.id}/`} data-astro-prefetch>{post.data.title}</a></h3>
   {post.data.description && (
     <p class="post-entry-summary">{post.data.description}</p>
   )}
@@ -29,7 +29,7 @@ const { post, actionLabel } = Astro.props;
       {post.data.tags.map((tag) => <a href={getBlogTagHref(tag)}>{tag}</a>)}
     </div>
   )}
-  <a class="post-entry-read" href={`/blog/${post.id}/`}>
+  <a class="post-entry-read" href={`/blog/${post.id}/`} data-astro-prefetch>
     {actionLabel}
     <ArrowRight size={13} strokeWidth={1.8} aria-hidden="true" />
   </a>

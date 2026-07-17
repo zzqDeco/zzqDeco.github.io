@@ -7,6 +7,9 @@ import remarkMath from 'remark-math';
 
 export default defineConfig({
   site: 'https://zzqDeco.github.io',
+  // 仅加载预取脚本，默认只处理带 data-astro-prefetch 的链接（hover 策略）；
+  // 不开 prefetchAll / defaultStrategy: 'viewport'，避免全站预取浪费（文章页 gzip ~60KB）。
+  prefetch: true,
   integrations: [sitemap()],
   markdown: {
     shikiConfig: {
