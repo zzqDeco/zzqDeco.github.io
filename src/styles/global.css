@@ -1582,6 +1582,7 @@ hr {
 
   .hero-title {
     font-size: 1.72rem;
+    white-space: normal;
   }
 
   .hero-actions,
