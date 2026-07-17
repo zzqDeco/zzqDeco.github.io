@@ -10,6 +10,8 @@ const blog = defineCollection({
     updatedDate: z.coerce.date().optional(),
     tags: z.array(z.string()).default([]),
     draft: z.boolean().default(false),
+    // 文章自定义分享图路径（如 /images/xxx.png），缺省回退站点默认分享图
+    image: z.string().optional(),
   }),
 });
 
