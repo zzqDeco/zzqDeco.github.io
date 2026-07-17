@@ -48,7 +48,13 @@ const displayPath = pathname === '/' ? '~/blog' : `~${pathname}`;
     <script is:inline>
       (() => {
         const storageKey = 'theme';
-        const storedTheme = localStorage.getItem(storageKey);
+        // 禁用存储时访问 window.localStorage 本身也会抛异常，需整体包 try/catch
+        let storedTheme = null;
+        try {
+          storedTheme = window.localStorage.getItem(storageKey);
+        } catch {
+          // 静默降级为仅内存状态
+        }
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         document.documentElement.dataset.theme = storedTheme ?? (prefersDark ? 'dark' : 'light');
       })();
