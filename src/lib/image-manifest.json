@@ -1,0 +1,146 @@
+{
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig01-teaser.webp": {
+    "width": 1920,
+    "height": 1027,
+    "bytes": 171026,
+    "sourceBytes": 3573904
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig02-pipeline.webp": {
+    "width": 1920,
+    "height": 640,
+    "bytes": 101080,
+    "sourceBytes": 1016886
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig03-plainrecon.webp": {
+    "width": 1920,
+    "height": 1016,
+    "bytes": 88390,
+    "sourceBytes": 1485041
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig04-zero-shot-pose.webp": {
+    "width": 1507,
+    "height": 767,
+    "bytes": 56412,
+    "sourceBytes": 408244
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig05-layout-optimization.webp": {
+    "width": 1440,
+    "height": 844,
+    "bytes": 50336,
+    "sourceBytes": 571906
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig06-ssdb-results.webp": {
+    "width": 1920,
+    "height": 1080,
+    "bytes": 138314,
+    "sourceBytes": 2525536
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig07-scannet-comparison.webp": {
+    "width": 1920,
+    "height": 1519,
+    "bytes": 215018,
+    "sourceBytes": 3148009
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig08-in-the-wild.webp": {
+    "width": 1690,
+    "height": 725,
+    "bytes": 97006,
+    "sourceBytes": 969151
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig09-text-to-scene.webp": {
+    "width": 1690,
+    "height": 620,
+    "bytes": 104892,
+    "sourceBytes": 616794
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig10-scene-graph.webp": {
+    "width": 1855,
+    "height": 1250,
+    "bytes": 81912,
+    "sourceBytes": 850610
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig11-editing.webp": {
+    "width": 1920,
+    "height": 289,
+    "bytes": 45698,
+    "sourceBytes": 852921
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig12-architecture-results.webp": {
+    "width": 1690,
+    "height": 535,
+    "bytes": 55080,
+    "sourceBytes": 596044
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig13-evaluation-set-differences.webp": {
+    "width": 1920,
+    "height": 421,
+    "bytes": 25952,
+    "sourceBytes": 539035
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig14-more-ssdb.webp": {
+    "width": 1920,
+    "height": 2267,
+    "bytes": 252112,
+    "sourceBytes": 4972388
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig15-more-real-world.webp": {
+    "width": 1690,
+    "height": 1160,
+    "bytes": 152476,
+    "sourceBytes": 1868071
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig16-more-text-to-scene.webp": {
+    "width": 1690,
+    "height": 940,
+    "bytes": 158290,
+    "sourceBytes": 1139507
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table01-zero-shot-9dof.webp": {
+    "width": 1690,
+    "height": 500,
+    "bytes": 71304,
+    "sourceBytes": 127996
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table02-layout-ablation.webp": {
+    "width": 850,
+    "height": 570,
+    "bytes": 35654,
+    "sourceBytes": 80007
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table03-retrieval-similarity.webp": {
+    "width": 850,
+    "height": 560,
+    "bytes": 62698,
+    "sourceBytes": 125629
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table04-architecture-reconstruction.webp": {
+    "width": 1690,
+    "height": 420,
+    "bytes": 52294,
+    "sourceBytes": 106411
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table05-object-groups.webp": {
+    "width": 850,
+    "height": 540,
+    "bytes": 47924,
+    "sourceBytes": 102729
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table06-scannet-alignment.webp": {
+    "width": 1690,
+    "height": 450,
+    "bytes": 54938,
+    "sourceBytes": 110749
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table07-retrieval-hypotheses.webp": {
+    "width": 850,
+    "height": 360,
+    "bytes": 28666,
+    "sourceBytes": 55012
+  },
+  "/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table08-stagewise-optimization.webp": {
+    "width": 850,
+    "height": 360,
+    "bytes": 18646,
+    "sourceBytes": 41927
+  }
+}

@@ -1,0 +1,33 @@
+file                                              src dims    out dims   src KiB  webp KiB   png KiB
+----------------------------------------------------------------------------------------------------
+diorama-fig01-teaser.png                         3044x1629   1920x1027      3490       167      1739
+diorama-fig02-pipeline.png                       3016x1006    1920x640       993        99       632
+diorama-fig03-plainrecon.png                     3119x1650   1920x1016      1450        86       787
+diorama-fig04-zero-shot-pose.png                  1507x767    1507x767       399        55       398
+diorama-fig05-layout-optimization.png             1440x844    1440x844       559        49       557
+diorama-fig06-ssdb-results.png                   2934x1650   1920x1080      2466       135      1340
+diorama-fig07-scannet-comparison.png             2164x1712   1920x1519      3074       210      3008
+diorama-fig08-in-the-wild.png                     1690x725    1690x725       946        95       944
+diorama-fig09-text-to-scene.png                   1690x620    1690x620       602       102       601
+diorama-fig10-scene-graph.png                    1855x1250   1855x1250       831        80       829
+diorama-fig11-editing.png                         2824x425    1920x289       833        45       481
+diorama-fig12-architecture-results.png            1690x535    1690x535       582        54       581
+diorama-fig13-evaluation-set-differences.png      2647x581    1920x421       526        25       395
+diorama-fig14-more-ssdb.png                      2934x3465   1920x2267      4856       246      2712
+diorama-fig15-more-real-world.png                1690x1160   1690x1160      1824       149      1819
+diorama-fig16-more-text-to-scene.png              1690x940    1690x940      1113       155      1112
+diorama-table01-zero-shot-9dof.png                1690x500    1690x500       125        70       125
+diorama-table02-layout-ablation.png                850x570     850x570        78        35        78
+diorama-table03-retrieval-similarity.png           850x560     850x560       123        61       122
+diorama-table04-architecture-reconstruction.png    1690x420    1690x420       104        51       104
+diorama-table05-object-groups.png                  850x540     850x540       100        47       100
+diorama-table06-scannet-alignment.png             1690x450    1690x450       108        54       108
+diorama-table07-retrieval-hypotheses.png           850x360     850x360        54        28        54
+diorama-table08-stagewise-optimization.png         850x360     850x360        41        18        41
+----------------------------------------------------------------------------------------------------
+TOTAL (24 files)                                                           25278      2115     18669
+
+源 PNG 合计 : 25884507 bytes (24.69 MiB)
+WebP 合计   : 2166118 bytes (2.07 MiB) (8.4% of src)
+对照PNG 合计: 19117350 bytes (18.23 MiB) (73.9% of src)
+manifest    : src/lib/image-manifest.json (24 entries)

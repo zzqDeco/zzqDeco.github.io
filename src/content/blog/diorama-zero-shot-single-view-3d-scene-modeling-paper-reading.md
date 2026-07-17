@@ -99,7 +99,7 @@ Diorama 位于 scene understanding 与 CAD-based scene modeling 的交界：它�
 
 ## 4. Fig. 1：Teaser 展示了哪三种使用方式
 
-![Diorama teaser：合成图、网络图与文本到场景](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig01-teaser.png)
+![Diorama teaser：合成图、网络图与文本到场景](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig01-teaser.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Fig. 1, arXiv non-exclusive distribution license.*
 
@@ -116,7 +116,7 @@ Fig. 1 展示三类输入：SSDB 风格的合成室内图、互联网真实图�
 
 ## 5. Fig. 2：两段式系统与多条中间证据
 
-![Diorama 两段式系统管线](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig02-pipeline.png)
+![Diorama 两段式系统管线](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig02-pipeline.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Fig. 2, arXiv non-exclusive distribution license.*
 
@@ -172,7 +172,7 @@ LMM 擅长描述“桌上有书、杯子和显示器”，却不稳定地给出�
 
 ## 7. 场景图：把语言关系变成几何约束
 
-![GPT-4o 与 Set-of-Mark 场景图生成](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig10-scene-graph.png)
+![GPT-4o 与 Set-of-Mark 场景图生成](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig10-scene-graph.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Fig. 10, arXiv non-exclusive distribution license.*
 
@@ -204,7 +204,7 @@ $$
 
 ## 8. PlainRecon：为什么要先恢复“空房间”
 
-![PlainRecon 建筑恢复流程](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig03-plainrecon.png)
+![PlainRecon 建筑恢复流程](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig03-plainrecon.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Fig. 3, arXiv non-exclusive distribution license.*
 
@@ -259,13 +259,13 @@ $$
 
 ## 10. Fig. 12 与 Table 4：建筑恢复的证据
 
-![PlainRecon 建筑恢复定性结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig12-architecture-results.png)
+![PlainRecon 建筑恢复定性结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig12-architecture-results.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Fig. 12, arXiv non-exclusive distribution license.*
 
 Fig. 12 把完整房间图与恢复出的彩色建筑平面对照。它展示 PlainRecon 能处理不止一个正交盒子：墙面转折、不同深度房间和开口可以由多块 plane 表示。但图中对象全部移除，无法从该图判断对象与建筑边界接触是否准确。
 
-![SSDB 建筑平面恢复定量结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table04-architecture-reconstruction.png)
+![SSDB 建筑平面恢复定量结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table04-architecture-reconstruction.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Table 4, arXiv non-exclusive distribution license.*
 
@@ -308,7 +308,7 @@ $$
 
 ## 12. Table 3：DuoDuoCLIP hybrid 到底改善了什么
 
-![不同检索表征的 Chamfer Distance](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table03-retrieval-similarity.png)
+![不同检索表征的 Chamfer Distance](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table03-retrieval-similarity.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Table 3, arXiv non-exclusive distribution license.*
 
@@ -320,7 +320,7 @@ OOD 列普遍比 SS 列更难，符合跨数据集资产的 scale、朝向、网
 
 ## 13. 零样本 9-DoF 位姿：从 patch 对应到 3D 变换
 
-![Diorama 零样本对象位姿估计](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig04-zero-shot-pose.png)
+![Diorama 零样本对象位姿估计](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig04-zero-shot-pose.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Fig. 4, arXiv non-exclusive distribution license.*
 
@@ -399,7 +399,7 @@ $$
 
 ## 16. Table 1：位姿结果与深度级联
 
-![SSDB 零样本 9-DoF 对齐结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table01-zero-shot-9dof.png)
+![SSDB 零样本 9-DoF 对齐结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table01-zero-shot-9dof.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Table 1, arXiv non-exclusive distribution license.*
 
@@ -417,7 +417,7 @@ GT depth 到 estimated depth 时，Ours 的 tAcc `0.95 -> 0.84`，Acc `0.33 -> 0
 
 ## 17. 多个检索假设：承认单图欠约束
 
-![不同 CAD 检索数量对 9-DoF 对齐的影响](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table07-retrieval-hypotheses.png)
+![不同 CAD 检索数量对 9-DoF 对齐的影响](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table07-retrieval-hypotheses.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Table 7, arXiv non-exclusive distribution license.*
 
@@ -433,7 +433,7 @@ GT depth 到 estimated depth 时，Ours 的 tAcc `0.95 -> 0.84`，Acc `0.33 -> 0
 
 ## 18. 布局优化：从对象级对齐到场景级合理
 
-![语义感知的分阶段场景布局优化](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig05-layout-optimization.png)
+![语义感知的分阶段场景布局优化](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig05-layout-optimization.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Fig. 5, arXiv non-exclusive distribution license.*
 
@@ -525,7 +525,7 @@ Space stage 可能为了减少碰撞而让对象重新离开支撑面。Refineme
 
 ## 23. Table 2：逐阶段消融的非单调性
 
-![Diorama 布局优化阶段消融](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table02-layout-ablation.png)
+![Diorama 布局优化阶段消融](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table02-layout-ablation.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Table 2, arXiv non-exclusive distribution license.*
 
@@ -545,7 +545,7 @@ GT scene graph 和 GT architecture 的 overall 都是 `0.95`，比完整预测�
 
 ## 24. Table 8：为什么不能 all-in-one
 
-![all-in-one 与 stage-wise 优化对比](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table08-stagewise-optimization.png)
+![all-in-one 与 stage-wise 优化对比](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table08-stagewise-optimization.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Table 8, arXiv non-exclusive distribution license.*
 
@@ -560,7 +560,7 @@ all-in-one 把全部 terms 同时优化，结果不仅 overall 差，collision �
 
 ## 25. Fig. 6：SSDB 输出为何同时展示三种 arrangement
 
-![SSDB 场景、支撑图与多个 CAD arrangement](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig06-ssdb-results.png)
+![SSDB 场景、支撑图与多个 CAD arrangement](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig06-ssdb-results.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Fig. 6, arXiv non-exclusive distribution license.*
 
@@ -624,7 +624,7 @@ $$
 
 ## 28. Table 5：小物体、遮挡和支撑角色
 
-![不同 SSDB 对象组的平均对齐结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table05-object-groups.png)
+![不同 SSDB 对象组的平均对齐结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table05-object-groups.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Table 5, arXiv non-exclusive distribution license.*
 
@@ -643,13 +643,13 @@ Supported 与 Supporting 差异并不大，说明“作为支撑物”不自动�
 
 ## 29. Fig. 7 与 Table 6：ScanNet 比较的正确读法
 
-![Diorama、ROCA 与 DiffCAD 的 ScanNet 定性比较](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig07-scannet-comparison.png)
+![Diorama、ROCA 与 DiffCAD 的 ScanNet 定性比较](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig07-scannet-comparison.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Fig. 7, arXiv non-exclusive distribution license.*
 
 Fig. 7 中 Diorama、ROCA、DiffCAD 使用相同 mask、depth 和 3D shape input，减少检测与检索差异。Diorama 能处理 laptop、backpack 等对手封闭类别之外的对象，这是开放世界路线的重要优势。
 
-![Scan2CAD object-focused alignment accuracy](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table06-scannet-alignment.png)
+![Scan2CAD object-focused alignment accuracy](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table06-scannet-alignment.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Table 6, arXiv non-exclusive distribution license.*
 
@@ -659,7 +659,7 @@ Table 6 中 Diorama class average `3.55`、instance average `5.87`。ROCA 分别
 
 ## 30. Fig. 13：评价集合不同会怎样改变结论
 
-![DiffCAD、ROCA 与 Diorama 使用的 Scan2CAD 评价集合差异](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig13-evaluation-set-differences.png)
+![DiffCAD、ROCA 与 Diorama 使用的 Scan2CAD 评价集合差异](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig13-evaluation-set-differences.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Fig. 13, arXiv non-exclusive distribution license.*
 
@@ -676,11 +676,11 @@ Diorama 对 evaluation-set difference 的展示很有价值，但 v1 仍缺少�
 
 ## 31. Fig. 8/15：互联网图片证明了什么
 
-![Diorama 在网络室内图片上的结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig08-in-the-wild.png)
+![Diorama 在网络室内图片上的结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig08-in-the-wild.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Fig. 8, arXiv non-exclusive distribution license.*
 
-![更多互联网图片结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig15-more-real-world.png)
+![更多互联网图片结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig15-more-real-world.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Fig. 15, arXiv non-exclusive distribution license.*
 
@@ -692,11 +692,11 @@ Diorama 对 evaluation-set difference 的展示很有价值，但 v1 仍缺少�
 
 ## 32. Fig. 9/16：文本到场景其实是两阶段组合
 
-![Flux-1 图像生成后接 Diorama 的文本到场景结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig09-text-to-scene.png)
+![Flux-1 图像生成后接 Diorama 的文本到场景结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig09-text-to-scene.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Fig. 9, arXiv non-exclusive distribution license.*
 
-![更多文本到场景案例](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig16-more-text-to-scene.png)
+![更多文本到场景案例](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig16-more-text-to-scene.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Fig. 16, arXiv non-exclusive distribution license.*
 
@@ -716,7 +716,7 @@ text prompt
 
 ## 33. Fig. 11：结构化表示如何支持编辑
 
-![Diorama 的对象重排、插入、删除和替换](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig11-editing.png)
+![Diorama 的对象重排、插入、删除和替换](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig11-editing.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Fig. 11, arXiv non-exclusive distribution license.*
 
@@ -734,7 +734,7 @@ Fig. 11 展示 rearrangement、insertion、removal 和 replacement。由于对�
 
 ## 34. Fig. 14：更多 SSDB 结果与长尾复杂度
 
-![更多 SSDB 场景、场景图与替代 CAD arrangement](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig14-more-ssdb.png)
+![更多 SSDB 场景、场景图与替代 CAD arrangement](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig14-more-ssdb.webp)
 
 *Source: Wu et al., arXiv:2411.19492v1, Fig. 14, arXiv non-exclusive distribution license.*
 
