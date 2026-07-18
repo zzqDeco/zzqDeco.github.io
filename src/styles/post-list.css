@@ -1,0 +1,114 @@
+/* Post list */
+.post-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.post-entry {
+  position: relative;
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--line);
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+}
+
+.post-entry:hover,
+.post-entry:focus-within {
+  transform: translateY(-2px);
+  border-color: var(--line-strong);
+  border-left-color: var(--accent);
+  background: color-mix(in srgb, var(--bg-panel) 84%, var(--accent-soft));
+  box-shadow: var(--shadow-panel);
+}
+
+.post-entry-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+}
+
+.post-date {
+  color: var(--fg-soft);
+}
+
+.post-path {
+  color: var(--accent);
+}
+
+.post-entry-title {
+  font-size: var(--fs-lg);
+}
+
+.post-entry-title a {
+  color: var(--fg);
+}
+
+.post-entry-title a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.post-entry-summary {
+  max-width: 52rem;
+  color: var(--fg-soft);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-snug);
+}
+
+.post-entry-tags,
+.article-tags,
+.tag-rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.post-entry-tags a,
+.article-tags a,
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 1.45rem;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel-soft);
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  text-decoration: none;
+  transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
+}
+
+.post-entry-tags a:hover,
+.article-tags a:hover,
+.tag-chip:hover,
+.tag-chip.is-active {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.tag-count {
+  color: var(--fg-faint);
+}
+
+.post-entry-read {
+  justify-self: start;
+  margin-top: var(--space-1);
+}
+
