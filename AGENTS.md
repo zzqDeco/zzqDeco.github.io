@@ -11,6 +11,7 @@ npm install            # 安装站点依赖
 npm run dev            # 本地开发服务器
 npm run build          # 构建到 dist/
 npm run preview        # 预览构建产物
+npm test               # 运行 node:test 纯函数测试（src/lib/*.test.ts）
 npm run editor         # 启动本地博客编辑器
 ```
 

@@ -98,13 +98,15 @@ const {
     )}
 
     <ol class="pagination-pages">
-      {page.pages.map((pageLink) => (
+      {page.pagination.map((item) => (
         <li>
-          {pageLink.number === page.currentPage ? (
-            <span class="pagination-page is-current" aria-current="page">{pageLink.number}</span>
+          {item.type === 'gap' ? (
+            <span class="pagination-gap" aria-hidden="true">…</span>
+          ) : item.current ? (
+            <span class="pagination-page is-current" aria-current="page">{item.number}</span>
           ) : (
-            <a class="pagination-page" href={pageLink.href}>
-              {pageLink.number}
+            <a class="pagination-page" href={item.href} aria-label={`第 ${item.number} 页`}>
+              {item.number}
             </a>
           )}
         </li>

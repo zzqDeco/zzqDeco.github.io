@@ -152,6 +152,19 @@
   width: 2rem;
 }
 
+/* 窗口化分页的省略标记（issue #17）：纯文本，不带边框与交互样式。 */
+.pagination-gap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  min-height: 2rem;
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
 .pagination-control:hover,
 .pagination-page:hover,
 .pagination-page.is-current {
