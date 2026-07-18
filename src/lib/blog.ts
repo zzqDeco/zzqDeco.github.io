@@ -1,5 +1,9 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
 import { getBlogDateParts } from './date';
+import { createPaginationWindow, type PaginationItem } from './pagination';
+
+export { createPaginationWindow, PAGINATION_FULL_WINDOW_LIMIT } from './pagination';
+export type { PaginationItem } from './pagination';
 
 export const BLOG_PAGE_SIZE = 10;
 
@@ -31,10 +35,8 @@ export interface BlogPage {
   currentPage: number;
   size: number;
   lastPage: number;
-  pages: Array<{
-    number: number;
-    href: string;
-  }>;
+  /** 窗口化分页视图项（issue #17），由 createPaginationWindow 生成。 */
+  pagination: PaginationItem[];
   url: {
     current: string;
     prev?: string;
@@ -138,10 +140,7 @@ export function createBlogPage(
     currentPage,
     size: pageSize,
     lastPage,
-    pages: Array.from({ length: lastPage }, (_, index) => {
-      const number = index + 1;
-      return { number, href: getPageHref(number) };
-    }),
+    pagination: createPaginationWindow(currentPage, lastPage, getPageHref),
     url: {
       current: getPageHref(currentPage),
       prev: currentPage > 1 ? getPageHref(currentPage - 1) : undefined,
