@@ -6,16 +6,6 @@
   align-items: stretch;
 }
 
-.hero-console,
-.archive-hero,
-.article-head,
-.toc-panel {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--bg-panel);
-  box-shadow: var(--shadow-panel);
-}
-
 .hero-console {
   display: grid;
   gap: var(--space-5);
@@ -75,7 +65,7 @@
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   font-weight: 600;
-  transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+  transition: var(--transition-interactive);
 }
 
 @media (max-width: 720px) {

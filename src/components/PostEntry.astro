@@ -12,7 +12,7 @@ interface Props {
 const { post, actionLabel } = Astro.props;
 ---
 
-<li class="post-entry">
+<li class="post-entry panel">
   <div class="post-entry-head">
     <time class="post-date" datetime={post.data.pubDate.toISOString()}>
       {formatBlogDateTime(post.data.pubDate)}
