@@ -22,10 +22,24 @@
   padding: var(--space-8);
 }
 
+@media (max-width: 720px) {
+  .hero-console {
+    padding: var(--space-5);
+  }
+}
+
 .hero-title {
   max-width: 100%;
   font-size: var(--fs-3xl);
   white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .hero-title {
+    max-width: none;
+    font-size: 1.72rem;
+    white-space: normal;
+  }
 }
 
 .hero-lede {
@@ -39,6 +53,13 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
+}
+
+@media (max-width: 720px) {
+  .hero-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 
 .button-link {
@@ -55,6 +76,12 @@
   font-size: var(--fs-xs);
   font-weight: 600;
   transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+
+@media (max-width: 720px) {
+  .button-link {
+    justify-content: center;
+  }
 }
 
 .button-link:hover {

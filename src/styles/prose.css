@@ -10,6 +10,12 @@
   line-height: var(--lh-body);
 }
 
+@media (max-width: 720px) {
+  .article-body {
+    font-size: var(--fs-md);
+  }
+}
+
 .article-body-label {
   margin-bottom: var(--space-5);
   color: var(--fg-muted);
@@ -180,6 +186,12 @@
   border-radius: var(--radius-md);
   background: var(--bg-panel);
   box-shadow: var(--shadow-panel);
+}
+
+@media (max-width: 720px) {
+  .comments-panel {
+    padding: var(--space-5);
+  }
 }
 
 .comments-head {

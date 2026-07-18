@@ -6,12 +6,31 @@
   background: var(--bg-panel-soft);
 }
 
+@media (max-width: 980px) {
+  .profile {
+    position: static;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: var(--space-4);
+  }
+}
+
 .inspector-panel {
   position: sticky;
-  top: 3.7rem;
+  top: var(--header-offset);
   align-self: start;
   display: grid;
   gap: var(--space-5);
+}
+
+@media (max-width: 980px) {
+  .inspector-panel {
+    position: static;
+  }
+
+  .profile.inspector-panel {
+    gap: var(--space-3);
+  }
 }
 
 .profile-head {
@@ -19,6 +38,12 @@
   grid-template-columns: 4.5rem minmax(0, 1fr);
   gap: var(--space-3);
   align-items: center;
+}
+
+@media (max-width: 980px) {
+  .profile-head {
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+  }
 }
 
 .profile-avatar-link {
@@ -31,6 +56,13 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
   object-fit: cover;
+}
+
+@media (max-width: 980px) {
+  .profile-avatar {
+    width: 3.5rem;
+    height: 3.5rem;
+  }
 }
 
 .profile-title {
@@ -101,6 +133,18 @@
   gap: var(--space-2);
 }
 
+@media (max-width: 980px) {
+  .profile-stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .profile-stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
 .profile-stats div {
   display: grid;
   gap: var(--space-1);
@@ -128,6 +172,16 @@
   gap: var(--space-3);
   padding-top: var(--space-4);
   border-top: 1px solid var(--line);
+}
+
+/* 必须排在 .inspector-section 之后：.profile-pinned 同时带 .inspector-section（display: grid），
+   同级特异度下后置规则才能把它压成 display: none */
+@media (max-width: 980px) {
+  .profile-bio,
+  .profile-facts,
+  .profile-pinned {
+    display: none;
+  }
 }
 
 .profile-repo {

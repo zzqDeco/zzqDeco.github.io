@@ -58,6 +58,12 @@
 
   --w-shell: 1380px;
   --w-reading: 760px;
+
+  /* sticky 偏移基准：约等于 sticky header（.site-header，见 layout.css）的高度，
+     数值沿用旧硬编码按实测校准（与 header 真高有约 5–19px 余量差异，勿当真高使用）。
+     header 布局变化时必须同步校准这里；三处 sticky 定位（.inspector-panel /
+     .archive-month-label / .toc-panel 的 --toc-sticky-top）都由它推导。 */
+  --header-offset: 3.7rem; /* 单行 header 高度的校准值 */
 }
 
 :root[data-theme='dark'] {
@@ -85,5 +91,21 @@
   --shadow-frame: 0 24px 80px rgba(0, 0, 0, 0.55);
   --shadow-panel: 0 18px 42px rgba(0, 0, 0, 0.24);
   --grid-line: rgba(148, 163, 184, 0.08);
+}
+
+/* 980px 断点下 header 折为两行（见 layout.css 中 .titlebar / .header-nav 的 980px 覆盖），
+   sticky 偏移基准同步变为两行 header 高度 */
+@media (max-width: 980px) {
+  :root {
+    --header-offset: 10.75rem; /* 两行 header 高度的校准值（含余量） */
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --fs-3xl: 2.25rem;
+    --fs-2xl: 1.65rem;
+    --fs-xl: 1.3rem;
+  }
 }
 
