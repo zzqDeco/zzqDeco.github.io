@@ -76,11 +76,7 @@ const stats = [
       {featuredRepos.map((repo) => (
         <a class="profile-repo" href={repo.url}>
           <span class="profile-repo-name">
-            <span
-              class="repo-lang"
-              style={`--repo-lang: ${repo.languageColor ?? 'var(--accent)'}`}
-              aria-hidden="true"
-            ></span>
+            <span class="repo-lang" aria-hidden="true"></span>
             {repo.name}
             <ExternalLink size={12} strokeWidth={1.8} aria-hidden="true" />
           </span>

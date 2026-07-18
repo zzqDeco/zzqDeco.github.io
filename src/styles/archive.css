@@ -1,13 +1,15 @@
 /* Archive */
+/* archive-hero：去框，hairline 底部分隔 */
 .archive-hero {
   display: grid;
   gap: var(--space-4);
-  padding: var(--space-7);
+  padding: 0 0 var(--space-6);
+  border-bottom: 1px solid var(--line);
 }
 
 @media (max-width: 720px) {
   .archive-hero {
-    padding: var(--space-5);
+    padding-bottom: var(--space-5);
   }
 }
 

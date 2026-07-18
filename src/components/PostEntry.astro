@@ -12,13 +12,11 @@ interface Props {
 const { post, actionLabel } = Astro.props;
 ---
 
-<li class="post-entry panel">
+<li class="post-entry">
   <div class="post-entry-head">
     <time class="post-date" datetime={post.data.pubDate.toISOString()}>
       {formatBlogDateTime(post.data.pubDate)}
     </time>
-    <span class="sep">·</span>
-    <span class="post-path">/blog/{post.id}</span>
   </div>
   <h3 class="post-entry-title"><a href={`/blog/${post.id}/`} data-astro-prefetch>{post.data.title}</a></h3>
   {post.data.description && (

@@ -85,17 +85,6 @@
   color: var(--fg);
 }
 
-.brand-icon {
-  display: grid;
-  width: 2rem;
-  height: 2rem;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--bg-panel);
-  color: var(--accent);
-}
-
 .brand-text {
   display: grid;
   min-width: 0;
@@ -104,9 +93,10 @@
 
 .brand-name {
   color: var(--fg);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--fs-sm);
   font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .brand-path {
@@ -129,10 +119,6 @@
   justify-self: center;
   align-items: center;
   gap: var(--space-1);
-  padding: 0.2rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--bg-panel-soft);
 }
 
 @media (max-width: 980px) {
@@ -151,20 +137,20 @@
   padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   color: var(--fg-muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--fs-xs);
-  transition: color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+  transition: color 160ms ease, background-color 160ms ease;
 }
 
 .header-nav a:hover {
   color: var(--fg);
-  background: var(--bg-panel);
+  background: var(--bg-panel-soft);
 }
 
 .header-nav a[aria-current='page'] {
   color: var(--fg);
-  background: var(--bg-panel);
-  box-shadow: inset 0 0 0 1px var(--line);
+  background: var(--bg-panel-soft);
+  font-weight: 600;
 }
 
 .header-tools {
@@ -200,10 +186,9 @@
 
 .icon-button:hover,
 .theme-toggle:hover {
-  color: var(--accent);
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-  transform: translateY(-1px);
+  color: var(--fg);
+  border-color: var(--fg-faint);
+  background: var(--bg-panel-soft);
 }
 
 .theme-toggle {
@@ -341,10 +326,11 @@
   align-items: center;
   gap: var(--space-2);
   margin: 0;
-  color: var(--accent);
+  color: var(--fg-muted);
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  font-weight: 700;
+  font-size: var(--fs-3xs);
+  font-weight: 600;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
@@ -352,7 +338,7 @@
   content: '';
   width: 2rem;
   height: 1px;
-  background: var(--accent);
+  background: var(--line-strong);
 }
 
 .section-action,
@@ -362,7 +348,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  color: var(--accent);
+  color: var(--fg-muted);
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   font-weight: 600;
@@ -372,15 +358,16 @@
 .post-entry-read:hover,
 .profile-more:hover,
 .inline-icon-link:hover {
-  color: var(--accent-hover);
+  color: var(--fg);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
 /* 面板卡片基类（issue #18 阶段三）：边框 + 圆角 + 面板底色 + 面板阴影的重复组合收口。
    组件以 class="... panel" 复用；本文件在级联中位于各内容域文件之前，变体由组件自身规则
-   以同特异度后置覆盖表达：.toc-panel 覆盖 background/box-shadow（article.css），
-   .post-entry 覆盖 border-left/box-shadow（post-list.css）。 */
+   以同特异度后置覆盖表达。设计迭代（暖调石墨）后仅 article-body / comments-panel /
+   toc-panel 保留白 panel；post-entry、hero-console、archive-hero、article-head 已去框，
+   改为 hairline 分隔行。 */
 .panel {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
