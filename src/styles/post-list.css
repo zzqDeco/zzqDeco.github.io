@@ -19,6 +19,12 @@
   transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
 }
 
+@media (max-width: 720px) {
+  .post-entry {
+    padding: var(--space-4);
+  }
+}
+
 .post-entry:hover,
 .post-entry:focus-within {
   transform: translateY(-2px);

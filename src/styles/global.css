@@ -1,4 +1,6 @@
-/* 全局样式清单：按 cascade 顺序内联各内容域文件（issue #18 阶段一纯搬运拆分）。
+/* 全局样式清单：按 cascade 顺序内联各内容域文件（issue #18 阶段一纯搬运拆分；
+   阶段二已将断点覆盖就近移入各内容域文件——每个 @media 块紧跟其覆盖的基础规则，
+   prefers-reduced-motion 全局覆盖留在 base.css）。
    文件顺序即原 global.css 的规则顺序，调整顺序会改变级联结果，勿随意重排。 */
 @import './tokens.css';
 @import './base.css';
@@ -9,4 +11,3 @@
 @import './article.css';
 @import './prose.css';
 @import './profile.css';
-@import './responsive.css';

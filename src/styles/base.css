@@ -24,6 +24,12 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+@media (max-width: 720px) {
+  body {
+    background-size: 32px 32px;
+  }
+}
+
 ::selection {
   color: var(--fg);
   background: var(--selection);
@@ -112,5 +118,17 @@ hr {
 
 .skip-link:focus {
   transform: translateY(0);
+}
+
+/* prefers-reduced-motion 是全局无障碍覆盖（!important，与位置无关），不属于任何单一内容域，留在 base。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 
