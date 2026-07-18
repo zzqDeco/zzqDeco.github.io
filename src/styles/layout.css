@@ -195,7 +195,7 @@
   background: var(--bg-panel);
   color: var(--fg-muted);
   cursor: pointer;
-  transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+  transition: var(--transition-interactive);
 }
 
 .icon-button:hover,
@@ -375,5 +375,16 @@
   color: var(--accent-hover);
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+/* 面板卡片基类（issue #18 阶段三）：边框 + 圆角 + 面板底色 + 面板阴影的重复组合收口。
+   组件以 class="... panel" 复用；本文件在级联中位于各内容域文件之前，变体由组件自身规则
+   以同特异度后置覆盖表达：.toc-panel 覆盖 background/box-shadow（article.css），
+   .post-entry 覆盖 border-left/box-shadow（post-list.css）。 */
+.panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-panel);
 }
 

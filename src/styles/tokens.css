@@ -64,6 +64,13 @@
      header 布局变化时必须同步校准这里；三处 sticky 定位（.inspector-panel /
      .archive-month-label / .toc-panel 的 --toc-sticky-top）都由它推导。 */
   --header-offset: 3.7rem; /* 单行 header 高度的校准值 */
+
+  /* 可交互元素的统一过渡（issue #18 阶段三）：颜色/边框/背景/transform 各 160ms。
+     仅替换原声明逐字相同之处（.icon-button/.theme-toggle、.button-link、
+     .pagination-control/.pagination-page）；时长或属性集不同的交互过渡
+     （.header-nav a、.post-entry、tag chip、.profile-repo）保持各自原声明，勿套用。 */
+  --transition-interactive: color 160ms ease, border-color 160ms ease, background-color 160ms ease,
+    transform 160ms ease;
 }
 
 :root[data-theme='dark'] {

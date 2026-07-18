@@ -12,10 +12,9 @@
   display: grid;
   gap: var(--space-2);
   padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--line);
+  /* 面板基座由 .panel 提供；此处为变体覆盖：左边框留作 hover 指示条，静息无阴影（仅 hover 浮起） */
   border-left: 3px solid transparent;
-  border-radius: var(--radius-md);
-  background: var(--bg-panel);
+  box-shadow: none;
   transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
 }
 

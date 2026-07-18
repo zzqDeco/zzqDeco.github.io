@@ -1,10 +1,6 @@
 .article-body {
   width: 100%;
   padding: var(--space-7);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--bg-panel);
-  box-shadow: var(--shadow-panel);
   color: var(--fg);
   font-size: 1.05rem;
   line-height: var(--lh-body);
@@ -182,10 +178,6 @@
   width: 100%;
   gap: var(--space-5);
   padding: var(--space-6) var(--space-7);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--bg-panel);
-  box-shadow: var(--shadow-panel);
 }
 
 @media (max-width: 720px) {
