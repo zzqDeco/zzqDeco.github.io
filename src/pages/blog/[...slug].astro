@@ -50,7 +50,7 @@ const tocHeadings = headings.filter((heading) => heading.depth <= 3);
     </Fragment>
   )}
   <article class:list={['article-page', tocHeadings.length > 0 && 'has-toc']}>
-    <header class="article-head panel">
+    <header class="article-head">
       <nav class="crumbs" aria-label="breadcrumbs">
         <a href="/">~</a>
         <span class="sep">/</span>
@@ -102,7 +102,6 @@ const tocHeadings = headings.filter((heading) => heading.depth <= 3);
     )}
 
     <div class="article-body panel">
-      <p class="article-body-label" aria-hidden="true">document</p>
       <Content />
     </div>
 

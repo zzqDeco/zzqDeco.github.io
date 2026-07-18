@@ -1,36 +1,31 @@
 /* Post list */
 .post-list {
   display: grid;
-  gap: var(--space-3);
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* post-entry：hairline 分隔行，不再是面板卡片（无边框/圆角/背景/阴影/位移） */
 .post-entry {
   position: relative;
   display: grid;
   gap: var(--space-2);
-  padding: var(--space-4) var(--space-5);
-  /* 面板基座由 .panel 提供；此处为变体覆盖：左边框留作 hover 指示条，静息无阴影（仅 hover 浮起） */
-  border-left: 3px solid transparent;
-  box-shadow: none;
-  transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+  padding: var(--space-5) 0;
+  border-bottom: 1px solid var(--line);
+  transition: background-color 160ms ease;
 }
 
 @media (max-width: 720px) {
   .post-entry {
-    padding: var(--space-4);
+    padding: var(--space-4) 0;
   }
 }
 
 .post-entry:hover,
 .post-entry:focus-within {
-  transform: translateY(-2px);
-  border-color: var(--line-strong);
-  border-left-color: var(--accent);
-  background: color-mix(in srgb, var(--bg-panel) 84%, var(--accent-soft));
-  box-shadow: var(--shadow-panel);
+  background: var(--bg-panel-soft);
 }
 
 .post-entry-head {
@@ -44,32 +39,36 @@
 }
 
 .post-date {
-  color: var(--fg-soft);
-}
-
-.post-path {
-  color: var(--accent);
+  color: var(--fg-muted);
 }
 
 .post-entry-title {
   font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  line-height: 1.4;
 }
 
+/* 标题 hover：下划线自左向右生长 */
 .post-entry-title a {
   color: var(--fg);
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0% 1px;
+  transition: background-size 200ms ease;
 }
 
 .post-entry-title a:hover {
-  color: var(--accent);
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  color: var(--fg);
+  background-size: 100% 1px;
 }
 
 .post-entry-summary {
-  max-width: 52rem;
-  color: var(--fg-soft);
+  max-width: 62ch;
+  color: var(--fg-muted);
   font-size: var(--fs-sm);
-  line-height: var(--lh-snug);
+  line-height: 1.65;
 }
 
 .post-entry-tags,
@@ -91,7 +90,7 @@
   padding: 0 var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: var(--bg-panel-soft);
+  background: transparent;
   color: var(--fg-muted);
   font-family: var(--font-mono);
   font-size: var(--fs-2xs);
@@ -103,9 +102,9 @@
 .article-tags a:hover,
 .tag-chip:hover,
 .tag-chip.is-active {
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-  color: var(--accent);
+  border-color: var(--fg-faint);
+  background: var(--bg-panel-soft);
+  color: var(--fg);
 }
 
 .tag-count {

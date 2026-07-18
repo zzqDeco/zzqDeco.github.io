@@ -1,5 +1,5 @@
 ---
-import { Github, Rss, Terminal } from 'lucide-astro';
+import { Github, Rss } from 'lucide-astro';
 import ThemeToggle from './ThemeToggle.astro';
 
 interface Props {
@@ -29,9 +29,6 @@ const isActive = (href: string) => {
     </div>
 
     <a class="brand-lockup" href="/" aria-label={`${siteName} 首页`} data-astro-prefetch>
-      <span class="brand-icon" aria-hidden="true">
-        <Terminal size={17} strokeWidth={1.9} />
-      </span>
       <span class="brand-text">
         <span class="brand-name">zzqdeco</span>
         <span class="brand-path">{displayPath}</span>

@@ -3,7 +3,6 @@
   min-width: 0;
   padding: var(--space-5);
   border-right: 1px solid var(--line);
-  background: var(--bg-panel-soft);
 }
 
 @media (max-width: 980px) {
@@ -70,9 +69,10 @@
 }
 
 .profile-kicker {
-  color: var(--fg-muted);
+  color: var(--fg-faint);
   font-family: var(--font-mono);
   font-size: var(--fs-3xs);
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
@@ -80,6 +80,7 @@
   overflow: hidden;
   margin-top: var(--space-1);
   font-size: var(--fs-lg);
+  letter-spacing: -0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -89,9 +90,13 @@
   align-items: center;
   gap: var(--space-1);
   margin-top: var(--space-1);
-  color: var(--accent);
+  color: var(--fg-muted);
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
+}
+
+.profile-handle:hover {
+  color: var(--fg);
 }
 
 .profile-bio {
@@ -127,31 +132,24 @@
   font-family: var(--font-mono);
 }
 
+/* stats：hairline 分节 + 虚线分隔的左右对齐行，不再是三格卡片 */
 .profile-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-2);
-}
-
-@media (max-width: 980px) {
-  .profile-stats {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-@media (max-width: 720px) {
-  .profile-stats {
-    grid-template-columns: repeat(3, 1fr);
-  }
+  gap: 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
 }
 
 .profile-stats div {
-  display: grid;
-  gap: var(--space-1);
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--bg-panel);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+}
+
+.profile-stats div + div {
+  border-top: 1px dashed var(--line);
 }
 
 .profile-stats dt {
@@ -162,9 +160,9 @@
 
 .profile-stats dd {
   color: var(--fg);
-  font-family: var(--font-mono);
   font-size: var(--fs-sm);
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .inspector-section {
@@ -184,21 +182,16 @@
   }
 }
 
+/* pinned repos：虚线分隔行，不再是卡片 */
 .profile-repo {
   display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--bg-panel);
+  gap: var(--space-1);
+  padding: var(--space-3) 0;
   color: var(--fg);
-  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
 }
 
-.profile-repo:hover {
-  transform: translateY(-1px);
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
+.profile-repo + .profile-repo {
+  border-top: 1px dashed var(--line);
 }
 
 .profile-repo-name {
@@ -210,14 +203,19 @@
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   font-weight: 700;
+  transition: color 160ms ease;
+}
+
+.profile-repo:hover .profile-repo-name {
+  color: var(--accent-hover);
 }
 
 .repo-lang {
-  width: 0.62rem;
-  height: 0.62rem;
+  width: 0.55rem;
+  height: 0.55rem;
   flex: 0 0 auto;
   border-radius: var(--radius-pill);
-  background: var(--repo-lang, var(--accent));
+  background: var(--fg-faint);
 }
 
 .profile-repo-desc {
