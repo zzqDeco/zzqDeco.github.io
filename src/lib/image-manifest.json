@@ -4316,6 +4316,352 @@
     "bytes": 20394,
     "sourceBytes": 39799
   },
+  "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig01-example-property-graph.webp": {
+    "width": 1920,
+    "height": 998,
+    "bytes": 64732,
+    "sourceBytes": 190201,
+    "srcset": [
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig01-example-property-graph-768w.webp",
+        "width": 768,
+        "height": 399,
+        "bytes": 20600
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig01-example-property-graph-1280w.webp",
+        "width": 1280,
+        "height": 666,
+        "bytes": 39420
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig01-example-property-graph.webp",
+        "width": 1920,
+        "height": 998,
+        "bytes": 64732
+      }
+    ]
+  },
+  "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig02-variable-bindings.webp": {
+    "width": 928,
+    "height": 384,
+    "bytes": 27666,
+    "sourceBytes": 47364,
+    "srcset": [
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig02-variable-bindings-768w.webp",
+        "width": 768,
+        "height": 318,
+        "bytes": 21292
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig02-variable-bindings.webp",
+        "width": 928,
+        "height": 384,
+        "bytes": 27666
+      }
+    ]
+  },
+  "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig03-pattern-syntax.webp": {
+    "width": 1792,
+    "height": 712,
+    "bytes": 37142,
+    "sourceBytes": 80292,
+    "srcset": [
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig03-pattern-syntax-768w.webp",
+        "width": 768,
+        "height": 305,
+        "bytes": 13904
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig03-pattern-syntax-1280w.webp",
+        "width": 1280,
+        "height": 509,
+        "bytes": 24956
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig03-pattern-syntax.webp",
+        "width": 1792,
+        "height": 712,
+        "bytes": 37142
+      }
+    ]
+  },
+  "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig04-students-teachers-graph.webp": {
+    "width": 964,
+    "height": 484,
+    "bytes": 16568,
+    "sourceBytes": 42040,
+    "srcset": [
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig04-students-teachers-graph-768w.webp",
+        "width": 768,
+        "height": 386,
+        "bytes": 12486
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig04-students-teachers-graph.webp",
+        "width": 964,
+        "height": 484,
+        "bytes": 16568
+      }
+    ]
+  },
+  "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig05-core-syntax.webp": {
+    "width": 1908,
+    "height": 1056,
+    "bytes": 96932,
+    "sourceBytes": 185925,
+    "srcset": [
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig05-core-syntax-768w.webp",
+        "width": 768,
+        "height": 425,
+        "bytes": 31106
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig05-core-syntax-1280w.webp",
+        "width": 1280,
+        "height": 708,
+        "bytes": 58860
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig05-core-syntax.webp",
+        "width": 1908,
+        "height": 1056,
+        "bytes": 96932
+      }
+    ]
+  },
+  "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig06-query-semantics.webp": {
+    "width": 1712,
+    "height": 784,
+    "bytes": 43344,
+    "sourceBytes": 94191,
+    "srcset": [
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig06-query-semantics-768w.webp",
+        "width": 768,
+        "height": 352,
+        "bytes": 16296
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig06-query-semantics-1280w.webp",
+        "width": 1280,
+        "height": 586,
+        "bytes": 29836
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig06-query-semantics.webp",
+        "width": 1712,
+        "height": 784,
+        "bytes": 43344
+      }
+    ]
+  },
+  "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig07-clause-semantics.webp": {
+    "width": 1872,
+    "height": 928,
+    "bytes": 101794,
+    "sourceBytes": 215524,
+    "srcset": [
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig07-clause-semantics-768w.webp",
+        "width": 768,
+        "height": 381,
+        "bytes": 33584
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig07-clause-semantics-1280w.webp",
+        "width": 1280,
+        "height": 635,
+        "bytes": 63896
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig07-clause-semantics.webp",
+        "width": 1872,
+        "height": 928,
+        "bytes": 101794
+      }
+    ]
+  },
+  "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-table01-notation.webp": {
+    "width": 836,
+    "height": 656,
+    "bytes": 31628,
+    "sourceBytes": 73004,
+    "srcset": [
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-table01-notation-768w.webp",
+        "width": 768,
+        "height": 603,
+        "bytes": 27692
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-table01-notation.webp",
+        "width": 836,
+        "height": 656,
+        "bytes": 31628
+      }
+    ]
+  },
+  "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig01-property-graph-model.webp": {
+    "width": 1800,
+    "height": 614,
+    "bytes": 33254,
+    "sourceBytes": 95803,
+    "srcset": [
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig01-property-graph-model-768w.webp",
+        "width": 768,
+        "height": 262,
+        "bytes": 14574
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig01-property-graph-model-1280w.webp",
+        "width": 1280,
+        "height": 437,
+        "bytes": 24366
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig01-property-graph-model.webp",
+        "width": 1800,
+        "height": 614,
+        "bytes": 33254
+      }
+    ]
+  },
+  "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig02-graph-traversal.webp": {
+    "width": 1800,
+    "height": 1567,
+    "bytes": 64680,
+    "sourceBytes": 190803,
+    "srcset": [
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig02-graph-traversal-768w.webp",
+        "width": 768,
+        "height": 669,
+        "bytes": 25310
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig02-graph-traversal-1280w.webp",
+        "width": 1280,
+        "height": 1114,
+        "bytes": 44444
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig02-graph-traversal.webp",
+        "width": 1800,
+        "height": 1567,
+        "bytes": 64680
+      }
+    ]
+  },
+  "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig03-cypher-query-lifecycle.webp": {
+    "width": 1800,
+    "height": 881,
+    "bytes": 24704,
+    "sourceBytes": 76800,
+    "srcset": [
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig03-cypher-query-lifecycle-768w.webp",
+        "width": 768,
+        "height": 376,
+        "bytes": 9298
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig03-cypher-query-lifecycle-1280w.webp",
+        "width": 1280,
+        "height": 626,
+        "bytes": 16294
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig03-cypher-query-lifecycle.webp",
+        "width": 1800,
+        "height": 881,
+        "bytes": 24704
+      }
+    ]
+  },
+  "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig04-query-plan-parts.webp": {
+    "width": 1920,
+    "height": 742,
+    "bytes": 84808,
+    "sourceBytes": 938367,
+    "srcset": [
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig04-query-plan-parts-768w.webp",
+        "width": 768,
+        "height": 297,
+        "bytes": 24208
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig04-query-plan-parts-1280w.webp",
+        "width": 1280,
+        "height": 494,
+        "bytes": 52090
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig04-query-plan-parts.webp",
+        "width": 1920,
+        "height": 742,
+        "bytes": 84808
+      }
+    ]
+  },
+  "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig05-enterprise-cluster-operational-view.webp": {
+    "width": 1920,
+    "height": 1143,
+    "bytes": 41156,
+    "sourceBytes": 142320,
+    "srcset": [
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig05-enterprise-cluster-operational-view-768w.webp",
+        "width": 768,
+        "height": 457,
+        "bytes": 15050
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig05-enterprise-cluster-operational-view-1280w.webp",
+        "width": 1280,
+        "height": 762,
+        "bytes": 26138
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig05-enterprise-cluster-operational-view.webp",
+        "width": 1920,
+        "height": 1143,
+        "bytes": 41156
+      }
+    ]
+  },
+  "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig06-enterprise-follower-writer-routing.webp": {
+    "width": 1920,
+    "height": 1003,
+    "bytes": 28490,
+    "sourceBytes": 94336,
+    "srcset": [
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig06-enterprise-follower-writer-routing-768w.webp",
+        "width": 768,
+        "height": 401,
+        "bytes": 10592
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig06-enterprise-follower-writer-routing-1280w.webp",
+        "width": 1280,
+        "height": 669,
+        "bytes": 18338
+      },
+      {
+        "url": "/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig06-enterprise-follower-writer-routing.webp",
+        "width": 1920,
+        "height": 1003,
+        "bytes": 28490
+      }
+    ]
+  },
   "/images/blog/openfga-zanzibar-fine-grained-authorization/zanzibar-fig01-namespace-config.webp": {
     "width": 741,
     "height": 963,
