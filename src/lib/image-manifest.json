@@ -3750,6 +3750,450 @@
       }
     ]
   },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig01-teaser.webp": {
+    "width": 1920,
+    "height": 1276,
+    "bytes": 470520,
+    "sourceBytes": 7680114,
+    "srcset": [
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig01-teaser-768w.webp",
+        "width": 768,
+        "height": 511,
+        "bytes": 104834
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig01-teaser-1280w.webp",
+        "width": 1280,
+        "height": 851,
+        "bytes": 245182
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig01-teaser.webp",
+        "width": 1920,
+        "height": 1276,
+        "bytes": 470520
+      }
+    ]
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig02-architecture-ffc.webp": {
+    "width": 1920,
+    "height": 577,
+    "bytes": 82856,
+    "sourceBytes": 427917,
+    "srcset": [
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig02-architecture-ffc-768w.webp",
+        "width": 768,
+        "height": 231,
+        "bytes": 30606
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig02-architecture-ffc-1280w.webp",
+        "width": 1280,
+        "height": 384,
+        "bytes": 53406
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig02-architecture-ffc.webp",
+        "width": 1920,
+        "height": 577,
+        "bytes": 82856
+      }
+    ]
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig03-mask-policies.webp": {
+    "width": 780,
+    "height": 499,
+    "bytes": 23376,
+    "sourceBytes": 76795,
+    "srcset": [
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig03-mask-policies-768w.webp",
+        "width": 768,
+        "height": 491,
+        "bytes": 23506
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig03-mask-policies.webp",
+        "width": 780,
+        "height": 499,
+        "bytes": 23376
+      }
+    ]
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig04-periodic-structure-comparison.webp": {
+    "width": 1920,
+    "height": 705,
+    "bytes": 364570,
+    "sourceBytes": 13997664,
+    "srcset": [
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig04-periodic-structure-comparison-768w.webp",
+        "width": 768,
+        "height": 282,
+        "bytes": 76414
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig04-periodic-structure-comparison-1280w.webp",
+        "width": 1280,
+        "height": 470,
+        "bytes": 192170
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig04-periodic-structure-comparison.webp",
+        "width": 1920,
+        "height": 705,
+        "bytes": 364570
+      }
+    ]
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig05-high-resolution-transfer.webp": {
+    "width": 1920,
+    "height": 830,
+    "bytes": 107640,
+    "sourceBytes": 2623841,
+    "srcset": [
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig05-high-resolution-transfer-768w.webp",
+        "width": 768,
+        "height": 332,
+        "bytes": 30830
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig05-high-resolution-transfer-1280w.webp",
+        "width": 1280,
+        "height": 553,
+        "bytes": 61440
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig05-high-resolution-transfer.webp",
+        "width": 1920,
+        "height": 830,
+        "bytes": 107640
+      }
+    ]
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig06-resolution-metrics.webp": {
+    "width": 675,
+    "height": 400,
+    "bytes": 29128,
+    "sourceBytes": 38424
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig01-user-study-side-by-side.webp": {
+    "width": 679,
+    "height": 220,
+    "bytes": 16000,
+    "sourceBytes": 140821
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig02-user-study-spot-mask.webp": {
+    "width": 684,
+    "height": 351,
+    "bytes": 42834,
+    "sourceBytes": 275314
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig03-segmentation-masks.webp": {
+    "width": 943,
+    "height": 368,
+    "bytes": 74092,
+    "sourceBytes": 452414,
+    "srcset": [
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig03-segmentation-masks-768w.webp",
+        "width": 768,
+        "height": 300,
+        "bytes": 54084
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig03-segmentation-masks.webp",
+        "width": 943,
+        "height": 368,
+        "bytes": 74092
+      }
+    ]
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig04-mask-statistics-256.webp": {
+    "width": 1342,
+    "height": 531,
+    "bytes": 7990,
+    "sourceBytes": 21524,
+    "srcset": [
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig04-mask-statistics-256-768w.webp",
+        "width": 768,
+        "height": 304,
+        "bytes": 20350
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig04-mask-statistics-256-1280w.webp",
+        "width": 1280,
+        "height": 506,
+        "bytes": 36318
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig04-mask-statistics-256.webp",
+        "width": 1342,
+        "height": 531,
+        "bytes": 7990,
+        "lossless": true
+      }
+    ]
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig05-mask-statistics-512.webp": {
+    "width": 1338,
+    "height": 566,
+    "bytes": 8376,
+    "sourceBytes": 24818,
+    "srcset": [
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig05-mask-statistics-512-768w.webp",
+        "width": 768,
+        "height": 325,
+        "bytes": 19204
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig05-mask-statistics-512-1280w.webp",
+        "width": 1280,
+        "height": 541,
+        "bytes": 34958
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig05-mask-statistics-512.webp",
+        "width": 1338,
+        "height": 566,
+        "bytes": 8376,
+        "lossless": true
+      }
+    ]
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig06-big-lama-positive.webp": {
+    "width": 1091,
+    "height": 1487,
+    "bytes": 386534,
+    "sourceBytes": 2576150,
+    "srcset": [
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig06-big-lama-positive-768w.webp",
+        "width": 768,
+        "height": 1047,
+        "bytes": 216806
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig06-big-lama-positive.webp",
+        "width": 1091,
+        "height": 1487,
+        "bytes": 386534
+      }
+    ]
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig07-big-lama-negative.webp": {
+    "width": 1092,
+    "height": 1539,
+    "bytes": 410016,
+    "sourceBytes": 2871041,
+    "srcset": [
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig07-big-lama-negative-768w.webp",
+        "width": 768,
+        "height": 1082,
+        "bytes": 227796
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig07-big-lama-negative.webp",
+        "width": 1092,
+        "height": 1539,
+        "bytes": 410016
+      }
+    ]
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig08-domain-transfer.webp": {
+    "width": 1085,
+    "height": 1383,
+    "bytes": 408940,
+    "sourceBytes": 2547001,
+    "srcset": [
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig08-domain-transfer-768w.webp",
+        "width": 768,
+        "height": 979,
+        "bytes": 222418
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig08-domain-transfer.webp",
+        "width": 1085,
+        "height": 1383,
+        "bytes": 408940
+      }
+    ]
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig09-more-domain-transfer.webp": {
+    "width": 1233,
+    "height": 1213,
+    "bytes": 320650,
+    "sourceBytes": 1712393,
+    "srcset": [
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig09-more-domain-transfer-768w.webp",
+        "width": 768,
+        "height": 756,
+        "bytes": 146952
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig09-more-domain-transfer.webp",
+        "width": 1233,
+        "height": 1213,
+        "bytes": 320650
+      }
+    ]
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig10-dilated-architecture.webp": {
+    "width": 1067,
+    "height": 438,
+    "bytes": 34812,
+    "sourceBytes": 61838,
+    "srcset": [
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig10-dilated-architecture-768w.webp",
+        "width": 768,
+        "height": 315,
+        "bytes": 25468
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig10-dilated-architecture.webp",
+        "width": 1067,
+        "height": 438,
+        "bytes": 34812
+      }
+    ]
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig11-inference-time.webp": {
+    "width": 495,
+    "height": 470,
+    "bytes": 21572,
+    "sourceBytes": 40472
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-table01-user-study.webp": {
+    "width": 544,
+    "height": 365,
+    "bytes": 28270,
+    "sourceBytes": 64831
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-table02-places-full-metrics.webp": {
+    "width": 1142,
+    "height": 461,
+    "bytes": 99168,
+    "sourceBytes": 161309,
+    "srcset": [
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-table02-places-full-metrics-768w.webp",
+        "width": 768,
+        "height": 310,
+        "bytes": 54434
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-table02-places-full-metrics.webp",
+        "width": 1142,
+        "height": 461,
+        "bytes": 99168
+      }
+    ]
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-table03-celebahq-full-metrics.webp": {
+    "width": 1202,
+    "height": 567,
+    "bytes": 121506,
+    "sourceBytes": 211956,
+    "srcset": [
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-table03-celebahq-full-metrics-768w.webp",
+        "width": 768,
+        "height": 362,
+        "bytes": 64744
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-table03-celebahq-full-metrics.webp",
+        "width": 1202,
+        "height": 567,
+        "bytes": 121506
+      }
+    ]
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-table04-mask-generator-parameters.webp": {
+    "width": 1351,
+    "height": 263,
+    "bytes": 26174,
+    "sourceBytes": 47575,
+    "srcset": [
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-table04-mask-generator-parameters-768w.webp",
+        "width": 768,
+        "height": 150,
+        "bytes": 14612
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-table04-mask-generator-parameters-1280w.webp",
+        "width": 1280,
+        "height": 249,
+        "bytes": 26274
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-table04-mask-generator-parameters.webp",
+        "width": 1351,
+        "height": 263,
+        "bytes": 26174
+      }
+    ]
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-table05-perceptual-loss-weights.webp": {
+    "width": 398,
+    "height": 183,
+    "bytes": 8040,
+    "sourceBytes": 16080
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-table01-main-results.webp": {
+    "width": 1655,
+    "height": 516,
+    "bytes": 111352,
+    "sourceBytes": 206975,
+    "srcset": [
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-table01-main-results-768w.webp",
+        "width": 768,
+        "height": 239,
+        "bytes": 40664
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-table01-main-results-1280w.webp",
+        "width": 1280,
+        "height": 399,
+        "bytes": 80796
+      },
+      {
+        "url": "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-table01-main-results.webp",
+        "width": 1655,
+        "height": 516,
+        "bytes": 111352
+      }
+    ]
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-table02-architecture-ablation.webp": {
+    "width": 707,
+    "height": 290,
+    "bytes": 28732,
+    "sourceBytes": 63826
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-table03-perceptual-loss-ablation.webp": {
+    "width": 600,
+    "height": 291,
+    "bytes": 19576,
+    "sourceBytes": 43679
+  },
+  "/images/blog/lama-resolution-robust-large-mask-inpainting/lama-table04-mask-training-ablation.webp": {
+    "width": 715,
+    "height": 376,
+    "bytes": 40502,
+    "sourceBytes": 86065
+  },
   "/images/blog/layout2scene-semantic-layout-guided-scene-generation/layout2scene-fig01-teaser.webp": {
     "width": 1530,
     "height": 870,
