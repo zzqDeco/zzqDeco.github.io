@@ -229,6 +229,13 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* 大屏侧栏列放宽（特异度低于 .ide-shell:not(.has-profile)，无侧栏页保持单列） */
+@media (min-width: 1600px) {
+  .ide-shell {
+    grid-template-columns: minmax(16rem, 19rem) minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 980px) {
   .ide-shell,
   .ide-shell.has-profile {

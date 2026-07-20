@@ -116,3 +116,15 @@
   margin-top: var(--space-1);
 }
 
+/* 大屏双列：行距保持 0（去框化后 gap 已为 0），仅加列间距；标题略降 */
+@media (min-width: 1600px) {
+  .post-list {
+    grid-template-columns: 1fr 1fr;
+    column-gap: var(--space-8);
+  }
+
+  .post-entry-title {
+    font-size: 1.08rem;
+  }
+}
+

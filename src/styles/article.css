@@ -10,7 +10,7 @@
   --toc-sticky-top: calc(var(--header-offset) + 1.8rem);
   --toc-sticky-max-height: calc(100svh - 7rem);
 
-  grid-template-columns: minmax(0, 1fr) minmax(13rem, 16rem);
+  grid-template-columns: minmax(0, 860px) minmax(13rem, 16rem);
   column-gap: var(--space-7);
   align-items: start;
 }
