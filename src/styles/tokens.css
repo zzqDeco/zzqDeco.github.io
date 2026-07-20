@@ -114,3 +114,16 @@
   }
 }
 
+/* 大屏壳宽分档：基础值 1380（见上方 :root），≥1600 放宽到 1560，≥2100 放宽到 1840 */
+@media (min-width: 1600px) {
+  :root {
+    --w-shell: 1560px;
+  }
+}
+
+@media (min-width: 2100px) {
+  :root {
+    --w-shell: 1840px;
+  }
+}
+
