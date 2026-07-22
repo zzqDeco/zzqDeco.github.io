@@ -6362,6 +6362,262 @@
       }
     ]
   },
+  "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-fig01-accuracy-runtime-vram.webp": {
+    "width": 1920,
+    "height": 1374,
+    "bytes": 58692,
+    "sourceBytes": 174582,
+    "srcset": [
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-fig01-accuracy-runtime-vram-768w.webp",
+        "width": 768,
+        "height": 549,
+        "bytes": 21166
+      },
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-fig01-accuracy-runtime-vram-1280w.webp",
+        "width": 1280,
+        "height": 916,
+        "bytes": 37614
+      },
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-fig01-accuracy-runtime-vram.webp",
+        "width": 1920,
+        "height": 1374,
+        "bytes": 58692
+      }
+    ]
+  },
+  "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-fig02-multidataset-noc-examples.webp": {
+    "width": 1427,
+    "height": 1144,
+    "bytes": 150380,
+    "sourceBytes": 1515909,
+    "srcset": [
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-fig02-multidataset-noc-examples-768w.webp",
+        "width": 768,
+        "height": 616,
+        "bytes": 62400
+      },
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-fig02-multidataset-noc-examples-1280w.webp",
+        "width": 1280,
+        "height": 1026,
+        "bytes": 126432
+      },
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-fig02-multidataset-noc-examples.webp",
+        "width": 1427,
+        "height": 1144,
+        "bytes": 150380
+      }
+    ]
+  },
+  "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-fig03-feature-model-architecture.webp": {
+    "width": 1920,
+    "height": 488,
+    "bytes": 37990,
+    "sourceBytes": 713562,
+    "srcset": [
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-fig03-feature-model-architecture-768w.webp",
+        "width": 768,
+        "height": 195,
+        "bytes": 12486
+      },
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-fig03-feature-model-architecture-1280w.webp",
+        "width": 1280,
+        "height": 326,
+        "bytes": 23174
+      },
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-fig03-feature-model-architecture.webp",
+        "width": 1920,
+        "height": 488,
+        "bytes": 37990
+      }
+    ]
+  },
+  "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-fig04-qualitative-alignment.webp": {
+    "width": 1691,
+    "height": 2219,
+    "bytes": 298234,
+    "sourceBytes": 3945619,
+    "srcset": [
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-fig04-qualitative-alignment-768w.webp",
+        "width": 768,
+        "height": 1008,
+        "bytes": 91826
+      },
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-fig04-qualitative-alignment-1280w.webp",
+        "width": 1280,
+        "height": 1680,
+        "bytes": 192916
+      },
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-fig04-qualitative-alignment.webp",
+        "width": 1691,
+        "height": 2219,
+        "bytes": 298234
+      }
+    ]
+  },
+  "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-repo-inference-pipeline.webp": {
+    "width": 1137,
+    "height": 1727,
+    "bytes": 90070,
+    "sourceBytes": 1006810,
+    "srcset": [
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-repo-inference-pipeline-768w.webp",
+        "width": 768,
+        "height": 1167,
+        "bytes": 53318
+      },
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-repo-inference-pipeline.webp",
+        "width": 1137,
+        "height": 1727,
+        "bytes": 90070
+      }
+    ]
+  },
+  "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table01-training-datasets.webp": {
+    "width": 877,
+    "height": 809,
+    "bytes": 87358,
+    "sourceBytes": 198093,
+    "srcset": [
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table01-training-datasets-768w.webp",
+        "width": 768,
+        "height": 708,
+        "bytes": 72454
+      },
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table01-training-datasets.webp",
+        "width": 877,
+        "height": 809,
+        "bytes": 87358
+      }
+    ]
+  },
+  "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table02-scannet25k-results.webp": {
+    "width": 1720,
+    "height": 1068,
+    "bytes": 173262,
+    "sourceBytes": 419583,
+    "srcset": [
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table02-scannet25k-results-768w.webp",
+        "width": 768,
+        "height": 477,
+        "bytes": 65458
+      },
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table02-scannet25k-results-1280w.webp",
+        "width": 1280,
+        "height": 795,
+        "bytes": 124238
+      },
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table02-scannet25k-results.webp",
+        "width": 1720,
+        "height": 1068,
+        "bytes": 173262
+      }
+    ]
+  },
+  "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table03-co3d-seen-unseen.webp": {
+    "width": 1720,
+    "height": 455,
+    "bytes": 91494,
+    "sourceBytes": 203080,
+    "srcset": [
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table03-co3d-seen-unseen-768w.webp",
+        "width": 768,
+        "height": 203,
+        "bytes": 32744
+      },
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table03-co3d-seen-unseen-1280w.webp",
+        "width": 1280,
+        "height": 339,
+        "bytes": 63846
+      },
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table03-co3d-seen-unseen.webp",
+        "width": 1720,
+        "height": 455,
+        "bytes": 91494
+      }
+    ]
+  },
+  "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table04-ablation.webp": {
+    "width": 850,
+    "height": 498,
+    "bytes": 40048,
+    "sourceBytes": 100851,
+    "srcset": [
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table04-ablation-768w.webp",
+        "width": 768,
+        "height": 450,
+        "bytes": 34414
+      },
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table04-ablation.webp",
+        "width": 850,
+        "height": 498,
+        "bytes": 40048
+      }
+    ]
+  },
+  "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table05-cad-retrieval-robustness.webp": {
+    "width": 850,
+    "height": 337,
+    "bytes": 32370,
+    "sourceBytes": 79301,
+    "srcset": [
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table05-cad-retrieval-robustness-768w.webp",
+        "width": 768,
+        "height": 304,
+        "bytes": 28316
+      },
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table05-cad-retrieval-robustness.webp",
+        "width": 850,
+        "height": 337,
+        "bytes": 32370
+      }
+    ]
+  },
+  "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table06-efficiency.webp": {
+    "width": 877,
+    "height": 805,
+    "bytes": 68022,
+    "sourceBytes": 180171,
+    "srcset": [
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table06-efficiency-768w.webp",
+        "width": 768,
+        "height": 705,
+        "bytes": 57678
+      },
+      {
+        "url": "/images/blog/sufleca-cad-to-image-alignment-feature-learning/sufleca-table06-efficiency.webp",
+        "width": 877,
+        "height": 805,
+        "bytes": 68022
+      }
+    ]
+  },
   "/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-algorithm01-mesh-to-ovoxel.webp": {
     "width": 778,
     "height": 1767,
