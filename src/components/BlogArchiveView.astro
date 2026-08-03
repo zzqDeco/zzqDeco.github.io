@@ -25,6 +25,18 @@ const {
   emptyMessage = 'No entries matched this view.',
 } = Astro.props;
 
+// tag rail 收敛：按 count 降序取前 8；当前激活标签不在前 8 时强制并入，其余收进 details
+const sortedTags = [...tags].sort(
+  (a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-CN')
+);
+const topTags = sortedTags.slice(0, 8);
+const activeTag = activeTagSlug ? sortedTags.find((tag) => tag.slug === activeTagSlug) : undefined;
+const visibleTags =
+  activeTag && !topTags.some((tag) => tag.slug === activeTag.slug)
+    ? [...topTags, activeTag]
+    : topTags;
+const visibleSlugs = new Set(visibleTags.map((tag) => tag.slug));
+const overflowTags = sortedTags.filter((tag) => !visibleSlugs.has(tag.slug));
 ---
 
 <header class="archive-hero" aria-label={heading}>
@@ -42,7 +54,7 @@ const {
         <Hash size={14} strokeWidth={1.8} aria-hidden="true" />
         tags
       </span>
-      {tags.map((tag) => (
+      {visibleTags.map((tag) => (
         <a
           class:list={['tag-chip', tag.slug === activeTagSlug && 'is-active']}
           href={tag.href}
@@ -52,6 +64,23 @@ const {
           <span class="tag-count">{tag.count}</span>
         </a>
       ))}
+      {overflowTags.length > 0 && (
+        <details class="tag-rail-details">
+          <summary class="tag-rail-more">还有 {overflowTags.length} 个标签 →</summary>
+          <div class="tag-rail-rest">
+            {overflowTags.map((tag) => (
+              <a
+                class:list={['tag-chip', tag.slug === activeTagSlug && 'is-active']}
+                href={tag.href}
+                aria-current={tag.slug === activeTagSlug ? 'page' : undefined}
+              >
+                <span>{tag.name}</span>
+                <span class="tag-count">{tag.count}</span>
+              </a>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   )}
 </header>
@@ -71,7 +100,7 @@ const {
 
             <ol class="post-list archive-list">
               {monthGroup.posts.map((post) => (
-                <PostEntry post={post} actionLabel="read" />
+                <PostEntry post={post} />
               ))}
             </ol>
           </div>

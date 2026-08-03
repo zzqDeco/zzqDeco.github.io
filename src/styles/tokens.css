@@ -14,6 +14,10 @@
   --accent-hover: #57534e;
   --accent-soft: rgba(28, 25, 23, 0.05);
   --accent-line: rgba(28, 25, 23, 0.16);
+  /* 陶土点睛色：仅用于 hero 强调词、nav 当前页、LATEST 微标、链接/tag/repo 名称 hover，
+     不得扩散到按钮填充或大面积色块 */
+  --terra: #9a3412;
+  --terra-soft: rgba(154, 52, 18, 0.07);
   --success: #16a34a;
   --success-soft: rgba(22, 163, 74, 0.12);
   --warning: #b7791f;
@@ -88,6 +92,8 @@
   --accent-hover: #ffffff;
   --accent-soft: rgba(232, 228, 224, 0.06);
   --accent-line: rgba(232, 228, 224, 0.18);
+  --terra: #e3986d;
+  --terra-soft: rgba(227, 152, 109, 0.1);
   --success: #22c55e;
   --success-soft: rgba(34, 197, 94, 0.12);
   --warning: #f59e0b;

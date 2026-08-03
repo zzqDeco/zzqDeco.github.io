@@ -11,16 +11,9 @@
 .post-entry {
   position: relative;
   display: grid;
-  gap: var(--space-2);
-  padding: var(--space-5) 0;
+  padding: 1.1rem 0 1rem;
   border-bottom: 1px solid var(--line);
   transition: background-color 160ms ease;
-}
-
-@media (max-width: 720px) {
-  .post-entry {
-    padding: var(--space-4) 0;
-  }
 }
 
 .post-entry:hover,
@@ -28,47 +21,64 @@
   background: var(--bg-panel-soft);
 }
 
-.post-entry-head {
+.post-entry-row {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--fg-muted);
-  font-family: var(--font-mono);
-  font-size: var(--fs-2xs);
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-6);
 }
 
 .post-date {
-  color: var(--fg-muted);
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  white-space: nowrap;
 }
 
 .post-entry-title {
-  font-size: var(--fs-lg);
+  font-size: 1.1rem;
   font-weight: 600;
   letter-spacing: -0.012em;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
-/* 标题 hover：下划线自左向右生长 */
+/* 标题 hover：陶土下划线自左向右生长 */
 .post-entry-title a {
   color: var(--fg);
-  background-image: linear-gradient(currentColor, currentColor);
+  background-image: linear-gradient(var(--terra), var(--terra));
   background-repeat: no-repeat;
   background-position: 0 100%;
   background-size: 0% 1px;
-  transition: background-size 200ms ease;
+  transition: background-size 200ms ease, color 160ms ease;
 }
 
 .post-entry-title a:hover {
-  color: var(--fg);
+  color: var(--terra);
   background-size: 100% 1px;
 }
 
 .post-entry-summary {
-  max-width: 62ch;
+  overflow: hidden;
+  max-width: 75ch;
+  margin-top: 0.3rem;
   color: var(--fg-muted);
-  font-size: var(--fs-sm);
-  line-height: 1.65;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .post-entry-summary {
+    display: -webkit-box;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+}
+
+.post-entry-tags {
+  margin-top: 0.6rem;
 }
 
 .post-entry-tags,
@@ -100,20 +110,26 @@
 
 .post-entry-tags a:hover,
 .article-tags a:hover,
-.tag-chip:hover,
+.tag-chip:hover {
+  border-color: var(--terra);
+  background: var(--terra-soft);
+  color: var(--terra);
+}
+
 .tag-chip.is-active {
-  border-color: var(--fg-faint);
-  background: var(--bg-panel-soft);
-  color: var(--fg);
+  border-color: var(--terra);
+  background: var(--terra-soft);
+  color: var(--terra);
 }
 
 .tag-count {
   color: var(--fg-faint);
 }
 
-.post-entry-read {
-  justify-self: start;
-  margin-top: var(--space-1);
+.tag-more {
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: var(--fs-3xs);
 }
 
 /* 大屏双列：行距保持 0（去框化后 gap 已为 0），仅加列间距；标题略降 */

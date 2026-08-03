@@ -131,6 +131,7 @@
 }
 
 .header-nav a {
+  position: relative;
   display: inline-flex;
   align-items: center;
   min-height: 2rem;
@@ -149,8 +150,18 @@
 
 .header-nav a[aria-current='page'] {
   color: var(--fg);
-  background: var(--bg-panel-soft);
   font-weight: 600;
+}
+
+.header-nav a[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  right: 0.85rem;
+  bottom: 0.1rem;
+  left: 0.85rem;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--terra);
 }
 
 .header-tools {
@@ -349,7 +360,6 @@
 }
 
 .section-action,
-.post-entry-read,
 .profile-more,
 .inline-icon-link {
   display: inline-flex;
@@ -362,10 +372,9 @@
 }
 
 .section-action:hover,
-.post-entry-read:hover,
 .profile-more:hover,
 .inline-icon-link:hover {
-  color: var(--fg);
+  color: var(--terra);
   text-decoration: underline;
   text-underline-offset: 3px;
 }

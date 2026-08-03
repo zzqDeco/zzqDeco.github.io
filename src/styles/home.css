@@ -22,16 +22,21 @@
 
 .hero-title {
   max-width: 100%;
-  font-size: var(--fs-3xl);
-  letter-spacing: -0.02em;
-  white-space: nowrap;
+  font-size: 3.4rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.hero-title em {
+  color: var(--terra);
+  font-style: normal;
 }
 
 @media (max-width: 720px) {
   .hero-title {
     max-width: none;
-    font-size: 1.72rem;
-    white-space: normal;
+    font-size: 2.3rem;
   }
 }
 
@@ -106,5 +111,80 @@
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+
+/* feature：最新一篇焦点块，hairline 与下方列表分隔 */
+.feature {
+  display: block;
+  padding: var(--space-7) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.feature-micro {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0;
+  color: var(--terra);
+  font-family: var(--font-mono);
+  font-size: var(--fs-3xs);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.feature-micro::before {
+  content: '';
+  width: 2rem;
+  height: 1px;
+  background: var(--terra);
+}
+
+.feature-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-7);
+  margin-top: var(--space-4);
+}
+
+.feature-title {
+  font-size: 1.65rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+}
+
+.feature-title a:hover {
+  color: var(--terra);
+}
+
+.feature-date {
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
+.feature-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  max-width: 62ch;
+  margin-top: 0.7rem;
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.feature-tags {
+  margin-top: 0.9rem;
+}
+
+@media (max-width: 720px) {
+  .feature-title {
+    font-size: 1.3rem;
+  }
 }
 

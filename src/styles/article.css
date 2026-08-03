@@ -113,7 +113,7 @@
 }
 
 .crumbs a:hover {
-  color: var(--fg);
+  color: var(--terra);
 }
 
 .article-title {
@@ -208,7 +208,7 @@
 }
 
 .toc-panel a:hover {
-  color: var(--fg);
+  color: var(--terra);
 }
 
 .toc-depth-3 {
