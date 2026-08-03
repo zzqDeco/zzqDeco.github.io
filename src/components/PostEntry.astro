@@ -1,34 +1,32 @@
 ---
-import { ArrowRight } from 'lucide-astro';
 import type { CollectionEntry } from 'astro:content';
 import { formatBlogDateTime } from '../lib/date';
 import { getBlogTagHref } from '../lib/blog';
 
 interface Props {
   post: CollectionEntry<'blog'>;
-  actionLabel: string;
 }
 
-const { post, actionLabel } = Astro.props;
+const { post } = Astro.props;
+
+const visibleTags = post.data.tags.slice(0, 3);
+const hiddenTagCount = post.data.tags.length - visibleTags.length;
 ---
 
 <li class="post-entry">
-  <div class="post-entry-head">
+  <div class="post-entry-row">
+    <h3 class="post-entry-title"><a href={`/blog/${post.id}/`} data-astro-prefetch>{post.data.title}</a></h3>
     <time class="post-date" datetime={post.data.pubDate.toISOString()}>
       {formatBlogDateTime(post.data.pubDate)}
     </time>
   </div>
-  <h3 class="post-entry-title"><a href={`/blog/${post.id}/`} data-astro-prefetch>{post.data.title}</a></h3>
   {post.data.description && (
     <p class="post-entry-summary">{post.data.description}</p>
   )}
-  {post.data.tags.length > 0 && (
+  {visibleTags.length > 0 && (
     <div class="post-entry-tags" aria-label="标签">
-      {post.data.tags.map((tag) => <a href={getBlogTagHref(tag)}>{tag}</a>)}
+      {visibleTags.map((tag) => <a href={getBlogTagHref(tag)}>{tag}</a>)}
+      {hiddenTagCount > 0 && <span class="tag-more">+{hiddenTagCount}</span>}
     </div>
   )}
-  <a class="post-entry-read" href={`/blog/${post.id}/`} data-astro-prefetch>
-    {actionLabel}
-    <ArrowRight size={13} strokeWidth={1.8} aria-hidden="true" />
-  </a>
 </li>

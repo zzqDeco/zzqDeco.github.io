@@ -96,7 +96,7 @@
 }
 
 .profile-handle:hover {
-  color: var(--fg);
+  color: var(--terra);
 }
 
 .profile-bio {
@@ -207,7 +207,7 @@
 }
 
 .profile-repo:hover .profile-repo-name {
-  color: var(--accent-hover);
+  color: var(--terra);
 }
 
 .repo-lang {

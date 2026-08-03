@@ -37,6 +37,34 @@
   font-weight: 700;
 }
 
+/* tag rail 收敛：details 与其内容以 contents 参与 flex 流式排列，展开后溢出标签跟在 rail 内 */
+.tag-rail-details,
+.tag-rail-rest {
+  display: contents;
+}
+
+.tag-rail-more {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.45rem;
+  padding: 0 var(--space-2);
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  cursor: pointer;
+  list-style: none;
+  transition: color 160ms ease;
+}
+
+.tag-rail-more::-webkit-details-marker {
+  display: none;
+}
+
+.tag-rail-more:hover,
+.tag-rail-details[open] .tag-rail-more {
+  color: var(--terra);
+}
+
 .archive-timeline {
   display: grid;
   gap: var(--space-8);

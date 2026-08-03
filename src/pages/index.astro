@@ -2,11 +2,13 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import PostEntry from '../components/PostEntry.astro';
 import { ArrowRight, FileText, Rss, Terminal, UserRound } from 'lucide-astro';
-import { getVisibleBlogPosts } from '../lib/blog';
+import { getVisibleBlogPosts, getBlogTagHref } from '../lib/blog';
+import { formatBlogDateTime } from '../lib/date';
 
 const posts = await getVisibleBlogPosts();
 
-const latestPosts = posts.slice(0, 5);
+const [featurePost, ...restPosts] = posts;
+const latestPosts = restPosts.slice(0, 4);
 ---
 
 <BaseLayout title="首页" description="zzqDeco Blog 首页">
@@ -18,7 +20,7 @@ const latestPosts = posts.slice(0, 5);
         <span>whoami --focus</span>
       </p>
 
-      <h1 class="hero-title">Tech &amp; Life for Future</h1>
+      <h1 class="hero-title">Tech &amp; Life<br />for <em>Future</em></h1>
       <p class="hero-lede">
         从工作开始重新记录自己，努力成为一个合格的 Full-Stack AI Engineer &amp; Researcher
       </p>
@@ -41,6 +43,28 @@ const latestPosts = posts.slice(0, 5);
     </div>
   </section>
 
+  {featurePost && (
+    <section class="feature" aria-label="最新文章">
+      <p class="feature-micro">Latest</p>
+      <div class="feature-head">
+        <h2 class="feature-title">
+          <a href={`/blog/${featurePost.id}/`} data-astro-prefetch>{featurePost.data.title}</a>
+        </h2>
+        <time class="feature-date" datetime={featurePost.data.pubDate.toISOString()}>
+          {formatBlogDateTime(featurePost.data.pubDate)}
+        </time>
+      </div>
+      {featurePost.data.description && (
+        <p class="feature-summary">{featurePost.data.description}</p>
+      )}
+      {featurePost.data.tags.length > 0 && (
+        <div class="feature-tags post-entry-tags" aria-label="标签">
+          {featurePost.data.tags.map((tag) => <a href={getBlogTagHref(tag)}>{tag}</a>)}
+        </div>
+      )}
+    </section>
+  )}
+
   <section class="section-stack" aria-label="最近文章">
     <div class="section-head">
       <p class="section-label">recent posts</p>
@@ -52,7 +76,7 @@ const latestPosts = posts.slice(0, 5);
 
     <ol class="post-list">
       {latestPosts.map((post) => (
-        <PostEntry post={post} actionLabel="open file" />
+        <PostEntry post={post} />
       ))}
     </ol>
   </section>
