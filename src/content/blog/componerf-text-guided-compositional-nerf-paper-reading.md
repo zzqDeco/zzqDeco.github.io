@@ -4,6 +4,7 @@ description: "精读 CompoNeRF 如何通过局部/全局文本引导、密度组
 pubDate: "2026-06-30T10:49:44+08:00"
 updatedDate: "2026-06-30T10:49:44+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "Text-to-3D"
   - "NeRF"

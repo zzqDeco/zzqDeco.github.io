@@ -7250,6 +7250,554 @@
     "bytes": 7932,
     "sourceBytes": 18080
   },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-algorithm01-resolution-scaling.webp": {
+    "width": 1032,
+    "height": 800,
+    "bytes": 60646,
+    "sourceBytes": 111638,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-algorithm01-resolution-scaling-768w.webp",
+        "width": 768,
+        "height": 595,
+        "bytes": 42232
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-algorithm01-resolution-scaling.webp",
+        "width": 1032,
+        "height": 800,
+        "bytes": 60646
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig01-architecture.webp": {
+    "width": 1874,
+    "height": 918,
+    "bytes": 79824,
+    "sourceBytes": 725407,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig01-architecture-768w.webp",
+        "width": 768,
+        "height": 376,
+        "bytes": 27902
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig01-architecture-1280w.webp",
+        "width": 1280,
+        "height": 627,
+        "bytes": 51336
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig01-architecture.webp",
+        "width": 1874,
+        "height": 918,
+        "bytes": 79824
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig02-qualitative-comparison.webp": {
+    "width": 1403,
+    "height": 940,
+    "bytes": 264250,
+    "sourceBytes": 2151402,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig02-qualitative-comparison-768w.webp",
+        "width": 768,
+        "height": 515,
+        "bytes": 87750
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig02-qualitative-comparison-1280w.webp",
+        "width": 1280,
+        "height": 858,
+        "bytes": 220868
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig02-qualitative-comparison.webp",
+        "width": 1403,
+        "height": 940,
+        "bytes": 264250
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig03-rewatermarking-curves.webp": {
+    "width": 1700,
+    "height": 1673,
+    "bytes": 80488,
+    "sourceBytes": 206795,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig03-rewatermarking-curves-768w.webp",
+        "width": 768,
+        "height": 756,
+        "bytes": 35508
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig03-rewatermarking-curves-1280w.webp",
+        "width": 1280,
+        "height": 1260,
+        "bytes": 59502
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig03-rewatermarking-curves.webp",
+        "width": 1700,
+        "height": 1673,
+        "bytes": 80488
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig04-payload-noise-adversarial.webp": {
+    "width": 1920,
+    "height": 738,
+    "bytes": 75838,
+    "sourceBytes": 195051,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig04-payload-noise-adversarial-768w.webp",
+        "width": 768,
+        "height": 295,
+        "bytes": 23728
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig04-payload-noise-adversarial-1280w.webp",
+        "width": 1280,
+        "height": 492,
+        "bytes": 45590
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig04-payload-noise-adversarial.webp",
+        "width": 1920,
+        "height": 738,
+        "bytes": 75838
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig05-individual-perturbations.webp": {
+    "width": 1920,
+    "height": 757,
+    "bytes": 71590,
+    "sourceBytes": 528601,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig05-individual-perturbations-768w.webp",
+        "width": 768,
+        "height": 303,
+        "bytes": 24730
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig05-individual-perturbations-1280w.webp",
+        "width": 1280,
+        "height": 505,
+        "bytes": 46124
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig05-individual-perturbations.webp",
+        "width": 1920,
+        "height": 757,
+        "bytes": 71590
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig06-quality-robustness-tradeoff.webp": {
+    "width": 1920,
+    "height": 1379,
+    "bytes": 68532,
+    "sourceBytes": 172036,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig06-quality-robustness-tradeoff-768w.webp",
+        "width": 768,
+        "height": 552,
+        "bytes": 27928
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig06-quality-robustness-tradeoff-1280w.webp",
+        "width": 1280,
+        "height": 920,
+        "bytes": 46954
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig06-quality-robustness-tradeoff.webp",
+        "width": 1920,
+        "height": 1379,
+        "bytes": 68532
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig07-rewatermarking-example.webp": {
+    "width": 1306,
+    "height": 482,
+    "bytes": 56340,
+    "sourceBytes": 819090,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig07-rewatermarking-example-768w.webp",
+        "width": 768,
+        "height": 283,
+        "bytes": 29522
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig07-rewatermarking-example-1280w.webp",
+        "width": 1280,
+        "height": 472,
+        "bytes": 55556
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig07-rewatermarking-example.webp",
+        "width": 1306,
+        "height": 482,
+        "bytes": 56340
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-fig08-limitations-clutter.webp": {
+    "width": 600,
+    "height": 466,
+    "bytes": 92968,
+    "sourceBytes": 564512
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig09-frequency-ffl.webp": {
+    "width": 1444,
+    "height": 480,
+    "bytes": 160822,
+    "sourceBytes": 212205,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig09-frequency-ffl-768w.webp",
+        "width": 768,
+        "height": 255,
+        "bytes": 34666
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig09-frequency-ffl-1280w.webp",
+        "width": 1280,
+        "height": 425,
+        "bytes": 116006
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig09-frequency-ffl.webp",
+        "width": 1444,
+        "height": 480,
+        "bytes": 160822
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig10-resolution-scaling-watermarking.webp": {
+    "width": 1670,
+    "height": 1673,
+    "bytes": 76764,
+    "sourceBytes": 170796,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig10-resolution-scaling-watermarking-768w.webp",
+        "width": 768,
+        "height": 769,
+        "bytes": 34282
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig10-resolution-scaling-watermarking-1280w.webp",
+        "width": 1280,
+        "height": 1282,
+        "bytes": 56344
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig10-resolution-scaling-watermarking.webp",
+        "width": 1670,
+        "height": 1673,
+        "bytes": 76764
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig11-resolution-scaling-removal.webp": {
+    "width": 1670,
+    "height": 1673,
+    "bytes": 67380,
+    "sourceBytes": 156264,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig11-resolution-scaling-removal-768w.webp",
+        "width": 768,
+        "height": 769,
+        "bytes": 31950
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig11-resolution-scaling-removal-1280w.webp",
+        "width": 1280,
+        "height": 1282,
+        "bytes": 52036
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig11-resolution-scaling-removal.webp",
+        "width": 1670,
+        "height": 1673,
+        "bytes": 67380
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig12-activation-maps.webp": {
+    "width": 1920,
+    "height": 542,
+    "bytes": 91800,
+    "sourceBytes": 1337125,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig12-activation-maps-768w.webp",
+        "width": 768,
+        "height": 217,
+        "bytes": 29588
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig12-activation-maps-1280w.webp",
+        "width": 1280,
+        "height": 361,
+        "bytes": 56748
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig12-activation-maps.webp",
+        "width": 1920,
+        "height": 542,
+        "bytes": 91800
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig13-control-images.webp": {
+    "width": 1810,
+    "height": 794,
+    "bytes": 81398,
+    "sourceBytes": 323038,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig13-control-images-768w.webp",
+        "width": 768,
+        "height": 337,
+        "bytes": 21994
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig13-control-images-1280w.webp",
+        "width": 1280,
+        "height": 562,
+        "bytes": 42158
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig13-control-images.webp",
+        "width": 1810,
+        "height": 794,
+        "bytes": 81398
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig14-noise-examples.webp": {
+    "width": 1792,
+    "height": 828,
+    "bytes": 107154,
+    "sourceBytes": 1211429,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig14-noise-examples-768w.webp",
+        "width": 768,
+        "height": 355,
+        "bytes": 28790
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig14-noise-examples-1280w.webp",
+        "width": 1280,
+        "height": 591,
+        "bytes": 63538
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig14-noise-examples.webp",
+        "width": 1792,
+        "height": 828,
+        "bytes": 107154
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig15-inference-strength.webp": {
+    "width": 1920,
+    "height": 1390,
+    "bytes": 72686,
+    "sourceBytes": 187570,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig15-inference-strength-768w.webp",
+        "width": 768,
+        "height": 556,
+        "bytes": 29662
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig15-inference-strength-1280w.webp",
+        "width": 1280,
+        "height": 927,
+        "bytes": 49346
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig15-inference-strength.webp",
+        "width": 1920,
+        "height": 1390,
+        "bytes": 72686
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig16-psnr-resolution-dependence.webp": {
+    "width": 1086,
+    "height": 679,
+    "bytes": 43548,
+    "sourceBytes": 409498,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig16-psnr-resolution-dependence-768w.webp",
+        "width": 768,
+        "height": 480,
+        "bytes": 29392
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-fig16-psnr-resolution-dependence.webp",
+        "width": 1086,
+        "height": 679,
+        "bytes": 43548
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-table05-training-stages.webp": {
+    "width": 1920,
+    "height": 473,
+    "bytes": 33862,
+    "sourceBytes": 60603,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-table05-training-stages-768w.webp",
+        "width": 768,
+        "height": 189,
+        "bytes": 9834
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-table05-training-stages-1280w.webp",
+        "width": 1280,
+        "height": 315,
+        "bytes": 20144
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-table05-training-stages.webp",
+        "width": 1920,
+        "height": 473,
+        "bytes": 33862
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-table06-noise-severity.webp": {
+    "width": 1920,
+    "height": 781,
+    "bytes": 114862,
+    "sourceBytes": 179065,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-table06-noise-severity-768w.webp",
+        "width": 768,
+        "height": 313,
+        "bytes": 37134
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-table06-noise-severity-1280w.webp",
+        "width": 1280,
+        "height": 521,
+        "bytes": 71646
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-supp-table06-noise-severity.webp",
+        "width": 1920,
+        "height": 781,
+        "bytes": 114862
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-table01-main-benchmarks.webp": {
+    "width": 1920,
+    "height": 897,
+    "bytes": 160204,
+    "sourceBytes": 246071,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-table01-main-benchmarks-768w.webp",
+        "width": 768,
+        "height": 359,
+        "bytes": 51160
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-table01-main-benchmarks-1280w.webp",
+        "width": 1280,
+        "height": 598,
+        "bytes": 98928
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-table01-main-benchmarks.webp",
+        "width": 1920,
+        "height": 897,
+        "bytes": 160204
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-table02-imagenet-c.webp": {
+    "width": 1044,
+    "height": 596,
+    "bytes": 51452,
+    "sourceBytes": 92247,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-table02-imagenet-c-768w.webp",
+        "width": 768,
+        "height": 438,
+        "bytes": 35936
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-table02-imagenet-c.webp",
+        "width": 1044,
+        "height": 596,
+        "bytes": 51452
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-table03-removal.webp": {
+    "width": 1020,
+    "height": 332,
+    "bytes": 18720,
+    "sourceBytes": 36312,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-table03-removal-768w.webp",
+        "width": 768,
+        "height": 250,
+        "bytes": 13768
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-table03-removal.webp",
+        "width": 1020,
+        "height": 332,
+        "bytes": 18720
+      }
+    ]
+  },
+  "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-table04-ablation.webp": {
+    "width": 1188,
+    "height": 780,
+    "bytes": 66294,
+    "sourceBytes": 131918,
+    "srcset": [
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-table04-ablation-768w.webp",
+        "width": 768,
+        "height": 504,
+        "bytes": 38758
+      },
+      {
+        "url": "/images/blog/trustmark-universal-watermarking-arbitrary-resolution/trustmark-table04-ablation.webp",
+        "width": 1188,
+        "height": 780,
+        "bytes": 66294
+      }
+    ]
+  },
   "/images/blog/youtube-dnn-recommendations/youtube-dnn-fig1-mobile-home.webp": {
     "width": 835,
     "height": 770,

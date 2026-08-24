@@ -4,6 +4,7 @@ description: "精读 SF3D 如何基于 LRM/TripoSR 改造快速单图 3D 重建�
 pubDate: "2026-07-09T16:53:35+08:00"
 updatedDate: "2026-07-09T16:53:35+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "3D Reconstruction"
   - "Image-to-3D"

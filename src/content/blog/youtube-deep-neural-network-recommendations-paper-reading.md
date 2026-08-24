@@ -4,6 +4,7 @@ description: "精读 RecSys 2016 YouTube DNN 推荐系统如何用深度候选�
 pubDate: "2026-06-26T17:26:13+08:00"
 updatedDate: "2026-06-26T17:26:13+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "Recommendation System"
   - "Deep Learning"

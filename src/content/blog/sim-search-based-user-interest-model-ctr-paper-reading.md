@@ -4,6 +4,7 @@ description: "精读阿里 SIM 如何通过两级搜索、用户行为树、长�
 pubDate: "2026-07-09T17:42:08+08:00"
 updatedDate: "2026-07-09T17:42:08+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "Recommendation System"
   - "CTR Prediction"

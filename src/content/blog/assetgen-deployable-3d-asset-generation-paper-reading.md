@@ -4,6 +4,7 @@ description: "精读 AssetGen 如何通过两阶段 MeshGen、GPU 几何处理�
 pubDate: "2026-07-09T16:14:31+08:00"
 updatedDate: "2026-07-09T16:14:31+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "3D Generation"
   - "Image-to-3D"

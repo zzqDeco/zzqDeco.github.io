@@ -4,6 +4,7 @@ description: "从论文与官方代码双线精读 Imaginarium 如何通过 Flux
 pubDate: "2026-06-26T10:11:20+08:00"
 updatedDate: "2026-06-26T10:11:20+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "3D Scene Synthesis"
   - "Computer Vision"

@@ -4,6 +4,7 @@ description: "横向比较 GitHub Flow、GitLab Flow、OneFlow、Trunk-Based Dev
 pubDate: "2026-05-16T14:27:17+08:00"
 updatedDate: "2026-05-16T14:27:17+08:00"
 tags:
+  - "Deep Reading"
   - "Git"
   - "Engineering"
   - "Workflow"

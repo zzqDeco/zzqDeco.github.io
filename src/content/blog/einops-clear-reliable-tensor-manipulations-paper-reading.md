@@ -4,6 +4,7 @@ description: "从 ICLR 2022 论文与 einops 0.8.2 源码双线精读 rearrange�
 pubDate: "2026-07-13T11:04:11+08:00"
 updatedDate: "2026-07-13T11:04:11+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "Python"
   - "Deep Learning"

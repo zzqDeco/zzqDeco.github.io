@@ -4,6 +4,7 @@ description: "从 Zanzibar 论文与 OpenFGA 官方实现双线精读关系元�
 pubDate: "2026-07-08T14:53:07+08:00"
 updatedDate: "2026-07-08T14:53:07+08:00"
 tags:
+  - "Deep Reading"
   - "OpenFGA"
   - "Authorization"
   - "Zanzibar"

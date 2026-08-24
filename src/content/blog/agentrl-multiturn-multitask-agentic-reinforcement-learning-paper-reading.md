@@ -4,6 +4,7 @@ description: "精读 AgentRL 如何通过全异步多轮训练、统一环境控
 pubDate: "2026-07-15T11:49:06+08:00"
 updatedDate: "2026-07-15T11:49:06+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "Reinforcement Learning"
   - "Agentic RL"

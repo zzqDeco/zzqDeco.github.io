@@ -4,6 +4,7 @@ description: "梳理 BP、深度线性网络、宽网络、NTK 与过参数化�
 pubDate: "2026-06-10T12:46:13+08:00"
 updatedDate: "2026-06-10T12:46:13+08:00"
 tags:
+  - "Deep Reading"
   - "Deep Learning"
   - "Optimization"
   - "Loss Landscape"

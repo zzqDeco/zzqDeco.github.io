@@ -4,6 +4,7 @@ description: "任务拆解、审查改动、运行验证，如何把 AI coding a
 pubDate: "2026-05-27T01:27:53+08:00"
 updatedDate: "2026-05-27T01:27:53+08:00"
 tags:
+  - "Deep Reading"
   - "Codex"
   - "AI"
   - "Engineering"

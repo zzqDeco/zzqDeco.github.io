@@ -4,6 +4,7 @@ description: "系统讲解 Vespa 的应用包、Schema、YQL、文档写入、BM
 pubDate: "2026-07-02T18:20:51+08:00"
 updatedDate: "2026-07-02T18:20:51+08:00"
 tags:
+  - "Deep Reading"
   - "Vespa"
   - "Search Engine"
   - "Vector Search"

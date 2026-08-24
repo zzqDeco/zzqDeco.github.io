@@ -4,6 +4,7 @@ description: "精读 LaMa 如何通过 Fast Fourier Convolution、高感受野�
 pubDate: "2026-07-20T11:23:18+08:00"
 updatedDate: "2026-07-20T11:23:18+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "Image Inpainting"
   - "Computer Vision"

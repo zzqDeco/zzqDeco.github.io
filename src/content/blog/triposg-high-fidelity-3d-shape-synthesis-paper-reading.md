@@ -4,6 +4,7 @@ description: "精读 TripoSG 如何通过 Rectified Flow Transformer、CLIP+DINO
 pubDate: "2026-07-09T17:19:39+08:00"
 updatedDate: "2026-07-09T17:19:39+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "3D Generation"
   - "Image-to-3D"

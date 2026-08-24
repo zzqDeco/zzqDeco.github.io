@@ -4,6 +4,7 @@ description: "精读 Native and Compact Structured Latents for 3D Generation 如
 pubDate: "2026-07-07T10:59:40+08:00"
 updatedDate: "2026-07-07T10:59:40+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "3D Generation"
   - "Computer Vision"

@@ -4,6 +4,7 @@ description: "系统梳理推荐系统在缺少样本时如何通过内容先验
 pubDate: "2026-06-26T15:20:05+08:00"
 updatedDate: "2026-06-26T15:20:05+08:00"
 tags:
+  - "Deep Reading"
   - "Recommendation System"
   - "Cold Start"
   - "Two-Tower"

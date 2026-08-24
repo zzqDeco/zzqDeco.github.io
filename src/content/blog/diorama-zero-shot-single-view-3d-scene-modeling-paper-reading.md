@@ -4,6 +4,7 @@ description: "精读 Diorama 如何通过开放世界感知、PlainRecon、场�
 pubDate: "2026-07-15T16:20:26+08:00"
 updatedDate: "2026-07-15T16:20:26+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "3D Scene Modeling"
   - "Single-view Reconstruction"

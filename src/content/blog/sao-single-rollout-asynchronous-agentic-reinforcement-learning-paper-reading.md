@@ -4,6 +4,7 @@ description: "精读 SAO 如何通过单轨迹异步采样、双边 Token 级重
 pubDate: "2026-07-15T09:46:03+08:00"
 updatedDate: "2026-07-15T09:46:03+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "Reinforcement Learning"
   - "Agentic RL"

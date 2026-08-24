@@ -4,6 +4,7 @@ description: "精读 Meta ICML 2024 Generative Recommenders 如何将推荐系�
 pubDate: "2026-06-29T11:57:06+08:00"
 updatedDate: "2026-06-29T11:57:06+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "Recommendation System"
   - "Generative Recommenders"

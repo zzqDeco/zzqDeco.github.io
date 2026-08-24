@@ -4,6 +4,7 @@ description: "系统梳理长时域、稀疏延迟奖励强化学习中的信用
 pubDate: "2026-06-10T18:53:09+08:00"
 updatedDate: "2026-06-10T18:53:09+08:00"
 tags:
+  - "Deep Reading"
   - "Reinforcement Learning"
   - "Long-Horizon RL"
   - "Credit Assignment"

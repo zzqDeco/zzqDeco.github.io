@@ -4,6 +4,7 @@ description: "精读 SUFLECA 如何通过 12 数据集 NOC 弱监督、DPT 几�
 pubDate: "2026-07-22T14:18:27+08:00"
 updatedDate: "2026-07-22T14:18:27+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "3D Vision"
   - "CAD Alignment"

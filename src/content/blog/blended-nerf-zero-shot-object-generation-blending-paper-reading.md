@@ -4,6 +4,7 @@ description: "精读 Blended-NeRF 如何通过 3D ROI、CLIP 引导、双 NeRF �
 pubDate: "2026-06-30T11:58:46+08:00"
 updatedDate: "2026-06-30T11:58:46+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "NeRF"
   - "3D Scene Editing"

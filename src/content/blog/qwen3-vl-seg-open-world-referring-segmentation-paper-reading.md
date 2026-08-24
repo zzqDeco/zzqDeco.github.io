@@ -4,6 +4,7 @@ description: "精读 Qwen3-VL-Seg 如何将 Qwen3-VL 的开放世界框定位先
 pubDate: "2026-07-10T10:26:59+08:00"
 updatedDate: "2026-07-10T10:26:59+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "Computer Vision"
   - "Multimodal LLM"

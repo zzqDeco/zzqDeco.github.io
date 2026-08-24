@@ -4,6 +4,7 @@ description: "精读 Layout2Scene 如何通过 3D semantic layout、对象 Gauss
 pubDate: "2026-06-30T13:58:31+08:00"
 updatedDate: "2026-06-30T13:58:31+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "3D Scene Generation"
   - "Text-to-3D"

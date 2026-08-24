@@ -4,6 +4,7 @@ description: "从 KAG 论文与 OpenSPG/KAG v0.8.0 源码双线精读 LLMFriSPG�
 pubDate: "2026-07-13T16:33:46+08:00"
 updatedDate: "2026-07-13T16:33:46+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "Knowledge Graph"
   - "RAG"

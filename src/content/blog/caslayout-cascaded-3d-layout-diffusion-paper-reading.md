@@ -4,6 +4,7 @@ description: "精读 CasLayout 如何通过四阶段条件扩散、建筑约束�
 pubDate: "2026-06-26T09:24:04+08:00"
 updatedDate: "2026-06-26T09:24:04+08:00"
 tags:
+  - "Deep Reading"
   - "Paper Reading"
   - "3D Scene Synthesis"
   - "Diffusion Models"
