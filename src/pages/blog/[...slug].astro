@@ -86,7 +86,7 @@ const tocHeadings = headings.filter((heading) => heading.depth <= 3);
     </header>
 
     {tocHeadings.length > 0 && (
-      <aside class="toc-panel panel" aria-label="目录">
+      <aside class="toc-panel panel" aria-label="目录" data-toc-panel>
         <p class="toc-head">
           <TableOfContents size={15} strokeWidth={1.8} aria-hidden="true" />
           sections
@@ -94,7 +94,7 @@ const tocHeadings = headings.filter((heading) => heading.depth <= 3);
         <ol>
           {tocHeadings.map((heading) => (
             <li class={`toc-depth-${heading.depth}`}>
-              <a href={`#${heading.slug}`}>{heading.text}</a>
+              <a href={`#${heading.slug}`} data-toc-link={heading.slug}>{heading.text}</a>
             </li>
           ))}
         </ol>
@@ -107,4 +107,79 @@ const tocHeadings = headings.filter((heading) => heading.depth <= 3);
 
     <GiscusComments />
   </article>
+
+  {tocHeadings.length > 0 && (
+    <script>
+      (() => {
+        const tocPanel = document.querySelector<HTMLElement>('[data-toc-panel]');
+        const tocLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-toc-link]'));
+        if (!tocPanel || tocLinks.length === 0) return;
+
+        const entries = tocLinks
+          .map((link) => {
+            const slug = link.dataset.tocLink;
+            const target = slug ? document.getElementById(slug) : null;
+            return target ? { link, target } : null;
+          })
+          .filter((item): item is { link: HTMLAnchorElement; target: HTMLElement } => item !== null);
+
+        if (entries.length === 0) return;
+
+        let activeLink: HTMLAnchorElement | null = null;
+        let ticking = false;
+
+        const updateActiveHeading = () => {
+          ticking = false;
+          const threshold = 136;
+          let current = entries[0];
+
+          for (const entry of entries) {
+            if (entry.target.getBoundingClientRect().top <= threshold) {
+              current = entry;
+            } else {
+              break;
+            }
+          }
+
+          if (activeLink === current.link) return;
+
+          if (activeLink) {
+            activeLink.classList.remove('is-active');
+          }
+          current.link.classList.add('is-active');
+          activeLink = current.link;
+
+          if (
+            window.getComputedStyle(tocPanel).position === 'sticky' &&
+            tocPanel.scrollHeight > tocPanel.clientHeight
+          ) {
+            const linkTop = current.link.offsetTop;
+            const linkBottom = linkTop + current.link.offsetHeight;
+            const viewTop = tocPanel.scrollTop + 24;
+            const viewBottom = tocPanel.scrollTop + tocPanel.clientHeight - 24;
+
+            if (linkTop < viewTop) {
+              tocPanel.scrollTo({ top: Math.max(0, linkTop - 24), behavior: 'smooth' });
+            } else if (linkBottom > viewBottom) {
+              tocPanel.scrollTo({
+                top: linkBottom - tocPanel.clientHeight + 24,
+                behavior: 'smooth',
+              });
+            }
+          }
+        };
+
+        const onScroll = () => {
+          if (!ticking) {
+            window.requestAnimationFrame(updateActiveHeading);
+            ticking = true;
+          }
+        };
+
+        updateActiveHeading();
+        window.addEventListener('scroll', onScroll, { passive: true });
+        window.addEventListener('resize', onScroll, { passive: true });
+      })();
+    </script>
+  )}
 </BaseLayout>

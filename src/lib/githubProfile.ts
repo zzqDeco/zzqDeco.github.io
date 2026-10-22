@@ -30,6 +30,27 @@ export type GitHubProfile = {
   repos: Repo[];
 };
 
+const defaultLanguageColors: Record<string, string> = {
+  Astro: '#ff5a03',
+  C: '#555555',
+  'C++': '#f34b7d',
+  CSS: '#663399',
+  Go: '#00ADD8',
+  HTML: '#e34c26',
+  Java: '#b07219',
+  JavaScript: '#f1e05a',
+  Jupyter: '#DA5B0B',
+  'Jupyter Notebook': '#DA5B0B',
+  Kotlin: '#A97BFF',
+  Markdown: '#083fa1',
+  Python: '#3572A5',
+  Rust: '#dea584',
+  Shell: '#89e051',
+  Swift: '#F05138',
+  TypeScript: '#3178c6',
+  Vue: '#41b883',
+};
+
 const fallbackProfile: GitHubProfile = {
   login: 'zzqDeco',
   name: 'zzqDeco',
@@ -48,6 +69,7 @@ const fallbackProfile: GitHubProfile = {
       description: 'AI Sandbox Coding Agent Desktop App',
       url: 'https://github.com/zzqDeco/starxo',
       language: 'Go',
+      languageColor: defaultLanguageColors.Go,
       stars: 0,
       forks: 0,
     },
@@ -56,6 +78,7 @@ const fallbackProfile: GitHubProfile = {
       description: 'Shadow traffic semantic comparison for API migration validation',
       url: 'https://github.com/zzqDeco/shadiff',
       language: 'Go',
+      languageColor: defaultLanguageColors.Go,
       stars: 0,
       forks: 0,
     },
@@ -64,6 +87,7 @@ const fallbackProfile: GitHubProfile = {
       description: 'Paper-focused Document Agent CLI',
       url: 'https://github.com/zzqDeco/papersilm',
       language: 'Go',
+      languageColor: defaultLanguageColors.Go,
       stars: 0,
       forks: 0,
     },
@@ -73,16 +97,20 @@ const fallbackProfile: GitHubProfile = {
 const userAgent = 'zzqDeco.github.io';
 const pinnedRepoLimit = 6;
 
-const toRepo = (repo: any): Repo => ({
-  name: repo.name,
-  description: repo.description ?? 'No description provided.',
-  url: repo.url ?? repo.html_url,
-  language: repo.primaryLanguage?.name ?? repo.language ?? undefined,
-  languageColor: repo.primaryLanguage?.color ?? undefined,
-  stars: repo.stargazerCount ?? repo.stargazers_count ?? 0,
-  forks: repo.forkCount ?? repo.forks_count ?? 0,
-  updatedAt: repo.updatedAt ?? repo.updated_at,
-});
+const toRepo = (repo: any): Repo => {
+  const language: string | undefined = repo.primaryLanguage?.name ?? repo.language ?? undefined;
+  return {
+    name: repo.name,
+    description: repo.description ?? 'No description provided.',
+    url: repo.url ?? repo.html_url,
+    language,
+    languageColor:
+      repo.primaryLanguage?.color ?? (language ? defaultLanguageColors[language] : undefined),
+    stars: repo.stargazerCount ?? repo.stargazers_count ?? 0,
+    forks: repo.forkCount ?? repo.forks_count ?? 0,
+    updatedAt: repo.updatedAt ?? repo.updated_at,
+  };
+};
 
 const parseLastPage = (linkHeader: string | null): number | undefined => {
   if (!linkHeader) return undefined;

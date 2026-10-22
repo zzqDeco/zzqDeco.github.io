@@ -42,7 +42,7 @@ export async function getStaticPaths() {
 
 const { tag, page, tags, archiveGroups } = Astro.props;
 const title = `标签 ${tag.name}`;
-const summary = `${page.total} entries tagged "${tag.name}". Page ${page.currentPage} / ${page.lastPage}. Markdown remains the source of truth; production filters drafts.`;
+const summary = `${page.total} entries tagged "${tag.name}" · Page ${page.currentPage} / ${page.lastPage}`;
 ---
 
 <BaseLayout title={title} description={`zzqDeco Blog 标签 ${tag.name} 文章列表`}>

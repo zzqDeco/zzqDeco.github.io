@@ -33,7 +33,7 @@ npm --prefix tools/blog-editor install
 ## 目录约定
 
 - `src/pages/`：路由页面；`src/layouts/BaseLayout.astro`：唯一布局，props 含 `ogType` / `image` / `publishedTime` / `modifiedTime` / `noindex` / `showProfile`。
-- `src/components/`：组件；`PostEntry.astro` 用 `actionLabel` 区分场景。
+- `src/components/`：组件；`PostEntry.astro` 复用首页与归档页的文章列表行渲染。
 - `src/lib/`：共享逻辑；`image-manifest.json` 由图片管线脚本生成，勿手改。
 - `public/images/blog/<dir>/`：优化后的 WebP 产物（会部署）；原图母版放 `assets/img-src/blog/<dir>/`，不要放回 `public/`。
 - `tools/blog-editor/`：本地编辑器，独立 lockfile，不参与构建与部署。

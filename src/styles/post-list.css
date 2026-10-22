@@ -11,14 +11,9 @@
 .post-entry {
   position: relative;
   display: grid;
+  min-width: 0;
   padding: 1.1rem 0 1rem;
   border-bottom: 1px solid var(--line);
-  transition: background-color 160ms ease;
-}
-
-.post-entry:hover,
-.post-entry:focus-within {
-  background: var(--bg-panel-soft);
 }
 
 .post-entry-row {
@@ -132,10 +127,11 @@
   font-size: var(--fs-3xs);
 }
 
-/* 大屏双列：行距保持 0（去框化后 gap 已为 0），仅加列间距；标题略降 */
+/* 大屏首页双列：使用 minmax(0, 1fr) 防止长单行摘要撑破等宽轨道；
+   归档页（.archive-list）按月分组常含奇数篇，保持单列时间轴流 */
 @media (min-width: 1600px) {
-  .post-list {
-    grid-template-columns: 1fr 1fr;
+  .post-list:not(.archive-list) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     column-gap: var(--space-8);
   }
 

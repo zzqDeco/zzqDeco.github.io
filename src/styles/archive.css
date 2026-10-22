@@ -102,7 +102,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  color: var(--warning);
+  color: var(--terra);
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   font-weight: 700;
@@ -198,14 +198,9 @@
 .pagination-control:hover,
 .pagination-page:hover,
 .pagination-page.is-current {
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.pagination-control:hover,
-.pagination-page:hover {
-  transform: translateY(-1px);
+  border-color: var(--terra);
+  background: var(--terra-soft);
+  color: var(--terra);
 }
 
 .pagination-control.is-disabled {

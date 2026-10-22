@@ -105,15 +105,16 @@
 }
 
 /* 980px 断点下 header 折为两行（见 layout.css 中 .titlebar / .header-nav 的 980px 覆盖），
-   sticky 偏移基准同步变为两行 header 高度 */
+   720px 断点下 .header-tools 进一步折为第三行，sticky 偏移基准按实际行数分两档校准 */
 @media (max-width: 980px) {
   :root {
-    --header-offset: 10.75rem; /* 两行 header 高度的校准值（含余量） */
+    --header-offset: 6.6rem; /* 两行 header 高度的校准值（含余量） */
   }
 }
 
 @media (max-width: 720px) {
   :root {
+    --header-offset: 9.6rem; /* 三行 header 高度的校准值（含余量） */
     --fs-3xl: 2.25rem;
     --fs-2xl: 1.65rem;
     --fs-xl: 1.3rem;

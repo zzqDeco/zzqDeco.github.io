@@ -29,7 +29,7 @@ export async function getStaticPaths() {
 }
 
 const { page, tags, archiveGroups } = Astro.props;
-const summary = `${page.total} entries sorted by pubDate desc. Page ${page.currentPage} / ${page.lastPage}. Markdown remains the source of truth; production filters drafts.`;
+const summary = `${page.total} entries sorted by pubDate desc · Page ${page.currentPage} / ${page.lastPage}`;
 ---
 
 <BaseLayout title={`文章 - 第 ${page.currentPage} 页`} description="zzqDeco Blog 文章列表">

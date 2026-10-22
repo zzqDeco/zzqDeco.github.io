@@ -28,7 +28,7 @@
 .article-body h2,
 .article-body h3,
 .article-body h4 {
-  scroll-margin-top: 6rem;
+  scroll-margin-top: calc(var(--header-offset) + var(--space-5));
 }
 
 .article-body h2 {
@@ -54,12 +54,13 @@
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
-  text-decoration-color: var(--line-strong);
+  text-decoration-color: color-mix(in srgb, var(--terra) 55%, transparent);
+  transition: color 160ms ease, text-decoration-color 160ms ease;
 }
 
 .article-body a:hover {
-  color: var(--fg);
-  text-decoration-color: var(--fg);
+  color: var(--terra);
+  text-decoration-color: var(--terra);
 }
 
 .article-body ul,

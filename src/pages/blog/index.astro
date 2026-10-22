@@ -13,7 +13,7 @@ const posts = await getVisibleBlogPosts();
 const page = createBlogPage(posts, 1, getBlogPageHref);
 const allTags = getBlogTags(posts);
 const archiveGroups = groupBlogPostsByArchive(page.data);
-const summary = `${page.total} entries sorted by pubDate desc. Page ${page.currentPage} / ${page.lastPage}. Markdown remains the source of truth; production filters drafts.`;
+const summary = `${page.total} entries sorted by pubDate desc · Page ${page.currentPage} / ${page.lastPage}`;
 ---
 
 <BaseLayout title="文章" description="zzqDeco Blog 文章列表">
