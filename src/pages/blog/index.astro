@@ -13,13 +13,14 @@ const posts = await getVisibleBlogPosts();
 const page = createBlogPage(posts, 1, getBlogPageHref);
 const allTags = getBlogTags(posts);
 const archiveGroups = groupBlogPostsByArchive(page.data);
-const summary = `${page.total} entries sorted by pubDate desc · Page ${page.currentPage} / ${page.lastPage}`;
+const summary = page.lastPage > 1
+  ? `共 ${page.total} 篇 · 第 ${page.currentPage} / ${page.lastPage} 页`
+  : `共 ${page.total} 篇`;
 ---
 
 <BaseLayout title="文章" description="zzqDeco Blog 文章列表">
   <BlogArchiveView
     heading="文章归档"
-    terminalCommand="find ./src/content/blog -type f | sort --reverse"
     summary={summary}
     tags={allTags}
     archiveGroups={archiveGroups}

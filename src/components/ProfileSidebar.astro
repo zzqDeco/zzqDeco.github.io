@@ -20,13 +20,12 @@ const stats = [
 ];
 ---
 
-<aside class="profile inspector-panel" aria-label="GitHub profile inspector">
+<aside class="profile inspector-panel" aria-label="个人资料">
   <header class="profile-head">
     <a class="profile-avatar-link" href={profile.url} aria-label={`打开 ${profile.login} 的 GitHub 主页`}>
       <img class="profile-avatar" src={avatarSrc} alt={`${profile.login} avatar`} width="72" height="72" loading="lazy" />
     </a>
     <div class="profile-title">
-      <p class="profile-kicker">GitHub inspector</p>
       <h2 class="profile-name">{profile.name}</h2>
       <a class="profile-handle" href={profile.url}>
         <Github size={13} strokeWidth={1.8} aria-hidden="true" />
@@ -45,14 +44,12 @@ const stats = [
     {profile.company && (
       <div class="profile-fact">
         <Building2 size={14} strokeWidth={1.8} aria-hidden="true" />
-        <span class="profile-fact-label">campus</span>
         <span>{profile.company}</span>
       </div>
     )}
     {profile.location && (
       <div class="profile-fact">
         <MapPin size={14} strokeWidth={1.8} aria-hidden="true" />
-        <span class="profile-fact-label">based in</span>
         <span>{profile.location}</span>
       </div>
     )}
@@ -92,10 +89,6 @@ const stats = [
           </span>
         </a>
       ))}
-      <a class="profile-more" href={profile.url}>
-        more on GitHub
-        <ExternalLink size={12} strokeWidth={1.8} aria-hidden="true" />
-      </a>
     </section>
   )}
 </aside>

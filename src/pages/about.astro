@@ -1,9 +1,9 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { Github, Terminal } from 'lucide-astro';
+import { Github, Rss } from 'lucide-astro';
 ---
 
-<BaseLayout title="关于" description="关于 zzqDeco Blog">
+<BaseLayout title="关于" description="关于 zzqDeco">
   <article class="article-page about-page" aria-label="about">
     <header class="article-head">
       <nav class="crumbs" aria-label="breadcrumbs">
@@ -12,38 +12,39 @@ import { Github, Terminal } from 'lucide-astro';
         <span>about</span>
       </nav>
 
-      <p class="terminal-line">
-        <Terminal size={16} strokeWidth={1.8} aria-hidden="true" />
-        <span class="prompt">$</span>
-        <span>cat ./about.md</span>
+      <h1 class="article-title">关于我</h1>
+      <p class="article-description">
+        Full-Stack AI Engineer &amp; Researcher · Building only what I truly wanna build.
       </p>
-
-      <h1 class="article-title">关于这个博客</h1>
-      <p class="article-description">技术实践、产品观察，以及一些长期有效的思考。</p>
     </header>
 
     <div class="article-body about-body panel">
-      <h2>策略</h2>
+      <h2>简介</h2>
       <p>
-        用 Markdown 写作，用 Git 管内容，用静态站点（Astro + GitHub Pages）保证速度和维护成本。
-        所有源码开源在 <a href="https://github.com/zzqDeco/zzqDeco.github.io">zzqDeco.github.io</a>，
-        排版与样式灵感来自终端、编辑器和技术杂志。
+        我是 <strong>zzqDeco</strong>，目前就读于杭州电子科技大学（Hangzhou Dianzi University）。
+        这里用来沉淀我在 AI 算法研究与全栈工程实践中的论文精读、源码剖析与系统构建笔记。
       </p>
 
-      <h2>主题</h2>
+      <h2>关注方向</h2>
       <ul>
-        <li>工程实践：全栈开发、AI 应用、工具链</li>
-        <li>产品观察：偏技术读者的使用反馈</li>
-        <li>学习笔记：长期有效的基本功 &amp; 不会过时的思考</li>
+        <li><strong>Agent &amp; RL</strong>：多轮多任务 Agentic RL、长视野信用分配、Agent 记忆与知识图谱（Graphiti / KAG）</li>
+        <li><strong>3D Vision &amp; Generation</strong>：单图/文本 3D 资产与场景生成、网格重建、3D 布局扩散模型</li>
+        <li><strong>检索与推荐系统</strong>：生成式推荐（HSTU）、多任务排序、向量检索（Vespa）与图数据库内核（Neo4j）</li>
+        <li><strong>AI 工程与工具链</strong>：Coding Agent 桌面沙箱（<a href="https://github.com/zzqDeco/starxo">starxo</a>）、论文辅助 CLI（<a href="https://github.com/zzqDeco/papersilm">papersilm</a>）、流量语义比对（<a href="https://github.com/zzqDeco/shadiff">shadiff</a>）</li>
       </ul>
 
-      <h2>联系</h2>
+      <h2>联系与订阅</h2>
       <p>
-        欢迎通过 GitHub 找我：
+        欢迎在 GitHub 上交流或通过 RSS 订阅更新：
         <a class="inline-icon-link" href="https://github.com/zzqDeco">
-          <Github size={16} strokeWidth={1.8} aria-hidden="true" />
+          <Github size={15} strokeWidth={1.8} aria-hidden="true" />
           @zzqDeco
-        </a>。
+        </a>
+        ·
+        <a class="inline-icon-link" href="/rss.xml">
+          <Rss size={15} strokeWidth={1.8} aria-hidden="true" />
+          RSS Feed
+        </a>
       </p>
     </div>
   </article>

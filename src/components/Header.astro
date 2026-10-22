@@ -11,9 +11,9 @@ interface Props {
 const { siteName, currentPath = '/', displayPath = '~/blog' } = Astro.props;
 
 const navItems = [
-  { href: '/', label: 'home', path: 'index.astro' },
-  { href: '/blog/', label: 'blog', path: 'posts.md' },
-  { href: '/about/', label: 'about', path: 'about.md' },
+  { href: '/', label: 'home' },
+  { href: '/blog/', label: 'blog' },
+  { href: '/about/', label: 'about' },
 ];
 
 const isActive = (href: string) => {
@@ -40,7 +40,6 @@ const isActive = (href: string) => {
         <a
           href={item.href}
           aria-current={isActive(item.href) ? 'page' : undefined}
-          title={item.path}
           data-astro-prefetch
         >
           <span>{item.label}</span>

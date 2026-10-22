@@ -1,7 +1,7 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import GiscusComments from '../../components/GiscusComments.astro';
-import { CalendarDays, Tags, Terminal, TableOfContents } from 'lucide-astro';
+import { CalendarDays, Tags, TableOfContents } from 'lucide-astro';
 import { render } from 'astro:content';
 import { formatBlogDateTime } from '../../lib/date';
 import { getBlogTagHref, getVisibleBlogPosts } from '../../lib/blog';
@@ -55,15 +55,7 @@ const tocHeadings = headings.filter((heading) => heading.depth <= 3);
         <a href="/">~</a>
         <span class="sep">/</span>
         <a href="/blog/">blog</a>
-        <span class="sep">/</span>
-        <span>{post.id}</span>
       </nav>
-
-      <p class="terminal-line">
-        <Terminal size={16} strokeWidth={1.8} aria-hidden="true" />
-        <span class="prompt">$</span>
-        <span>cat ./src/content/blog/{post.id}.md</span>
-      </p>
 
       <h1 class="article-title">{post.data.title}</h1>
       {post.data.description && (
@@ -73,9 +65,9 @@ const tocHeadings = headings.filter((heading) => heading.depth <= 3);
       <div class="article-meta" aria-label="文章元信息">
         <span>
           <CalendarDays size={14} strokeWidth={1.8} aria-hidden="true" />
-          pub {pubDate}
+          <time datetime={post.data.pubDate.toISOString()}>{pubDate}</time>
         </span>
-        {updated && <span>updated {updated}</span>}
+        {updated && <span>更新于 {updated}</span>}
         {post.data.tags.length > 0 && (
           <span class="article-tags">
             <Tags size={14} strokeWidth={1.8} aria-hidden="true" />

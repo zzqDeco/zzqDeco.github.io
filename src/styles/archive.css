@@ -13,13 +13,22 @@
   }
 }
 
+.archive-hero-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
 .archive-hero h1 {
   font-size: var(--fs-2xl);
 }
 
-.archive-hero p {
-  max-width: 46rem;
-  color: var(--fg-soft);
+.archive-summary {
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
 }
 
 .tag-rail {
