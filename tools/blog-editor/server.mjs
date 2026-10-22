@@ -1,11 +1,14 @@
 import { createServer } from 'node:http';
+import { execFile } from 'node:child_process';
 import { mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import matter from 'gray-matter';
 import { build } from 'esbuild';
 
+const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // 仓库根固定为 server.mjs 所在目录（tools/blog-editor/）的上两级，
 // 不依赖 process.cwd()，从根目录或子目录启动路径都正确。
@@ -13,6 +16,9 @@ const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
 const blogDir = path.join(repoRoot, 'src/content/blog');
 const trashDir = path.join(repoRoot, '.trash/blog');
 const assetDir = path.join(repoRoot, 'public/images/blog');
+const assetSrcDir = path.join(repoRoot, 'assets/img-src/blog');
+const convertScriptPath = path.join(repoRoot, 'tools/image-pipeline/convert_images.py');
+const imageManifestPath = path.join(repoRoot, 'src/lib/image-manifest.json');
 const sitePublicDir = path.join(repoRoot, 'public');
 const siteImagesDir = path.join(sitePublicDir, 'images');
 const publicDir = path.join(__dirname, 'public');
@@ -22,6 +28,7 @@ const editorEntryPath = path.join(__dirname, 'client/milkdown-entry.js');
 const host = '127.0.0.1';
 const port = Number(process.env.BLOG_EDITOR_PORT ?? 4322);
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const reservedSlugs = new Set(['page', 'tag']);
 const maxAssetBytes = 5 * 1024 * 1024;
 const shanghaiOffset = '+08:00';
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -65,6 +72,9 @@ const text = (response, statusCode, payload) => {
 const safeSlug = (slug) => {
   if (!slugPattern.test(slug)) {
     throw new Error('Slug must use lowercase letters, numbers, and hyphens only.');
+  }
+  if (reservedSlugs.has(slug)) {
+    throw new Error(`Slug "${slug}" is a reserved blog route and cannot be used.`);
   }
   return slug;
 };
@@ -276,6 +286,8 @@ const deletePost = async (response, slug) => {
   }
 };
 
+const rasterExts = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+
 const safeAssetName = (filename) => {
   const base = path.basename(String(filename || 'image'));
   const rawExt = path.extname(base).toLowerCase();
@@ -292,8 +304,11 @@ const safeAssetName = (filename) => {
     .replace(/^-+|-+$/g, '')
     .slice(0, 60) || 'image';
 
+  const fileStem = `${Date.now()}-${stem}`;
   return {
-    filename: `${Date.now()}-${stem}${ext}`,
+    stem: fileStem,
+    ext,
+    filename: `${fileStem}${ext}`,
     contentType: assetTypes.get(ext) ?? assetTypes.get(rawExt),
   };
 };
@@ -301,7 +316,7 @@ const safeAssetName = (filename) => {
 const uploadAsset = async (request, response, url) => {
   try {
     const slug = safeSlug(String(url.searchParams.get('slug') ?? ''));
-    const { filename, contentType } = safeAssetName(url.searchParams.get('filename'));
+    const { stem, ext, filename, contentType } = safeAssetName(url.searchParams.get('filename'));
     const body = await readBinaryBody(request);
 
     if (body.length === 0) {
@@ -310,8 +325,48 @@ const uploadAsset = async (request, response, url) => {
     }
 
     const targetDir = path.join(assetDir, slug);
-    const target = path.join(targetDir, filename);
     await mkdir(targetDir, { recursive: true });
+
+    // 光栅图（png/jpg/webp）：原图存入 assets/img-src/blog/<slug>/，调用管线生成多档 WebP 并更新 manifest
+    if (rasterExts.has(ext)) {
+      const srcDir = path.join(assetSrcDir, slug);
+      const srcPath = path.join(srcDir, filename);
+      await mkdir(srcDir, { recursive: true });
+      await writeFile(srcPath, body);
+
+      await execFileAsync('python3', [
+        convertScriptPath,
+        '--src',
+        srcDir,
+        '--only',
+        filename,
+        '--out-webp',
+        targetDir,
+        '--out-png',
+        '-',
+        '--url-prefix',
+        `/images/blog/${slug}`,
+        '--manifest',
+        imageManifestPath,
+        '--widths',
+        '768,1280,1920',
+        '--quality',
+        '80',
+      ]);
+
+      const webpFilename = `${stem}.webp`;
+      const webpStat = await stat(path.join(targetDir, webpFilename));
+      json(response, 201, {
+        url: `/images/blog/${slug}/${webpFilename}`,
+        filename: webpFilename,
+        contentType: 'image/webp',
+        size: webpStat.size,
+      });
+      return;
+    }
+
+    // 矢量或动图（svg/gif）：直接写入 public/images/blog/<slug>/
+    const target = path.join(targetDir, filename);
     await writeFile(target, body);
 
     json(response, 201, {

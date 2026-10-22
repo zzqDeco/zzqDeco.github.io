@@ -43,13 +43,13 @@ tags:
 draft: false
 ```
 
-图片放在 `public/images/blog/<slug>/`，文章中使用 root-relative 路径：
+原图母版存放在 `assets/img-src/blog/<slug>/`，经 `tools/image-pipeline/convert_images.py` 生成多档 WebP 到 `public/images/blog/<slug>/` 并更新 `src/lib/image-manifest.json`。文章中使用 root-relative 路径：
 
 ```md
-![alt](/images/blog/<slug>/<file>.png)
+![alt](/images/blog/<slug>/<file>.webp)
 ```
 
-本地写作可以运行 `npm run editor`，打开 `http://127.0.0.1:4322`。编辑器会读取和保存 `src/content/blog/`，并支持上传图片到 `public/images/blog/<slug>/`。
+本地写作可以运行 `npm run editor`，打开 `http://127.0.0.1:4322`。编辑器会读取和保存 `src/content/blog/`，上传光栅图片时会自动保存原图至 `assets/img-src/blog/<slug>/` 并调用图片管线生成多档 WebP 与更新 manifest。
 
 ## Deployment
 

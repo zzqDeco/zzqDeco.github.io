@@ -24,7 +24,7 @@ http://127.0.0.1:4322
 文章中的图片使用 Astro 站点路径：
 
 ```md
-![alt](/images/blog/<slug>/<file>.png)
+![alt](/images/blog/<slug>/<file>.webp)
 ```
 
 编辑器服务需要和 Astro 一样能读取这些路径。`tools/blog-editor/server.mjs` 对 `/images/*` 做了受限静态文件服务：
@@ -43,16 +43,16 @@ http://127.0.0.1:4322
 - `http://...`
 - `/images/...`
 
-上传图片会写入：
+上传光栅图片（`png` / `jpg` / `webp`）会将原图母版写入 `assets/img-src/blog/<slug>/`，并自动调用 `tools/image-pipeline/convert_images.py` 将多档 WebP 产物写入：
 
 ```text
 public/images/blog/<slug>/
 ```
 
-插入正文时仍保存为标准 Markdown：
+同时增量更新 `src/lib/image-manifest.json`（`svg` / `gif` 直接写入 `public/images/blog/<slug>/`）。插入正文时仍保存为标准 Markdown：
 
 ```md
-![alt](/images/blog/<slug>/<filename>)
+![alt](/images/blog/<slug>/<stem>.webp)
 ```
 
 ## Editor Styling Contract

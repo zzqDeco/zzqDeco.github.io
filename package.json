@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
+    "prebuild": "npm test",
     "build": "astro build",
     "preview": "astro preview",
     "test": "node --experimental-strip-types --test src/lib/*.test.ts",

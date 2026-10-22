@@ -114,16 +114,18 @@ Fields:
 
 Image URL inserts a normal Markdown image reference.
 
-Upload Image saves files under:
+Upload Image saves raster source masters (`png`, `jpg/jpeg`, `webp`) under `assets/img-src/blog/<slug>/` and automatically runs `tools/image-pipeline/convert_images.py` to output multi-tier WebP variants into:
 
 ```text
 public/images/blog/<slug>/
 ```
 
+while incrementally updating `src/lib/image-manifest.json` (`svg` and `gif` are written directly to `public/images/blog/<slug>/`).
+
 The inserted Markdown path uses the public Astro URL:
 
 ```md
-![alt](/images/blog/<slug>/<filename>)
+![alt](/images/blog/<slug>/<stem>.webp)
 ```
 
 Rules:

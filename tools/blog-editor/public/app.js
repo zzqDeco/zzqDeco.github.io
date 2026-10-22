@@ -225,7 +225,9 @@ const fromDateTimeLocalInput = (value) => {
 };
 
 const nowDateTimeLocal = () => toDateTimeLocalInput(new Date().toISOString());
-const validateSlug = (slug) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
+const reservedSlugs = new Set(['page', 'tag']);
+const validateSlug = (slug) =>
+  /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) && !reservedSlugs.has(slug);
 const currentMarkdown = () => state.editor?.getMarkdown() ?? '';
 
 const isHttpUrl = (value) => {
@@ -268,7 +270,9 @@ const formPayload = () => ({
 
 const validateClient = (payload) => {
   const errors = [];
-  if (!validateSlug(payload.slug)) {
+  if (reservedSlugs.has(payload.slug)) {
+    errors.push(`slug "${payload.slug}" is a reserved blog route`);
+  } else if (!validateSlug(payload.slug)) {
     errors.push('slug must use lowercase letters, numbers, and hyphens only');
   }
   if (!payload.data.title) errors.push('title is required');
@@ -482,7 +486,7 @@ const openInsertDialog = (mode) => {
   elements.dialogUrlLabel.textContent = isImage ? 'Image URL' : 'URL';
   elements.dialogText.value = '';
   elements.dialogUrl.value = '';
-  elements.dialogUrl.placeholder = isImage ? '/images/blog/post/image.png' : 'https://example.com';
+  elements.dialogUrl.placeholder = isImage ? '/images/blog/post/image.webp' : 'https://example.com';
   elements.dialog.showModal();
   elements.dialogText.focus();
 };

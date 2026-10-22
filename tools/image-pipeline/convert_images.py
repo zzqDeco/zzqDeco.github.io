@@ -74,6 +74,7 @@ from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 
 DEFAULT_WIDTHS = "768,1280,1920"
+RASTER_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -82,6 +83,7 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     p.add_argument("--src", required=True, type=Path, help="源母版目录（只读）")
+    p.add_argument("--only", default=None, help="仅处理指定文件名（用于编辑器单图增量转换）")
     p.add_argument("--out-webp", required=True, type=Path, help="WebP 产物目录，'-' 跳过")
     p.add_argument("--out-png", required=True, type=Path, help="对照 PNG 产物目录，'-' 跳过")
     p.add_argument("--url-prefix", required=True,
@@ -136,10 +138,20 @@ def main() -> int:
         print(f"error: {e}", file=sys.stderr)
         return 2
 
-    srcs = sorted(args.src.glob("*.png"))
-    if not srcs:
-        print(f"error: {args.src} 下没有 .png 文件", file=sys.stderr)
-        return 1
+    if args.only:
+        only_path = args.src / Path(args.only).name
+        if not only_path.is_file() or only_path.suffix.lower() not in RASTER_EXTS:
+            print(f"error: 找不到待转换的光栅图片 {only_path}", file=sys.stderr)
+            return 1
+        srcs = [only_path]
+    else:
+        srcs = sorted(
+            p for p in args.src.iterdir()
+            if p.is_file() and p.suffix.lower() in RASTER_EXTS
+        ) if args.src.is_dir() else []
+        if not srcs:
+            print(f"error: {args.src} 下没有可转换的光栅图片（png/jpg/webp）", file=sys.stderr)
+            return 1
 
     do_webp = str(args.out_webp) != "-"
     do_png = str(args.out_png) != "-"

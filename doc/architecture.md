@@ -38,7 +38,7 @@ tag slug 由 `src/lib/blog.ts` 统一生成：trim、lowercase、NFKC normalizat
 
 ## Static Assets
 
-Astro 按原样发布 `public/`。文章图片应放在：
+Astro 按原样发布 `public/`。文章原图母版应放在 `assets/img-src/blog/<slug>/`，经 `tools/image-pipeline/convert_images.py` 转换为多档 WebP 产物并输出到：
 
 ```text
 public/images/blog/<slug>/
@@ -47,17 +47,17 @@ public/images/blog/<slug>/
 Markdown 中使用线上和本地 Astro 都可识别的 root-relative 路径：
 
 ```md
-![alt](/images/blog/<slug>/<file>.png)
+![alt](/images/blog/<slug>/<file>.webp)
 ```
 
-不要在文章中引用本机绝对路径，也不要引用本地编辑器的临时目录。
+不要在文章中引用本机绝对路径，也不要将未压缩的光栅原图直接放回 `public/`。
 
 ## Local Editor Boundary
 
 `tools/blog-editor/` 是本地辅助工具。它负责：
 
-- 读取、创建、保存和软删除 `src/content/blog/*.md`。
-- 上传图片到 `public/images/blog/<slug>/`。
+- 读取、创建、保存和软删除 `src/content/blog/*.md`（拦截 `page` / `tag` 保留路由名）。
+- 上传光栅图片时保存原图至 `assets/img-src/blog/<slug>/`，并自动调用 `convert_images.py` 生成多档 WebP 到 `public/images/blog/<slug>/` 及更新 `src/lib/image-manifest.json`（矢量 `.svg` 与动图 `.gif` 直接写入 `public/images/blog/<slug>/`）。
 - 在编辑器服务内暴露 `/images/*`，使文章里的图片路径能直接渲染。
 
 它不负责：
