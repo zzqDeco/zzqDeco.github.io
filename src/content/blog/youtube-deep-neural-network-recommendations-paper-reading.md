@@ -14,9 +14,7 @@ tags:
 draft: false
 ---
 
-Paul Covington、Jay Adams 和 Emre Sargin 在 RecSys 2016 发表的 **Deep Neural Networks for YouTube Recommendations**，只有 8 页，却是工业推荐系统里非常耐读的一篇论文。它常被概括为“YouTube 用 DNN 做推荐”，但如果只看到 DNN，就会错过这篇文章真正值得反复读的部分。
-
-它的核心贡献不是发明某个复杂神经网络结构，而是把超大规模视频推荐拆成了两个可服务化、可迭代、可评估的问题：
+Paul Covington、Jay Adams 与 Emre Sargin 在 ACM RecSys 2016 发表的 **Deep Neural Networks for YouTube Recommendations** 篇幅仅有 8 页，却是工业界推荐系统领域最具影响力的经典文献之一。这篇论文的持久生命力源于它将超大规模视频推荐拆解为两个在计算预算、特征粒度与优化目标上各司其职的协同阶段：
 
 ```text
 user history and context
@@ -27,1213 +25,412 @@ user history and context
   -> offline training + online A/B
 ```
 
-这篇论文同时讨论了召回模型、排序模型、样本构造、隐式反馈、负采样、近似最近邻、freshness、特征工程、观看时长目标和线上 A/B。它没有给出一套可以直接下载运行的官方代码，也没有披露今天 YouTube 的内部架构；但它给出的系统分解方式，仍然是理解现代工业推荐系统的基础材料。
+围绕这一漏斗闭环，论文系统阐述了深度候选生成、精排网络、防穿越样本构造、隐式反馈处理、负采样近似、近似最近邻（ANN）检索、内容时效性（freshness）建模、连续特征分位数归一化以及预期观看时长（expected watch time）加权优化方案。本文结合原论文图表（Fig. 1–7 与 Table 1）与数学推导，深入拆解以下核心工程问题：
 
-本文是一篇中文论文精读。重点不是把论文逐段翻译，而是回答几个工程问题：
+1. 超大规模推荐系统为何必须划分为候选生成（candidate generation）与精排（ranking）两个阶段？
+2. 候选生成为何被形式化为极大规模多分类（extreme multiclass classification）问题？
+3. 训练阶段通过 Sampled Softmax 学习的分类分布，在线服务时如何转化为无需求解配分函数的 ANN 向量检索？
+4. 为何训练样本的时序回滚构造与特征裁剪往往比单纯堆叠网络层数更能决定线上成败？
+5. Example Age 特征如何修正滑动训练窗口带来的历史流行度时间平均偏置？
+6. 精排阶段为何放弃单纯的点击率（CTR）目标，转而采用以观看时长加权的逻辑回归（Weighted Logistic Regression）？
+7. 这篇发表于 2016 年的工业界名篇，与当今主流的双塔召回、序列注意力精排及多兴趣检索存在怎样的演进脉络？
 
-1. 为什么 YouTube 要把推荐拆成 candidate generation 和 ranking 两个阶段？
-2. candidate generation 为什么被写成 extreme multiclass classification？
-3. sampled softmax 训练出来的概率，为什么线上 serving 时会变成 ANN 向量检索？
-4. 为什么样本构造比模型结构更关键？
-5. example age 为什么能缓解训练窗口带来的过时偏置？
-6. ranking 为什么不直接优化 CTR，而要用 watch time 加权 logistic regression？
-7. 这篇 2016 年论文对今天的双塔召回、冷启动、ANN、反馈闭环和 A/B 实验还有什么参考价值？
+## 1. 论文定位与核心三大挑战：Scale、Freshness、Noise
 
-本文插入的 Fig. 1-7 和 Table 1 来自用户提供的本地 ACM PDF，仅做等比例裁切展示；版权和许可标注见每张图下方说明。本文只做论文级方法精读和工程复盘，不声称完成模型复现。
-
-## 1. 论文信息与历史位置
-
-论文基本信息如下。
+论文的基础档案如下表所示：
 
 | 项目 | 内容 |
 | --- | --- |
 | 题名 | Deep Neural Networks for YouTube Recommendations |
-| 作者 | Paul Covington, Jay Adams, Emre Sargin |
-| 机构 | Google |
-| 会议 | ACM RecSys 2016 |
-| DOI | `10.1145/2959100.2959190` |
-| 页数 | 8 页 |
-| 代码 | 无官方可运行代码 |
-| 主要材料 | [ACM DOI](https://dl.acm.org/doi/10.1145/2959100.2959190)、[Google Research 页面](https://research.google/pubs/deep-neural-networks-for-youtube-recommendations/)、[Google PDF](https://research.google.com/pubs/archive/45530.pdf) |
+| 作者 | Paul Covington, Jay Adams, Emre Sargin（Google） |
+| 会议与 DOI | ACM RecSys 2016，`10.1145/2959100.2959190`（共 8 页） |
+| 原始文献链接 | [ACM DOI](https://dl.acm.org/doi/10.1145/2959100.2959190)、[Google Research 页面](https://research.google/pubs/deep-neural-networks-for-youtube-recommendations/)、[Google PDF](https://research.google.com/pubs/archive/45530.pdf) |
 
-它的历史位置可以放在四条线之间看：
+将这篇论文放入推荐系统的技术演进史中，可以清晰看到它在四条技术主线上的承前启后作用：
 
-| 线索 | 论文之前 | 论文贡献 | 论文之后 |
+| 技术主线 | 论文发表前的主流范式 | 论文的核心突破与贡献 | 后续工业界演进方向 |
 | --- | --- | --- | --- |
-| 协同过滤 | 矩阵分解、WSABIE、rank loss | 把候选生成视为非线性协同过滤 | 双塔召回、DSSM 类召回、MIND、多兴趣召回 |
-| 工业推荐架构 | 召回和排序已经存在，但公开细节少 | 清楚展示 millions -> hundreds -> dozens 的漏斗 | 多路召回、粗排、精排、重排、多目标系统 |
-| 目标函数 | CTR、点击、评分预测 | 强调 expected watch time，弱化 clickbait | 多目标优化、长期满意度、安全与创作者生态 |
-| 深度学习推荐 | 早期 DNN 推荐尝试 | 把大规模 embedding、sampled softmax、ANN 串起来 | Wide & Deep、DeepFM、DIN/DIEN、Transformer 推荐 |
-
-这篇论文的“新”不在今天看起来普通的 ReLU MLP，而在于它把 DNN 放进了真实系统闭环：如何采样、如何上线、如何控制延迟、如何处理新鲜内容、如何用 A/B 校准离线指标。这也是很多论文读起来像模型文章，而这篇更像工程文章的原因。
+| 协同过滤表征 | 线性矩阵分解（MF）、WSABIE、成对排序损失 | 将深度候选生成定义为融合多源异构特征的非线性泛化协同过滤 | 双塔向量召回、DSSM 扩展、MIND/ComiRec 多兴趣召回 |
+| 工业推荐架构 | 两阶段或多阶段漏斗已在内部使用，但公开文献缺乏端到端细节 | 完整公开从百万级语料到百级候选再到十级展示的双阶段漏斗与特征边界 | 多路召回融合、粗排（Pre-ranking）、精排、重排（Re-ranking）四级漏斗 |
+| 优化目标设计 | 显式评分预测、点击率（CTR）二分类 | 指明 CTR 易受标题党诱导，提出基于加权逻辑回归直接逼近预期观看时长 | 多目标联合优化（MMoE/PLE）、长期用户留存、创作者生态与安全护栏 |
+| 深度推荐工程 | 局部模块尝试小型神经网络 | 打通高基数 Embedding、Sampled Softmax 训练、离线向量导出与在线 ANN 检索全链路 | Wide & Deep、DeepFM、DIN/DIEN 序列注意力、生成式与大模型推荐 |
 
 ![Figure 1: YouTube mobile home recommendations](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig1-mobile-home.webp)
 
 *Source: Covington et al., RecSys 2016, Fig. 1, CC BY-NC-ND 4.0.*
 
-Fig. 1 本身很简单：YouTube 移动端首页展示一列推荐视频。但这个截图非常关键，因为后文所有模型讨论最终都要回到这个产品界面：用户并不是在一个离线 benchmark 上给视频打分，而是在某个请求、某个屏幕、某个位置、某个缩略图和上下文里选择是否观看。
+Fig. 1 展示了 YouTube 移动端首页（Home）的推荐界面。这一产品形态直接界定了整个推荐系统的物理边界：系统需要在特定的请求时刻、移动屏幕视口、卡片排列位次与缩略图上下文中，为用户实时组装出一列视频，并依靠用户随后的点击与真实观看时长完成反馈闭环。论文开篇将 YouTube 推荐面临的工程挑战高度凝练为 **Scale（规模）**、**Freshness（时效性）** 与 **Noise（反馈噪声）** 三个维度。
 
-因此，论文从一开始就不是在做“用户喜欢哪个视频”的抽象排序，而是在做“给定这个用户此刻进入 YouTube 首页，应该展示哪些视频，顺序是什么，并且后续如何用观看行为反馈训练系统”。
+### 1.1 Scale：十亿级用户与百万级视频库下的算力约束
 
-## 2. YouTube 推荐的三大约束
-
-论文把 YouTube 推荐的挑战概括为 scale、freshness、noise。这三个词看起来普通，但每一个都会直接改变模型设计。
-
-### 2.1 Scale: 不能全量精排
-
-YouTube 的候选视频是百万级甚至更大规模，用户也是十亿级，行为样本是千亿级。这个规模下，如果想对每个请求把所有视频都送入复杂排序模型打分，在线延迟和计算成本都会不可接受。
-
-所以系统必须先做 candidate generation：
+YouTube 拥有十亿量级的活跃用户与数以百万计的在线视频库，每日产生千亿规模的用户行为样本。在这一量级下，要求精排模型在数十毫秒的在线响应预算内对全库百万个视频逐一计算复杂交叉特征是完全不可行的。为此，系统必须通过两级漏斗分配算力预算：
 
 ```text
 large corpus: millions of videos
-  -> cheap but personalized retrieval
+  -> cheap but personalized retrieval (Candidate Generation)
   -> hundreds of candidate videos
-  -> expensive ranking model
+  -> expensive feature-rich scoring (Ranking)
   -> dozens of displayed videos
 ```
 
-这个结构背后的工程原则是：**召回阶段负责覆盖，排序阶段负责精细区分**。
+在这套分工体系中，**候选生成（召回）阶段对召回覆盖率（Coverage / Recall）负责，精排阶段对头部列表的排序精度与业务目标校准负责**。一旦候选生成阶段漏掉了用户真正感兴趣的视频，后续精排模型即便表达能力再强也无从挽回；反之，若试图在候选生成阶段塞入高开销的候选级实时交叉特征，则会立即击穿在线延迟红线。
 
-如果召回阶段漏掉了一个本应展示的视频，排序阶段再强也没有机会修复；如果召回阶段返回太多低质量候选，排序阶段需要浪费大量计算过滤噪声。因此两者不是谁替代谁，而是不同计算预算下的分工。
+### 1.2 Freshness：高频动态内容流的非平稳分布挑战
 
-### 2.2 Freshness: 推荐库是动态分布
+与曲库或电影库相对静态的推荐场景不同，YouTube 每秒都有海量新视频上传。用户对突发新闻、热点事件与创作者最新动态存在强烈的消费诉求，视频的流行度分布随时间剧烈演化。然而，深度模型的离线训练数据通常截取自过去数周或数月的滑动时间窗口；若不对时间维度做显式建模，神经网络自然倾向于拟合整个训练窗口内的**时间平均流行度**，从而系统性偏爱已经积累了大量历史观看的老视频，对刚上传或正处于爆发初期的新视频反应迟钝。论文为此提出了极为巧妙的 **Example Age** 特征：在训练期显式告知模型每条样本距离训练窗口末端的时长，在线服务时将该特征统一置为 $0$（或微小的负数），直接引导模型输出“当前最新时刻”的即时热度分布。
 
-视频推荐和电影评分推荐不同。电影库相对稳定，而 YouTube 每秒都有大量新视频上传。用户对新鲜内容有明显需求，热门视频的流行度还会随时间快速变化。
+### 1.3 Noise：隐式反馈的偏置与真实满意度鸿沟
 
-这会带来一个很实际的问题：训练数据覆盖的是过去几周或几个月，模型学到的自然是训练窗口内的平均行为。如果没有额外机制，模型容易偏向过去已经有大量反馈的视频，对刚上传或刚开始传播的视频反应迟缓。
+在真实视频平台上，用户主动留下的显式点赞、点踩或满意度问卷极为稀疏，大规模模型训练只能依赖海量的隐式交互行为。然而，不同类型的用户反馈在数据丰度与噪声结构上存在显著差异：
 
-Freshness 不只是“给新视频加一点权重”。论文提出的 example age 特征更精细：在训练时告诉模型样本距离训练窗口结束还有多远，在 serving 时把这个特征设为 0 或略负，让模型预测“训练窗口末端”的分布，而不是“训练窗口平均”的分布。
-
-### 2.3 Noise: 没有干净的满意度标签
-
-YouTube 有点赞、点踩、问卷等显式反馈，但这些反馈稀疏。大规模训练主要依赖隐式反馈，尤其是 watch、click、watch time。
-
-这和推荐系统里的一个基本事实一致：多数用户不会主动标注满意度，系统只能从行为中推断偏好。但行为不是偏好的纯标签：
-
-| 行为 | 可用性 | 噪声来源 |
+| 反馈信号类型 | 数据可用性与规模 | 潜在偏差与噪声来源 |
 | --- | --- | --- |
-| click | 数量多，实时性好 | 标题党、缩略图诱导、误触 |
-| watch | 比 click 更接近兴趣 | 自动播放、背景播放、外部上下文 |
-| watch time | 能反映 engagement | 长视频天然优势、学习/娱乐目标差异 |
-| like/dislike | 语义强 | 极稀疏，用户群体偏 |
-| survey | 更接近满意度 | 成本高，覆盖低 |
+| Click（点击） | 数量极庞大、实时性最高 | 极易受夸张标题党（Clickbait）、诱导性缩略图与屏幕误触污染 |
+| Watch（完成一定观看） | 规模大、比单纯点击更贴近真实兴趣 | 受自动连播（Autoplay）、后台播放与默认列表位置影响 |
+| Watch Time（观看时长） | 连续信号，能有效反映用户沉浸度（Engagement） | 天然偏爱长视频，且娱乐消遣类与工具教学类视频的合理时长基准不同 |
+| Like / Dislike（赞踩） | 语义极明确 | 极度稀疏，且主动表达群体的行为分布存在幸存者偏差 |
+| Survey（满意度问卷） | 最接近长期主观满意度 | 采集成本高昂、覆盖率极低，仅适合做离线校准与护栏评估 |
 
-论文选择用 watch 作为 candidate generation 的正样本，用 expected watch time 作为 ranking 的主要目标。这并不意味着 watch time 是完美目标，而是说明在当时 YouTube 场景里，它比 CTR 更能抑制 clickbait。
+针对上述噪声特征，论文在两阶段采取了差异化的监督策略：在候选生成阶段以“用户实际完成了视频观看（Watch）”作为正样本标签，过滤单纯的误点噪声；在精排阶段则抛弃传统的点击率（CTR）目标，将每个正样本按其真实观看时长（Watch Time）加权，从根本上遏制靠标题党骗取点击却被用户迅速退出的低质视频。
 
-## 3. 总体系统: candidate generation -> ranking
+## 2. 双阶段漏斗总体架构：候选生成与精排的职责解耦
 
-论文最重要的一张图是 Fig. 2。
+Fig. 2 描绘了 YouTube 推荐系统的端到端双阶段漏斗架构。
 
 ![Figure 2: Two-stage recommendation funnel](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig2-two-stage-funnel.webp)
 
 *Source: Covington et al., RecSys 2016, Fig. 2, CC BY-NC-ND 4.0.*
 
-图里有几个关键模块。
+图中六个核心模块的数据流转与工程职责归纳如下：
 
-| 模块 | 输入 | 输出 | 角色 |
+| 架构模块 | 输入信号 | 输出产物 | 系统角色定位 |
 | --- | --- | --- | --- |
-| video corpus | 全量视频库 | 百万级候选空间 | 被检索对象 |
-| user history and context | 观看历史、搜索历史、地理、设备、人口统计等 | 用户上下文表示 | 个性化来源 |
-| candidate generation | 用户表示 + 视频库 | 几百个候选 | 大规模召回 |
-| other candidate sources | 其他召回通道 | 候选补充 | 多路召回融合 |
-| video features | 视频属性、曝光上下文、历史统计 | 排序特征 | 精排信号 |
-| ranking | 几百个候选 + 丰富特征 | 几十个最终展示 | 目标函数优化 |
+| Video Corpus | 全量在线可播放视频库 | 百万级（Millions）候选空间 | 底层检索语料池 |
+| User History and Context | 历史观看序列、历史搜索词、地理区域、设备、人口统计学属性 | 用户侧多模态上下文特征 | 个性化意图来源 |
+| Candidate Generation | 用户上下文表征 + 全量视频库输出向量 | 百级（Hundreds）高相关候选视频 | 低延迟粗粒度个性化召回 |
+| Other Candidate Sources | 订阅频道更新、热门趋势、相似视频扩展、运营规则等 | 补充候选视频集合 | 多路召回融合（保障覆盖与新颖性） |
+| Video Features | 候选视频细粒度属性、曝光历史统计、缩略图特征、用户-视频交叉关系 | 百级候选的高维排序特征向量 | 精排决策信号供给 |
+| Ranking | 百级合并候选 + 丰富交叉与上下文特征 | 十级（Dozens）最终首页展示列表 | 精确校准预期观看时长与界面呈现 |
 
-两个阶段的差异不是“一个浅一个深”，而是问题定义不同。
+剖析这一双阶段漏斗，可以提炼出四条对现代工业推荐系统至关重要的设计准则。首先，**召回与精排的评估体系各司其职**：候选生成关注召回率（Recall@K）、平均精度均值（MAP）、候选多样性与数十毫秒内的检索延迟；精排则聚焦于具体曝光上下文下的预期观看时长、相对排序损失与 CPU 算力预算。其次，**深度候选生成作为多路召回生态的主力一环协同运作**：Fig. 2 中明确标出了 `Other candidate sources`，表明工业系统在深度向量召回之外，仍会并列保留订阅流、实时热点、同频道扩召与新内容探索等通道，共同汇入候选池。
 
-Candidate generation 面对的是百万级视频类目，需要在几十毫秒级延迟里找到大致相关的几百个视频。因此它只能使用较粗的用户和内容信号，并且必须能转成高效近似检索。
+再者，**跨阶段特征传递是精排校准的前提**：由于不同召回通道（Source）产出的原始分数量纲与分布互不可比，精排网络不仅接收候选视频本身，还显式将“哪些召回通道提名了该视频”以及“各通道给出的原始分数与排名”作为输入特征，由精排网络统一学习跨通道校准。最后，**线上 A/B 实验拥有最终一票否决权**：论文多次强调，离线的精确率、召回率与排序损失仅用于指导研究迭代方向，任何架构、特征或样本构造变更最终都必须通过线上真实流量的长周期 A/B 测试裁定。
 
-Ranking 面对的是几百个候选，可以使用更重的特征：视频缩略图相关信号、用户是否最近看过同频道、候选来自哪个召回源、这个候选在不同源里的分数、过去曝光但未点击次数等。排序阶段的模型可以更昂贵，因为打分对象少得多。
+## 3. 候选生成形式化：极大规模多分类与 Sampled Softmax
 
-这解释了为什么“召回模型 ANN 分数很高”不能直接等于“最终排序应该靠前”。ANN 分数只说明在召回表示空间里相似或相关，排序还要判断当前界面、当前请求、候选来源、用户短期疲劳、展示频次、观看时长预期等因素。
-
-### 3.1 双阶段架构的工程好处
-
-这张漏斗图给今天的推荐系统仍然有几个直接启发。
-
-第一，召回和排序的优化指标可以不同。召回阶段关心 coverage、recall、候选质量和延迟；排序阶段关心最终列表的 watch time、CTR、满意度、多样性和业务约束。
-
-第二，召回可以多路。图里明确有 `other candidate sources`。这说明 YouTube DNN candidate generation 不是唯一入口，而是候选池的一路来源。工业系统通常会保留热门、订阅、同频道、相似视频、运营策略、新内容探索等多种候选源。
-
-第三，排序需要知道候选从哪里来。论文在 ranking 部分强调，把 candidate generation 产生的信息传给 ranking 很关键，例如哪个 source 提名了视频、source 给了什么分数。否则 ranker 无法校准不同召回源之间不可比较的分数。
-
-第四，线上 A/B 是最终裁判。论文明确说离线 precision、recall、ranking loss 会用于迭代，但最终效果依赖 live experiment。因为推荐系统的真实目标是用户在产品里的行为，而离线指标经常和线上结果不完全一致。
-
-## 4. Candidate generation 形式化: 推荐作为极大规模分类
-
-论文把 candidate generation 写成 extreme multiclass classification。给定用户 $U$ 和上下文 $C$，预测用户在时刻 $t$ 观看的视频 $w_t$ 属于视频库 $V$ 中哪一个类别：
+在候选生成阶段，论文摒弃了传统的矩阵分解内积拟合视角，创造性地将推荐召回建模为**极大规模多分类问题（Extreme Multiclass Classification）**：给定用户 $U$ 及其在时刻 $t$ 的上下文 $C$，模型需要在包含数百万个视频的语料库 $V$ 中，预测用户在时刻 $t$ 实际观看的视频类别 $w_t = i$。在标准 Softmax 形式下，类别 $i$ 的条件概率定义为：
 
 $$
 P(w_t=i \mid U,C)
 = \frac{\exp(v_i^\top u)}
-{\sum_{j\in V}\exp(v_j^\top u)}
+{\sum_{j\in V}\exp(v_j^\top u)},
 $$
 
-这里：
+其中 $u \in \mathbb{R}^N$ 表示用户历史与上下文经深度神经网络编码后输出的 $N$ 维稠密向量（User/Context Embedding），$v_j \in \mathbb{R}^N$ 表示第 $j$ 个候选视频在 Softmax 输出层对应的类别权重向量（Output Video Embedding）。
 
-| 符号 | 含义 |
-| --- | --- |
-| $u \in \mathbb{R}^N$ | 用户和上下文经过 DNN 得到的 dense embedding |
-| $v_j \in \mathbb{R}^N$ | 第 $j$ 个视频的 output embedding |
-| $V$ | 全量视频类别集合，规模百万级 |
-| $w_t$ | 用户在时刻 $t$ 实际观看的视频 |
-
-这个写法有两层含义。
-
-第一，训练时它是一个分类问题。用户的历史和上下文经过神经网络变成 $u$，输出层里每个视频有一个向量 $v_j$，softmax 给出“下一个观看视频是 $j$”的概率。
-
-第二，serving 时它天然变成向量检索问题。因为对于某个用户请求，$u$ 已经确定，所有视频的 $v_j$ 可以预先导出到向量库。排序全量视频等价于找内积 $v_j^\top u$ 最大的 top $N$ 视频。
-
-也就是说，论文里的 candidate generation 已经非常接近今天常说的双塔召回：
-
-```text
-training:
-  user/context tower -> u
-  video output embeddings -> v_j
-  sampled softmax over video classes
-
-serving:
-  user/context tower -> u
-  ANN maximum inner product search over v_j
-  return top N candidates
-```
-
-它不是严格意义上的“两个独立 tower 同时编码 user 和 item feature”的现代双塔，因为视频侧 output embedding 更像 softmax 类别向量，而不是由视频内容 tower 实时编码。但从“用户向量 + 物品向量 + ANN 召回”的工程形态看，它已经是现代向量召回架构的重要先例。
-
-### 4.1 为什么不用全 softmax
-
-视频类别是百万级，全 softmax 的分母需要遍历所有视频：
+这一建模方式巧妙实现了**离线分类训练与在线向量检索的数学同构**：在离线训练期，模型通过最小化真实观看视频类别 $i$ 的交叉熵损失，迫使具有相似观看偏好的用户向量 $u$ 与其常看的视频向量 $v_i$ 在内积空间中相互靠拢，本质上构成了一种深度非线性的协同过滤；而在在线服务（Serving）期，由于单次请求中用户向量 $u$ 固定且排序仅关心相对大小，分母上的全库配分函数 $\sum_{j\in V}\exp(v_j^\top u)$ 是一个与候选下标 $i$ 无关的正数常数，因此寻找条件概率 $P(w_t=i\mid U,C)$ 最高的 Top-$N$ 视频，在数学上严格等价于在向量空间 $\mathbb{R}^N$ 中求解最大内积检索（Maximum Inner Product Search, MIPS）：
 
 $$
-\sum_{j\in V}\exp(v_j^\top u)
+\operatorname{TopN}_{j\in V} \ v_j^\top u.
 $$
 
-每个训练样本都算全量分母会非常昂贵。论文使用 candidate sampling：从背景分布采样几千个负类，再用 importance weighting 修正采样偏差。论文提到这种方式相比传统 softmax 有超过 100 倍加速。
+### 3.1 训练加速：Candidate Sampling 与重要性加权
 
-训练过程可以抽象成：
+在离线训练中，由于全集 $V$ 的基数高达百万级，每次梯度更新都精确遍历分母 $\sum_{j\in V}\exp(v_j^\top u)$ 会带来难以承受的计算开销。论文未采用分层 Softmax（Hierarchical Softmax，因树结构上相近节点常将不相关的跨领域视频强行绑定，实测效果不佳），而是采用了**候选负采样（Candidate Sampling / Sampled Softmax）**：对每条正样本，从预设背景分布中随机采样数千个负例视频，仅在“1 个真实正类 + 数千个采样负类”的子集上计算交叉熵损失，并通过重要性加权（Importance Weighting）修正采样分布与真实全集分布之间的偏差。论文指出，这一采样近似方案在保证精度的同时，将训练速度提升了 100 倍以上。
 
-```text
-positive: actually watched video i
-negatives: sampled videos from background distribution
-loss: cross entropy over positive + sampled negatives
-correction: importance weighting for sampled classes
-```
+需要特别注意这里的样本语义：候选生成阶段通过背景分布采出的数千个负类，仅用于近似 Softmax 归一化分母以撑开向量表征空间，并不代表用户真实看到并厌恶这些视频。
 
-这和今天推荐系统里的 sampled softmax、in-batch negatives、sampled negatives、two-tower contrastive training 有相通之处。不过要注意，sampled negative 在这里不是“用户真实讨厌的视频”。它只是为了训练分类器而采样的对比类别。
+### 3.2 在线服务：近似最近邻（ANN）与四级评估解耦
 
-这和冷启动推荐里的负样本边界一致：未曝光 item 不是真实负反馈，只能作为采样 denominator 或弱负样本参与训练。
+在线服务时，为了在数十毫秒（tens of milliseconds）的严苛延迟上限内从百万级视频向量 $\{v_j\}_{j\in V}$ 中检索出与实时计算的用户向量 $u$ 内积最大的数百个候选，系统放弃了遍历精确打分，转而通过基于局部敏感哈希（LSH）或树/图索引的近似最近邻（ANN）服务完成次线性（sublinear）检索。
 
-### 4.2 为什么线上变成 ANN
+这种“训练用 Sampled Softmax 拟合分类概率、服务用 ANN 检索最大内积”的形态差异，要求工程上必须建立分层解耦的四级评估指标：
 
-训练时 softmax 会输出校准概率，但线上 candidate generation 并不需要精确概率。召回阶段只需要找到得分最高的若干视频，也就是：
+| 评估层级 | 核心观测指标 | 检验的工程目标 |
+| --- | --- | --- |
+| 离线模型训练层 | Sampled Softmax 交叉熵损失、梯度范数、Embedding 模长与奇异值分布 | 监控网络收敛稳定性与向量空间是否发生坍缩 |
+| 离线召回评测层 | 留出集 Recall@K、MAP@K、品类覆盖率、新上传视频召回占比 | 评估表征空间对未来真实观看视频的捕获能力 |
+| 在线 ANN 服务层 | 检索 P99 延迟、QPS 吞吐、近似检索相对于精确暴力检索的 Recall 折损率 | 平衡在线算力延迟预算与向量量化/剪枝精度损失 |
+| 线上产品 A/B 层 | 人均观看时长、有效点击率、会话深度、新视频消费占比与留存护栏 | 验证召回候选与后续精排模型配合后的真实产品收益 |
 
-$$
-\operatorname{TopN}_{j\in V} \ v_j^\top u
-$$
+## 4. 候选生成网络架构：异构序列池化与 ReLU 塔
 
-如果对百万级视频逐个打分，延迟不可接受。论文说 serving time 要在 tens of milliseconds 约束下得到 top $N$，所以使用近似最近邻或类似 hashing 的 sublinear 检索。
-
-这一步非常关键：**训练目标是分类概率，在线系统用的是向量检索近似 topN**。二者不是一回事。
-
-因此，工程实现中至少要区分四套指标：
-
-| 层级 | 指标 |
-| --- | --- |
-| 训练 | sampled softmax loss、训练收敛、embedding 分布 |
-| 离线召回 | Recall@K、MAP、覆盖率、新视频覆盖、长尾覆盖 |
-| ANN 服务 | latency、QPS、recall loss、index freshness、embedding 版本 |
-| 线上 | watch time、CTR、会话深度、满意度、A/B guardrail |
-
-只看训练 loss 不能证明召回系统上线有效，只看 ANN 分数也不能证明最终排序有效。
-
-## 5. Candidate model architecture
-
-Fig. 3 展示了 candidate generation 的模型结构。
+Fig. 3 给出了候选生成深度神经网络的完整内部结构。
 
 ![Figure 3: Candidate generation architecture](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig3-candidate-generation.webp)
 
 *Source: Covington et al., RecSys 2016, Fig. 3, CC BY-NC-ND 4.0.*
 
-这张图可以拆成六层。
+沿着自底向上的数据流向，该网络由五个核心表征模块串联而成：
 
-### 5.1 Watch history embedding average
+### 4.1 观看历史与搜索历史的变长序列平均池化
 
-用户观看历史是一个变长视频 ID 序列：
-
-$$
-H_u = \{w_1,w_2,\ldots,w_m\}
-$$
-
-每个 watched video ID 查一个 embedding，然后把这些 embedding 聚合成固定长度 watch vector。论文尝试了 sum、component-wise max 等方式，最终发现简单 average 表现最好：
+用户的历史观看记录表现为变长的视频 ID 序列 $H_u = \{w_1,w_2,\ldots,w_m\}$。网络首先通过共享的大规模 Embedding 表将每个离散视频 ID 映射为稠密向量 $e_w \in \mathbb{R}^d$（这些底层输入 Embedding 与前文 Softmax 输出层的视频向量 $v_j$ 一同通过端到端反向传播联合学习）。为了将不同长度的历史序列转化为全连接层所需的定长输入，论文对比了求和（sum）、逐维取最大值（component-wise max）与平均池化，实证发现简单的**算术平均池化**（Average Pooling）效果最为稳健：
 
 $$
 h_{\text{watch}} =
 \frac{1}{|H_u|}
-\sum_{w\in H_u} e_w
+\sum_{w\in H_u} e_w.
 $$
 
-这个设计有优点也有损失。
+用户的历史搜索查询（Search History）采用完全对称的方式处理：系统将历史搜索词切分为一元词（unigrams）与二元词组（bigrams）词元集合，查表映射为 Token Embeddings 后同样经平均池化聚合为定长的 `search vector`（$h_{\text{search}}$）。平均池化虽然舍弃了序列内部的严格先后次序，但对不同活跃度用户的序列长度变化天然免疫，在分布式训练与在线特征组装中具有极高的工程稳定性；同时，搜索词表征直接注入了用户主动表达的强显式意图，有效弥补了被动观看历史的滞后性。
 
-优点是工程上非常稳定。无论用户历史长度是多少，输入维度固定；embedding lookup 和平均池化易于分布式训练；serving 也容易维护。
+### 4.2 人口统计学与多源异构上下文特征融合
 
-损失是序列顺序被丢弃。用户刚看过的视频和很久以前看过的视频在简单 average 里没有天然区分，除非另外加入时间、近期窗口或行为统计特征。后来的 DIN、DIEN、Transformer 推荐模型，很大程度上是在补足这种序列建模能力。
+若仅输入观看与搜索历史，模型对于刚注册或未登录的冷启动新用户将束手无策。为此，候选生成网络在底部广泛接入了非历史类的异构上下文信号（Heterogeneous Signals）：地理位置（Geographic Region）与设备类型（Device）作为离散类别特征映射为 Embedding；性别（Gender）、登录状态（Logged-in State）与用户年龄（Age）等二值或连续属性则归一化至 $[0,1]$ 区间后直接拼接。这些特征一方面为缺乏行为记录的新用户提供了可靠的群体与地域先验（Prior），另一方面也允许深层网络学习“同一观看历史在不同设备或不同国家下的差异化推荐偏好”。
 
-### 5.2 Search history embedding average
+### 4.3 由宽到窄的漏斗形 ReLU 多层感知机
 
-搜索历史类似处理。搜索 query 被切成 unigram 和 bigram token，每个 token 查 embedding，再做平均，得到 search vector。
-
-这一步非常重要，因为搜索行为比观看行为更主动。用户搜索“Taylor Swift”通常说明短期意图很强。但论文后面也会强调，不能把最近一次搜索页面的结构直接泄漏给首页推荐模型，否则模型会学成“复现搜索结果页”。
-
-### 5.3 Dense context features
-
-图里还有 geographic embedding、example age、gender 等上下文特征。
-
-论文明确说，地理区域、设备等可以 embedding 后拼接；gender、logged-in state、age 等简单 binary 或 continuous feature 直接归一化到 $[0,1]$ 后输入。
-
-这说明 YouTube DNN 不是纯协同过滤模型。它在候选生成阶段就接入了 heterogeneous signals，包括：
-
-| 特征组 | 例子 | 作用 |
-| --- | --- | --- |
-| watch history | 最近观看视频 ID | 协同过滤主信号 |
-| search history | 搜索 query token | 显式短期意图 |
-| demographic | 地区、设备、年龄、登录状态 | 新用户 prior 和分群 |
-| freshness | example age | 修正训练窗口偏置 |
-
-这对冷启动很重要。新用户没有观看历史时，模型仍然能从地理、设备、语言、默认 segment、上下文等特征给出合理 prior。只是这些 prior 不能替代真实行为历史。
-
-### 5.4 Wide first layer + ReLU tower
-
-所有特征拼接成一个宽输入层，然后经过几层 fully connected ReLU。论文使用了 bottom wide、upper layer progressively smaller 的 tower pattern。
-
-可以抽象为：
+底部所有池化向量与稠密特征拼接为宽输入向量 $z_0$：
 
 $$
-z_0 = [h_{\text{watch}}, h_{\text{search}}, x_{\text{geo}}, x_{\text{device}}, x_{\text{age}}, \ldots]
+z_0 = [h_{\text{watch}}, h_{\text{search}}, x_{\text{geo}}, x_{\text{device}}, x_{\text{age}}, x_{\text{example\_age}}, \ldots],
 $$
 
-$$
-z_{\ell+1} = \operatorname{ReLU}(W_\ell z_\ell + b_\ell)
-$$
+随后送入由宽逐层减半的塔式全连接 ReLU 网络（例如 `1024 ReLU -> 512 ReLU -> 256 ReLU`），通过多层非线性变换 $z_{\ell+1} = \operatorname{ReLU}(W_\ell z_\ell + b_\ell)$ 充分交叉历史兴趣与当前上下文，最终在顶层输出 256 维的用户表征向量 $u$。Fig. 3 右上方清晰对比了训练与服务的双头分流：离线训练接入 Softmax 层计算类别概率，在线服务则导出 $v_j$ 构建最近邻索引并实时检索 Top-$N$。
 
-最终得到 user vector $u$，送入 softmax 或 ANN。
+## 5. 时效性建模与样本构造：Example Age 与时间回滚机制
 
-今天看这个结构不复杂，但在 2016 年的工业推荐语境里，它相当于把矩阵分解升级成可以吸收任意 dense/categorical feature 的非线性模型。
+本篇论文最富洞察力的工程贡献，集中在第 3.3 节与第 3.4 节对**时间偏置修正（Example Age）**与**代理任务样本构造（Label and Context Selection）**的深度剖析。
 
-### 5.5 Training softmax vs serving ANN
+### 5.1 Example Age：消除滑动训练窗口的时间平均偏置
 
-图上右侧有两个头：
-
-```text
-training: softmax -> class probabilities
-serving: nearest neighbor index -> approx. top N
-```
-
-这点非常值得强调。很多人会把训练图理解成“线上也跑 softmax 得到概率”，但论文明确说 serving 时不需要校准概率，问题转成 dot-product nearest neighbor search。
-
-这也是推荐系统工程常见的“训练-服务形态差异”：
-
-| 阶段 | 目标 | 实现 |
-| --- | --- | --- |
-| 训练 | 学到区分 watched video 的表示 | sampled softmax |
-| 导出 | 把视频 output embedding 写入索引 | embedding export |
-| 服务 | 给用户向量找 topN 视频 | ANN / hashing / MIPS |
-| 排序 | 在候选上重打分 | ranker |
-
-模型文件、embedding 导出、向量索引、索引版本、在线请求版本都需要严格记录。否则训练出来的模型和线上使用的索引不一致，很难排查问题。
-
-## 6. Heterogeneous signals 与 example age
-
-Fig. 4 是论文里最有工程味道的一张图。
+Fig. 4 直观展示了视频流行度随上传后天数的剧烈衰减，以及引入 Example Age 前后的模型预测分布对比。
 
 ![Figure 4: Example age feature for freshness](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig4-example-age.webp)
 
 *Source: Covington et al., RecSys 2016, Fig. 4, CC BY-NC-ND 4.0.*
 
-图展示了某个视频随上传后天数变化的 class probability。绿色是经验分布，蓝色 baseline 模型更像训练窗口平均，红色加入 example age 后能更好拟合上传时间附近的峰值。
-
-### 6.1 训练窗口的隐性偏置
-
-假设训练数据覆盖最近几周。对于一个新上传后快速爆发的视频，训练窗口内的不同时刻观看概率差异很大。但如果模型只看到“用户历史 -> 视频 label”，它学到的往往是整个窗口的平均概率：
+设离线训练数据集截取自长度跨度为 $T$（如过去数周）的时间窗口。一条新视频上传后往往在最初几天内迎来观看峰值，随后热度迅速回落（如图中绿色经验曲线所示）。如果模型输入中不包含样本发生时刻的时间坐标，神经网络在最小化整个训练窗口的总交叉熵损失时，对于给定视频 $v$ 只能学到其在窗口期 $[1, T]$ 内的**时间平均观看概率**：
 
 $$
 \bar{p}(v)
 = \frac{1}{T}
-\sum_{t=1}^{T} p_t(v)
+\sum_{t=1}^{T} p_t(v),
 $$
 
-而 serving 发生在训练窗口的末端或未来，系统真正想要的是：
+这正是图中蓝色基线（Baseline）曲线平坦低矮、严重低估新视频刚上传时爆发峰值的根源。然而，线上推荐服务永远发生在训练窗口结束之后的最新时刻 $T+\epsilon$，系统真正需要预测的是窗口最右端的即时分布 $p_{T+\epsilon}(v)$。
+
+为了解开这一时间混叠，论文为每条训练样本引入了一个标量特征 **Example Age**：
 
 $$
-p_{T+\epsilon}(v)
+a_{\text{example}} = t_{\max} - t_{\text{example}},
 $$
 
-如果 $p_t(v)$ 非平稳，$\bar{p}(v)$ 和 $p_{T+\epsilon}(v)$ 可能差很多。新视频、病毒式传播、新闻事件和热点内容都会出现这个问题。
+其中 $t_{\max}$ 为该次训练数据集覆盖的最大截止时间戳，$t_{\text{example}}$ 为当前训练样本实际发生的时间戳（论文中还同时传入了该特征的平方项与平方根项以增强非线性拟合能力）。在离线训练时，模型通过 $a_{\text{example}}$ 清晰获知每条观看记录发生在距离当前多久以前，从而精准还原出视频随时间演化的真实热度曲线（图中红色曲线与绿色真实分布高度吻合）；到了在线服务（Serving）时刻，系统将所有请求的 `example age` 统一硬编码为 $0$（或略小于 $0$ 的微小数），直接指令神经网络输出处于时间轴最末端（即当下时刻）的概率预测值，无需依赖粗糙的人工规则提权便优雅解决了新视频与热点内容的时效性校准。
 
-### 6.2 Example age 的做法
+### 5.2 样本标签与上下文构造：防止未来信息穿越与代理任务走捷径
 
-论文的做法是在训练样本里加入 example age：
-
-$$
-a = t_{\max} - t_{\text{example}}
-$$
-
-其中 $t_{\max}$ 是训练数据中最大的观测时间，$t_{\text{example}}$ 是当前训练样本的时间。训练时模型能学习“这个样本发生在训练窗口末端前多少时间”。Serving 时把这个特征设为 0 或略负，表示“现在就是训练窗口末端之后”。
-
-直觉上，模型不再被迫把一个视频在整个训练窗口内的平均流行度压成单一值，而能学习它随时间变化的曲线。
-
-### 6.3 Freshness 不是简单新视频 boost
-
-很多系统会用规则：
-
-```text
-score = model_score + alpha * freshness_score
-```
-
-这当然能让新内容有机会曝光，但它的问题是粗糙。它无法区分“刚上传但没人喜欢”和“刚上传且正在传播”的内容，也难以让模型学习不同主题、不同用户群体对新鲜内容的差异。
-
-Example age 更像是把时间相位交给模型：
-
-```text
-model_input = user_history + content_signals + example_age
-model learns time-dependent likelihood
-```
-
-它不是替代探索机制，而是修正训练窗口造成的静态偏置。新内容真正获得反馈仍然需要曝光机会、探索预算和实时日志。
-
-### 6.4 对今天系统的启发
-
-今天做推荐系统，freshness 通常会拆成多层：
-
-| 层级 | 方法 |
-| --- | --- |
-| 训练样本 | example age、time decay、按时间窗口采样 |
-| 特征 | item age、publish time、trend velocity、recent CTR/CVR |
-| 召回 | 新内容召回、热点召回、订阅/关注召回 |
-| 排序 | freshness calibration、多目标权重 |
-| 探索 | guided exploration for new items |
-| 监控 | new item coverage、time-to-first-exposure、fresh watch time |
-
-YouTube DNN 的 example age 是其中一个经典切入点：把时间非平稳性显式暴露给模型，而不是假设过去窗口和当前 serving 分布一致。
-
-## 7. Label and context selection: 样本构造比结构更重要
-
-Fig. 5 讲的是 label 和 input context 怎么选。
+Fig. 5 对比了两种截然不同的训练样本构造方式：随机留出（Random Holdout）与时序回滚预测未来观看（Rollback History to Predict Future Watch）。
 
 ![Figure 5: Label and context selection](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig5-label-context-selection.webp)
 
 *Source: Covington et al., RecSys 2016, Fig. 5, CC BY-NC-ND 4.0.*
 
-这张图对推荐系统非常重要，因为它回答了一个容易被忽略的问题：训练样本到底是什么？
+在传统学术界协同过滤基准中，常见做法是从用户的全部观看集合中随机抽出一项作为预测标签（Fig. 5a），将其余所有观看记录（包括发生在标签时刻之后的未来行为）一并作为输入特征。论文一针见血地指出，这种做法在真实时间序列中会导致严重的**未来信息泄漏（Future Information Leakage）**与因果倒置。用户消费视频具有强烈的单向序列不对称性：例如用户通常按第一集、第二集、第三集的顺序追剧，或者先浏览宽泛的大众流行音乐、再逐步深入某个小众独立音乐人。若拿周三观看的第三集去“预测”周一观看的第二集，离线验证指标虽然极高，但线上服务时系统根本不可能提前获知用户的未来行为。因此，正确的样本构造必须严格执行**时间回滚（Rollback，Fig. 5b）**：选定用户在时刻 $t$ 的某次真实观看 $w_t$ 作为正样本 Label，仅将严格发生在时刻 $t$ 之前的历史观看与搜索记录 $\{a_i: t_i < t\}$ 组装为输入上下文，时刻 $t$ 之后的行为全部屏蔽。
 
-### 7.1 不要预测随机 held-out watch
+在此基础上，论文还披露了另外三项直接决定线上 A/B 成败的样本工程细节：
+- **主动裁剪强相关信号以防过拟合代理任务**：如果用户刚刚搜索了“Taylor Swift”并点击观看了搜索结果页的第一个视频，随后将该视频作为正样本标签，且在输入特征中原封不动地保留该次刚发生的搜索词与来源上下文，神经网络会迅速找到一条偷懒捷径——直接把首页推荐变成“复刻上一次搜索结果页”。这虽然能让离线 Next-Watch 预测准确率飙升，但用户回到首页时绝不希望满屏重复刚搜过的旧结果。为此，论文故意抹去了搜索历史的精细序列次序与紧邻搜索页结构，将其降格为无序词袋（Unordered Bag of Tokens），迫使模型挖掘更广泛的延伸兴趣。
+- **每个用户采样固定上限的训练样本（Per-User Sample Capping）**：平台用户的活跃度服从极度偏斜的幂律分布。若直接按原始观看事件流生成样本，少数超重度活跃用户将贡献成千上万条样本并彻底主导梯度方向。论文对每个用户强制限制生成固定数量 $K$ 的训练样本（$\mathcal{D} = \bigcup_{u\in \mathcal{U}} \operatorname{SampleK}(\mathcal{E}_u, K)$），确保所有用户在损失函数中享有平等的权重，防止模型过拟合极客群体的怪癖。
+- **采集全渠道观看而非仅限首页推荐曝光**：候选生成模型的训练正样本覆盖了用户在全网（包括外部网站嵌入播放器、搜索页、频道页等所有路径）触发的 YouTube 观看事件。假使训练仅局限在既有首页推荐系统曝光产生的点击上，新上传或未被旧推荐策略覆盖的视频将永远无法进入协同过滤传播链路，系统会迅速陷入自我强化的信息茧房。
 
-传统协同过滤常见做法是：从用户历史里随机 hold out 一个 item，拿剩余 item 去预测它。Fig. 5a 就是这种形式。
+## 6. 候选生成离线实验：异构特征叠加与网络深度收益
 
-问题是，这会泄漏未来信息。假设用户观看顺序是：
-
-```text
-Taylor Swift hit song
-Taylor Swift interview
-smaller niche artist
-concert live clip
-```
-
-如果随机 hold out 第二个视频，用后面发生的观看行为去预测前面的视频，模型会获得线上 serving 时不可能拥有的信息。离线指标可能看起来好，但线上不一定转化。
-
-### 7.2 Rollback history 预测 future watch
-
-Fig. 5b 的做法更接近真实线上场景：选择某个观看事件作为 label，只输入它之前发生的行为，之后行为全部排除。
-
-可以写成：
-
-$$
-\text{input}_t = \{a_i: t_i < t\}
-$$
-
-$$
-\text{label}_t = w_t
-$$
-
-这就是 rollback。它避免了未来行为泄漏，也能保留消费序列的非对称性。
-
-论文强调，预测 future watch 在 A/B testing 中表现更好。这是一个非常强的工程信号：离线样本构造方式会深刻影响线上结果。
-
-### 7.3 为什么要丢掉一些强信号
-
-论文还提到一个反直觉点：有些信号必须故意 withheld。例子是用户刚搜索了 “Taylor Swift”。如果模型知道这个 search query 的结构和 label 来源，它可能学会把搜索结果页复现在首页推荐里。这样离线预测下一个观看会很好，但首页体验很差。
-
-因此，他们把搜索 query 表示为 unordered bag of tokens，丢弃部分序列和来源结构，让模型不要过拟合 surrogate task。
-
-这说明推荐模型训练不是“特征越多越好”。如果某个特征只在训练 label 构造里强相关，但在目标展示场景里会让模型走捷径，就会造成训练目标和产品目标脱节。
-
-### 7.4 固定每用户样本数
-
-论文还有一个重要细节：每个用户生成固定数量训练样本，等价于在 loss 里让用户权重更均衡，避免少数高活跃用户主导训练。
-
-如果不这么做，重度用户贡献大量 watch 事件，模型会更偏向重度用户的消费模式。对于首页推荐，平台通常希望对所有用户都有稳定体验，而不是只优化高活跃用户群体。
-
-可以把用户级采样写成：
-
-$$
-\mathcal{D}
-= \bigcup_{u\in \mathcal{U}}
-\operatorname{SampleK}(\mathcal{E}_u, K)
-$$
-
-其中 $\mathcal{E}_u$ 是用户 $u$ 的观看事件集合，每个用户最多采样 $K$ 个训练样本。
-
-### 7.5 从所有 YouTube watches 生成样本
-
-论文说训练样本来自所有 YouTube watches，包括嵌入在其他站点上的观看，而不只是推荐系统产生的观看。原因是，如果只用推荐曝光产生的观看，系统会过度 exploitation，新内容难以进入协同过滤传播链路。
-
-这点和现代推荐里“logging policy”和“exposure bias”的讨论有关。只用旧推荐策略产生的数据训练新模型，会强化旧策略的可见性偏差。YouTube 在 candidate generation 阶段利用更广泛的 watch 行为，试图让用户从其他路径发现的内容也能被传播到推荐系统里。
-
-不过这也带来一个边界：所有 watches 并不等同于所有 homepage impressions。Candidate generation 学的是更广义的“用户可能观看什么”，ranking 才学习具体 impression 上会不会点击、会看多久。
-
-## 8. Candidate experiments: features and depth
-
-Fig. 6 展示了 candidate generation 的离线实验。
+Fig. 6 汇报了候选生成模型在离线留出集上的平均精度均值（MAP@K）实验结果。
 
 ![Figure 6: Candidate feature and depth experiment](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig6-feature-depth-map.webp)
 
 *Source: Covington et al., RecSys 2016, Fig. 6, CC BY-NC-ND 4.0.*
 
-实验设置包括：
+该实验的底层词表规模、序列截断长度与五档网络深度（Depth 0–4）配置整理如下：
 
-| 项目 | 论文描述 |
+| 实验配置项 / 网络深度 | 具体参数与结构设定 |
 | --- | --- |
-| 视频词表 | 1M videos |
-| 搜索 token 词表 | 1M search tokens |
-| embedding 维度 | 256 floats |
-| watch bag size | 最近 50 个 watches |
-| search bag size | 最近 50 个 searches |
-| softmax 类别 | 1M video classes |
-| depth 0 | 近似线性 factorization |
-| deeper tower | 逐层减半的 ReLU 网络 |
+| 视频与搜索词表规模 | `1M` 视频类别（Video Vocabulary）、`1M` 搜索词元（Search Tokens） |
+| Embedding 维度与截断窗口 | 向量维度统一为 `256 floats`；截取最近 `50` 次观看记录与最近 `50` 次搜索查询 |
+| **Depth 0**（线性基线） | 无隐藏层，输入特征直接线性变换映射至 `256` 维 Softmax 空间（近似于线性矩阵分解） |
+| **Depth 1** | `256 ReLU` |
+| **Depth 2** | `512 ReLU -> 256 ReLU` |
+| **Depth 3** | `1024 ReLU -> 512 ReLU -> 256 ReLU` |
+| **Depth 4** | `2048 ReLU -> 1024 ReLU -> 512 ReLU -> 256 ReLU` |
 
-图里有四条曲线：
+综合剖析 Fig. 6 中四组特征组合（`Watches Only`、`Watches & Searches`、`Watches, Searches & Example Age` 与 `All Features`）随深度变化的曲线走势，可以得出两条清晰的结论。一方面，**多源异构特征的引入带来的性能跃升远超单纯加深网络**：在任意固定深度下，从仅使用观看历史到叠加搜索词意图、再叠加 Example Age 与人口统计学特征，MAP 均呈现显著阶跃；尤其是 Depth 0 线性模型在接入异构特征后难以消化跨模态交互，而多层 ReLU 塔则为 `{历史观看 × 搜索词 × Example Age × 地域设备}` 提供了高阶非线性交叉通道，使 All Features 曲线在深层结构下持续拉开优势。另一方面，**网络深度的边际收益递减规律显著**：从 Depth 0 到 Depth 3，各特征组合的 MAP 稳步提升；但从 Depth 3 增至 Depth 4 时增益已明显收窄，继续加宽加深不仅收敛愈发困难，还会推高在线 User Tower 的推理延迟，因此工程选型需在表征容量与在线服务预算之间适度止步。
 
-1. Watches Only
-2. Watches & Searches
-3. Watches, Searches & Example Age
-4. All Features
+## 7. 精排网络架构与特征工程：Impression 粒度与分位数归一化
 
-可以读出几个结论。
-
-第一，只有 watch history 的 depth 0 模型类似线性矩阵分解，是一个强 baseline，但 MAP 明显低。
-
-第二，加入 searches 后，模型捕获用户主动意图，MAP 提升明显。
-
-第三，加入 example age 后，freshness 相关建模进一步改善离线 MAP。
-
-第四，all features 与更深网络叠加提升最好，说明 DNN 的价值不只是 embedding，而是能建模多类异构特征之间的非线性交互。
-
-### 8.1 深度为什么有用
-
-如果只有用户 watch embedding 和视频 embedding，线性模型已经能做协同过滤：
-
-$$
-\operatorname{score}(u,v) = p_u^\top q_v
-$$
-
-但当输入里加入 search、geo、device、age、example age、gender 等特征后，模型需要学习交互：
-
-```text
-same watch history + different country -> different recommendations
-same search token + different device -> different short-term intent
-same video age + different topic -> different freshness curve
-```
-
-ReLU tower 提供了这种非线性组合能力。Fig. 6 的价值在于说明：深度不是孤立有效，而是在 heterogeneous signals 进入模型后更有效。
-
-### 8.2 深度不是越深越好
-
-论文列出的 candidate depth 配置是：
-
-| Depth | Architecture |
-| --- | --- |
-| 0 | linear layer to 256 softmax dimension |
-| 1 | 256 ReLU |
-| 2 | 512 ReLU -> 256 ReLU |
-| 3 | 1024 ReLU -> 512 ReLU -> 256 ReLU |
-| 4 | 2048 ReLU -> 1024 ReLU -> 512 ReLU -> 256 ReLU |
-
-Fig. 6 中深度提升收益逐渐变小。论文也提到继续增加宽度和深度会让增量收益变小、收敛更困难。
-
-这和今天大规模推荐系统仍然一致：召回模型需要服务低延迟和可更新索引，不会无限堆复杂度。很多时候一个稳定可导出 embedding、可高频重训、可低延迟 ANN 的模型，比一个离线指标略高但服务复杂的模型更有价值。
-
-## 9. Ranking 的输入边界
-
-Candidate generation 返回几百个候选后，ranking 才开始工作。论文对 ranking 的描述非常清楚：它使用 impression data，把候选预测专门化和校准到具体用户界面。
-
-这句话可以拆成三层。
-
-第一，ranker 的样本单位是 impression，而不是全量用户-视频对。它知道“这个视频在这个请求、这个页面、这个位置、这个缩略图下是否被点击和观看”。
-
-第二，ranker 能使用更丰富的特征，因为候选只有几百个。它可以接入很多 candidate generation 阶段无法承受的特征。
-
-第三，ranker 要融合不同候选源。不同 source 的分数不可比较，ranker 需要知道 source ID 和 source score，学习如何校准。
-
-## 10. Ranking network architecture
-
-Fig. 7 展示了 ranking 网络。
+经过候选生成与多路通道合并，候选规模从百万级收敛至数百个（Hundreds），精排（Ranking）模块正式接棒。与候选生成阶段仅能访问粗粒度用户特征不同，精排阶段由于打分候选数量少了四个数量级，得以基于**具体曝光记录**（Impression Data）引入高维度的候选视频特征以及精细的“用户—候选视频—召回源—界面上下文”交叉特征。Fig. 7 展示了精排深度网络的整体架构。
 
 ![Figure 7: Ranking network architecture](/images/blog/youtube-dnn-recommendations/youtube-dnn-fig7-ranking-network.webp)
 
 *Source: Covington et al., RecSys 2016, Fig. 7, CC BY-NC-ND 4.0.*
 
-Ranking 模型仍然是 MLP tower，但输入特征更复杂。
+### 7.1 精排特征体系：计算频率解耦、跨槽位共享 Embedding 与交互统计
 
-### 10.1 Categorical feature: univalent vs multivalent
+论文指出，尽管深度学习减轻了人工构造高阶特征交叉的负担，但将数十个原始业务信号转化为神经网络易于消化的输入表征，依然耗费了最主要的工程精力。精排特征按照基数与在线计算频率可分为四个正交维度：
 
-论文把 categorical feature 分成单值和多值。
+| 特征分类维度 | 子类型 | 典型特征示例 | 编码与在线计算策略 |
+| --- | --- | --- | --- |
+| **按取值基数划分** | 单值类别特征（Univalent） | 当前曝光视频 ID（`impression video ID`） | 直接查表映射为单个稠密 Embedding |
+| **按取值基数划分** | 多值类别特征（Multivalent） | 用户最近观看的 $N$ 个视频 ID 集合 | 查表后执行算术平均池化 $e_{\text{bag}} = \frac{1}{|B|}\sum_{i\in B} e_i$ |
+| **按计算频率划分** | 请求级特征（Query Features） | 用户设备、语言、地理区域、近期全局活跃度 | **每次请求仅计算一次**，向所有候选广播复用以节省算力 |
+| **按计算频率划分** | 曝光级特征（Impression Features） | 候选视频 ID、候选召回源得分、用户在该频道历史观看数 | **随候选数量线性增长**，需对数百个候选逐一计算与拼接 |
 
-| 类型 | 例子 | 表示方式 |
-| --- | --- | --- |
-| univalent | impression video ID | 查 embedding |
-| multivalent | 用户最近看过的 N 个 video IDs | 多个 embedding 平均 |
+围绕高基数 ID 特征与用户-物品交互关系，论文重点强调了两项工程实践：
+1. **同语义域跨特征槽位共享底层 Embedding 表与词表截断**：“视频 ID”这一实体空间会同时出现在当前曝光视频（`impression video ID`）、用户最近观看视频（`watched video ID`）、触发推荐的种子视频（`seed video ID`）等多个不同特征槽位（Feature Slots）中。精排网络让所有同属 Video ID 域的槽位**共享同一张底层大 Embedding 表**，但在拼接进入第一层全连接层时各自占据独立的输入通道；这既大幅削减了显存参数并加速长尾泛化，又允许上层网络针对不同槽位学习差异化权重。同时，针对百万级视频与频道空间，系统仅按点击曝光频次截取高频 Top-$N$ 纳入词表（Embedding 维度大致按唯一值数量的对数 $\log_2(|V|)$ 缩放），词表外（OOV）长尾 ID 统一映射至全零向量（Zero Embedding）。
+2. **强区分度的用户-物品历史交互与疲劳度特征**：精排阶段最具预测力的信号来自刻画用户与当前候选视频（或同频道、同主题）过往互动深度的连续统计特征，包括“用户此前在该频道累计观看了多少个视频”、“用户距离上一次观看该主题视频过去了多久（Time since last watch）”，以及至关重要的**历史曝光未点击疲劳度特征（Number of previous impressions）**——如果某个视频在过去几次首页刷新中已连续向该用户曝光却均未被点击，模型会据此敏锐下调其预测得分，自然实现在线曝光降权与列表常看常新。此外，将候选生成阶段各通道提名该视频的标志位与原始得分传入精排，也是赋能多路召回校准的核心桥梁。
 
-和 candidate generation 一样，多值类别特征通过平均 embedding 变成固定宽度向量：
+### 7.2 连续特征工程：经验累积分布分位数归一化与幂次展开
 
-$$
-e_{\text{bag}}
-= \frac{1}{|B|}
-\sum_{i\in B} e_i
-$$
+决策树模型（如 GBDT）对输入特征的单调非线性尺度变换天然不敏感，但基于梯度下降的深度神经网络对连续特征的数值尺度与长尾偏态分布高度敏感。推荐系统中的曝光次数、观看间隔时长、历史点击数等连续特征普遍呈现极端的幂律长尾与零膨胀分布，若直接输入原始数值（Raw Value），极易引发梯度爆炸或令激活函数饱和。
 
-这让 feedforward network 能处理变长历史。
-
-### 10.2 Query feature vs impression feature
-
-论文还区分 query feature 和 impression feature。
-
-| 类型 | 计算频率 | 例子 |
-| --- | --- | --- |
-| query feature | 每个请求计算一次 | user context、语言、设备、近期整体行为 |
-| impression feature | 每个候选 item 计算一次 | 视频 ID、候选源、候选分数、用户与该视频关系 |
-
-这个区分在工程上非常重要。Query feature 可以缓存或一次性计算，impression feature 会随候选数量线性增加。Ranker 的在线延迟往往受 impression feature 计算影响很大。
-
-### 10.3 Shared embeddings
-
-论文提到，同一个 ID space 的 categorical features 共享底层 embedding。例如 video ID 可以出现在：
-
-1. 当前 impression video ID
-2. 用户最近 watched video ID
-3. seed recommendation video ID
-4. candidate source 相关 video ID
-
-底层 embedding 共享，但每个 feature 仍然作为独立输入喂给上层网络。这样既能减少参数和提升泛化，又允许上层网络学习不同 feature slot 的语义差异。
-
-这和今天推荐模型里的 feature slot、shared embedding table、field-aware representation 很接近。
-
-### 10.4 OOV zero embedding 与词表截断
-
-论文说大基数 ID 空间会按 clicked impressions 频率截断，只保留 top $N$；OOV 映射到 zero embedding。
-
-这体现了工程取舍：
-
-| 问题 | 取舍 |
-| --- | --- |
-| 视频 ID 极多 | 只保留高频 ID |
-| 长尾 ID 稀疏 | 用 zero embedding 或其他 fallback |
-| embedding 参数巨大 | 维度随唯一值数量大致按 log 增长 |
-| serving 内存有限 | 高频词表优先 |
-
-今天的系统可能会用 hashing、动态 embedding、频繁重建词表、item tower 内容编码等方式处理长尾，但核心问题没变：大基数类别特征是推荐模型参数和服务复杂度的主要来源。
-
-## 11. Continuous feature normalization
-
-Ranking 里还有大量 continuous feature，例如 time since last watch、number of previous impressions 等。论文强调，连续特征归一化对收敛非常关键。
-
-给定连续特征 $x$，分布为 $f$，论文用累计分布把它映射到 $[0,1)$：
+为此，论文提出在预处理阶段对每个连续特征 $x$（设其概率密度分布为 $f$）执行基于**经验累积分布函数**（Empirical CDF / Quantile Normalization）的分位数归一化，将其保序映射至 $[0,1)$ 区间内的均匀分布：
 
 $$
 \tilde{x}
-= \int_{-\infty}^{x} d f
+= \int_{-\infty}^{x} d f.
 $$
 
-工程上用单次遍历数据得到分位数，再做线性插值近似。也可以理解为 quantile/CDF normalization：
-
-```text
-raw feature x
-  -> empirical CDF F(x)
-  -> normalized feature x_tilde in [0,1)
-```
-
-除了 $\tilde{x}$，论文还输入：
+在工程实现上，离线管线只需单次扫描训练数据统计出一组百级分位点（Quantiles），在线与离线推理时在相邻分位点之间执行高速线性插值即可获得 $\tilde{x}$。更进一步，为了让浅层 ReLU 网络无需消耗过多隐藏层神经元就能轻松拟合变量的超线性与次线性响应曲线，论文将归一化后的特征 $\tilde{x}$ 与其**平方项和平方根项**一同作为三个独立通道输入网络底部：
 
 $$
-\tilde{x}^2,\quad \sqrt{\tilde{x}}
+\left[\tilde{x},\quad \tilde{x}^2,\quad \sqrt{\tilde{x}}\right].
 $$
 
-这样网络更容易形成超线性和次线性函数。
+后续消融实验证明，这一极低成本的多项式基展开能够稳定带来可观的离线与在线排序增益。
 
-### 11.1 为什么这在推荐里重要
+## 8. 预期观看时长目标与精排实验：加权逻辑回归解析
 
-推荐 ranker 的连续特征分布通常很偏：
+精排模型的优化目标是决定整个推荐系统价值取向的指挥棒。本节详细推导论文如何通过加权逻辑回归（Weighted Logistic Regression）与指数激活函数，在不改变分类训练框架的前提下直接预测预期观看时长。
 
-| 特征 | 分布问题 |
-| --- | --- |
-| 视频曝光次数 | 长尾，极少数 item 极高 |
-| 最近观看间隔 | 多尺度，从秒到月 |
-| 历史点击次数 | 零膨胀，长尾 |
-| 频道观看次数 | 高活跃用户偏大 |
-| item age | 新内容密集，旧内容长尾 |
+### 8.1 为什么用 Expected Watch Time 替代单纯 CTR
 
-如果直接把 raw value 输入 MLP，梯度尺度和激活分布会很不稳定。树模型对单调变换不敏感，但神经网络很敏感。因此归一化不是“预处理细节”，而是模型能否收敛和泛化的前提。
+如果精排模型仅以点击与否（0/1 二分类）训练标准逻辑回归并按点击率（CTR）排序，系统会不可避免地沦为标题党（Clickbait）的帮凶：一个封面耸人听闻但内容空洞的 10 分钟视频，可能诱骗大量用户点击并在观看 5 秒后愤怒关闭；在纯 CTR 指标下它会被排在榜首，而一个封面朴实但用户点击后会沉浸观看 8 分钟的优质深度视频反而排在后面：
 
-今天很多系统会进一步使用：
-
-1. log1p transform
-2. bucketization
-3. quantile normalization
-4. z-score by segment
-5. missing indicator
-6. feature clipping
-7. feature freshness timestamp
-
-但 YouTube DNN 论文给出的 CDF normalization 已经抓住了核心：连续特征必须被改造成神经网络容易学习的分布。
-
-## 12. Modeling expected watch time
-
-论文的 ranking objective 是 expected watch time per impression，而不是单纯 CTR。
-
-### 12.1 为什么不是 CTR
-
-CTR 容易被 clickbait 影响。用户点击了一个视频，不代表满意；如果很快退出，长期看不是好推荐。论文认为 watch time 更能反映 engagement。
-
-这可以用一个简单对比说明：
-
-| 视频 | CTR | 平均观看时长 | CTR 排序 | Watch time 排序 |
+| 候选视频特征 | 点击率（CTR） | 点击后平均观看时长 | 纯 CTR 排序位次 | 预期观看时长（Expected Watch Time）排序位次 |
 | --- | --- | --- | --- | --- |
-| A: 标题党短退出 | 高 | 低 | 靠前 | 靠后 |
-| B: 稳定观看 | 中 | 高 | 中等 | 靠前 |
+| 视频 A（标题党短退） | 极高（如 $10\%$） | 极短（如 $6$ 秒） | 榜首（预期点击高） | 靠后（每次曝光期望观看仅 $0.6$ 秒） |
+| 视频 B（优质深度内容） | 中等（如 $3\%$） | 很长（如 $300$ 秒） | 靠后（点击率偏低） | 榜首（每次曝光期望观看达 $9.0$ 秒） |
 
-Expected watch time 不是完美满意度，但比 click probability 更能抑制“骗点”。
+因此，将精排目标切换为**每次曝光的预期观看时长（Expected Watch Time per Impression）**，能够将点击概率与点击后的消费深度完美统一。
 
-### 12.2 Weighted logistic regression
+### 8.2 加权逻辑回归的几率（Odds）数学推导
 
-论文使用 logistic regression under cross-entropy loss，但对 clicked positive examples 按 observed watch time 加权，对 unclicked negatives 权重为 1。
+为了直接从分类网络输出预期观看时长，论文对标准交叉熵逻辑回归做了一处精妙改造：**所有发生点击的正样本（Positive Impressions）在损失函数中按其实测观看时长 $T_i$ 进行样本加权，所有曝光未点击的负样本（Negative Impressions）保持单位权重 $w=1$**。
 
-设训练样本总数为 $N$，正样本数为 $k$，第 $i$ 个正样本 watch time 为 $T_i$。论文推导说 logistic regression 学到的 odds 近似：
-
-$$
-\frac{\sum_i T_i}{N-k}
-$$
-
-如果点击概率 $P$ 很小，则 learned odds 近似：
+我们来严格推导这一加权方式为何能让网络学出的对数几率（Logit）直接逼近预期观看时长。设某个特征邻域内的总曝光样本数为 $N$，其中发生点击的正样本数为 $k$（故未点击负样本数为 $N-k$），第 $i$ 个正样本的真实观看时长为 $T_i$。在标准无加权逻辑回归中，正类概率为 $p = \frac{k}{N}$，模型线性输出层 $z = f_\theta(x)$ 学习的是正负样本计数的对数几率（Log-Odds），即 $\exp(z) = \text{Odds} = \frac{p}{1-p} = \frac{k}{N-k}$。当我们将第 $i$ 个正样本的权重设为 $T_i$（等价于将该正样本在训练集中复制了 $T_i$ 份），而每个负样本权重仍为 $1$ 时，加权逻辑回归学到的新几率（Weighted Odds）自然变为正样本总权重与负样本总权重之比：
 
 $$
-E[T](1+P) \approx E[T]
+\operatorname{Odds}_{\text{weighted}}
+= \exp(f_\theta(x))
+= \frac{\sum_{i=1}^{k} T_i}{N - k}.
 $$
 
-serving 时用指数函数：
+记该曝光条件下的真实点击概率为 $P = \frac{k}{N}$，点击条件下的期望观看时长为 $\mathbb{E}[T_{\text{click}}] = \frac{1}{k}\sum_{i=1}^k T_i$，则单次曝光的无条件预期观看时长（Expected Watch Time per Impression）为 $\mathbb{E}[T] = P \cdot \mathbb{E}[T_{\text{click}}] = \frac{\sum_{i=1}^k T_i}{N}$。将其代入上面的加权几率表达式，分子分母同除以 $N$ 可得：
 
 $$
-\operatorname{score}(x) = \exp(f_\theta(x))
+\operatorname{Odds}_{\text{weighted}}
+= \frac{\frac{1}{N}\sum_{i=1}^{k} T_i}{1 - \frac{k}{N}}
+= \frac{\mathbb{E}[T]}{1 - P}.
 $$
 
-把模型输出转成接近 expected watch time 的 odds。
+在推荐列表曝光场景中，单次曝光的点击率 $P$ 通常是一个较小的值（例如 $P \ll 1$，几百分之几），利用一阶泰勒展开 $\frac{1}{1-P} \approx 1 + P \approx 1$，上式立即化简为：
 
-### 12.3 如何理解这个目标
+$$
+\operatorname{Odds}_{\text{weighted}}
+= \frac{\mathbb{E}[T]}{1 - P}
+\approx \mathbb{E}[T](1 + P)
+\approx \mathbb{E}[T].
+$$
 
-这个目标有几个非常工程化的优点。
+这一推导揭示了一个极为优美的工程结论：在训练阶段，只需使用带样本权重的标准交叉熵损失（正样本权重 $w_i = T_i$，负样本权重 $w_j = 1$）训练逻辑回归；到了在线服务（Serving）阶段，只需将最后一层激活函数从 Sigmoid $\sigma(z)$ 替换为**指数函数**：
 
-第一，保留了 logistic classification 的训练框架。样本仍然是 clicked vs unclicked impression，只是 positive weight 变成 watch time。
+$$
+\operatorname{score}(x) = \exp(f_\theta(x)),
+$$
 
-第二，它把 watch time 融入 pairwise/listwise 排序之前的 pointwise 模型里，便于大规模训练和 serving。
+模型输出的标量分数即直接近似于该候选视频在当前曝光下的预期观看时长 $\mathbb{E}[T]$！
 
-第三，它让模型自然偏好“被点击且观看长”的视频，而不是“容易被点击但马上退出”的视频。
+### 8.3 精排网络深度、宽度与消融实验解析
 
-第四，它仍然需要 guardrail。Watch time 可能偏向长视频、沉浸式内容或某些消费模式，不一定等同于长期满意度。今天的推荐系统通常会把 watch time、satisfaction survey、like/dislike、not interested、diversity、creator health、安全策略等放进多目标框架。
-
-## 13. Ranking experiments: depth, width and CPU budget
-
-Table 1 是 ranking 部分的主要实验结果。
+Table 1 给出了精排网络在次日留出集（Next-day Holdout Data）上不同隐藏层配置对应的**按用户加权逆序损失（Weighted Per-User Loss）**。
 
 ![Table 1: Ranking hidden layer depth and weighted per-user loss](/images/blog/youtube-dnn-recommendations/youtube-dnn-table1-ranking-depth-loss.webp)
 
 *Source: Covington et al., RecSys 2016, Table 1, CC BY-NC-ND 4.0.*
 
-表格列出不同 hidden layer 配置下的 weighted per-user loss：
+论文定义的评估指标 Weighted Per-User Loss 紧扣观看时长目标：在同一用户的同一次推荐页面曝光中，任取一对正样本（被点击观看，时长为 $T_{\text{pos}}$）与负样本（曝光未点击）；若精排模型给负样本打出的分数高于正样本（发生逆序错误），则将该正样本的观看时长 $T_{\text{pos}}$ 计入“误排序时长损失”，最终指标即为全用户误排序观看时长占总观看时长的百分比（数值越低代表排序越精准）。实验结果整理如下：
 
-| Hidden layers | Weighted per-user loss |
+| 精排隐藏层配置（Hidden Layers） | 按用户加权逆序损失（Weighted Per-User Loss） |
 | --- | ---: |
-| None | 41.6% |
-| 256 ReLU | 36.9% |
-| 512 ReLU | 36.7% |
-| 1024 ReLU | 35.8% |
-| 512 ReLU -> 256 ReLU | 35.2% |
-| 1024 ReLU -> 512 ReLU | 34.7% |
-| 1024 ReLU -> 512 ReLU -> 256 ReLU | 34.6% |
+| None（纯线性逻辑回归基线） | $41.6\%$ |
+| `256 ReLU` | $36.9\%$ |
+| `512 ReLU` | $36.7\%$ |
+| `1024 ReLU` | $35.8\%$ |
+| `512 ReLU -> 256 ReLU` | $35.2\%$ |
+| `1024 ReLU -> 512 ReLU` | $34.7\%$ |
+| `1024 ReLU -> 512 ReLU -> 256 ReLU` | $34.6\%$ |
 
-论文对 weighted per-user loss 的定义是：在 next-day holdout data 上，对一个用户同一页里正负 impression pair 进行比较。如果 negative impression 得分高于 positive impression，就把 positive impression 的 watch time 视为误预测观看时长。最终 loss 是误预测观看时长占总观看时长的比例。
+审视 Table 1 及正文中配套的消融实验，可以提炼出三项极具价值的工业规律：
+1. **非线性特征交叉与多层深度的权衡**：从无隐藏层（`None`，损失高达 $41.6\%$）引入单层 `256 ReLU`（损失骤降至 $36.9\%$），减损幅度达 $4.7$ 个百分点，证明在丰富的 Query 与 Impression 特征之上引入非线性变换收益巨大；随着网络继续加宽加深至三层塔式结构 `1024 -> 512 -> 256`，损失进一步降至 $34.6\%$，但相比两层结构 `1024 -> 512`（$34.7\%$）仅微降 $0.1$ 个百分点。由于精排需要对数百个候选逐一前向传播，最终线上选型必须严格受控于单次请求的在线 CPU 算力预算。
+2. **连续特征幂次展开的边际贡献**：在 `1024 -> 512 -> 256` 架构下，若仅输入分位数归一化后的 $\tilde{x}$ 而去掉 $\tilde{x}^2$ 与 $\sqrt{\tilde{x}}$，加权逆序损失会上升 $0.2\%$（即退化至 $34.8\%$），说明在输入端显式提供超线性与次线性基函数对深层网络依然大有裨益。
+3. **目标函数加权远比多堆一层网络更关键**：同样在 `1024 -> 512 -> 256` 架构下，若取消训练阶段的正样本观看时长加权（退化为正负样本等权重的普通 CTR 逻辑回归），加权观看时长逆序损失将剧烈恶化 $4.1\%$（飙升至 $38.7\%$，甚至不如最简单的单层 `256 ReLU` 加权模型）。这一对比有力印证了推荐系统的黄金定律：**样本标签与损失函数对业务目标的对齐精度，决定了模型效果的上限**。
 
-这个指标比普通 accuracy 更贴近 watch time 目标：错把一个长观看正样本排低，比错把短观看正样本排低代价更大。
+## 9. 召回与精排全维度对照及现代推荐演进脉络
 
-### 13.1 表格怎么读
+将候选生成与精排两个阶段置于同一表格下对比，可以一目了然地把握整个 YouTube DNN 架构的工程精髓：
 
-从 None 到 256 ReLU，loss 从 41.6% 降到 36.9%，说明非线性隐藏层显著有效。
-
-从 256 到 512，提升很小，说明单层加宽收益有限。
-
-1024 单层更好，说明宽度能增加表达能力。
-
-两层和三层继续提升，但边际收益下降。最佳表格项是 1024 -> 512 -> 256，loss 为 34.6%，只比两层 1024 -> 512 的 34.7% 低 0.1 个百分点。
-
-论文强调最终选择还受 serving CPU budget 约束。即使三层略好，如果在线 CPU 成本过高，也不能无限扩大。
-
-### 13.2 额外 ablation
-
-论文还给了两个很有用的 ablation：
-
-1. 对 1024 -> 512 -> 256 模型，只输入 normalized continuous features，不输入 powers，会让 loss 增加 0.2%。
-2. 同样结构下，如果 positive 和 negative examples 等权，而不是按 watch time 加权，watch-time weighted loss 增加 4.1%。
-
-第二点尤其关键：目标函数设计比多加一层网络更重要。模型结构从两层到三层只提升 0.1%，但错误的样本权重会损失 4.1%。这也是推荐系统里常见的规律：样本、标签、权重、曝光语义，往往比网络结构更决定成败。
-
-## 14. Candidate generation 与 ranking 的对照
-
-把两部分放在一起，可以得到一张更清楚的对照表。
-
-| 维度 | Candidate generation | Ranking |
+| 对比维度 | 候选生成（Candidate Generation / 召回） | 精排（Ranking / 排序） |
 | --- | --- | --- |
-| 输入规模 | 百万级视频库 | 几百个候选 |
-| 目标 | 找到可能相关的视频 | 给候选精确排序 |
-| 样本 | 用户历史 -> future watch | impression -> click/watch time |
-| 主要信号 | watch/search history、demographic、example age | user-item 关系、候选源、曝光历史、连续特征 |
-| 训练 | sampled softmax classification | watch-time weighted logistic regression |
-| Serving | ANN / nearest neighbor topN | MLP score per impression |
-| 输出 | hundreds candidates | dozens displayed videos |
-| 约束 | 超低延迟、大索引、召回覆盖 | CPU budget、特征计算、目标校准 |
-| 风险 | 漏召回、新内容覆盖不足 | clickbait、过拟合曝光位置、候选源校准不准 |
+| **候选空间规模** | 百万级（Millions）全量视频库 | 百级（Hundreds）多路合并候选池 |
+| **核心阶段使命** | 高召回覆盖率、低延迟粗筛个性化相关视频 | 高精度区分头部列表、校准多通道得分与业务目标 |
+| **训练样本粒度与构造** | 全渠道观看事件；时序回滚历史 $\rightarrow$ 预测未来下一次观看 | 具体推荐页面曝光（Impression）$\rightarrow$ 点击与观看时长 |
+| **主力输入特征** | 观看/搜索历史 ID 序列池化、人口统计学、Example Age | 曝光视频与历史交互统计、疲劳度计数、候选源与得分、分位数归一化连续特征 |
+| **离线训练目标** | 极大规模多分类 + Sampled Softmax（重要性加权负采样） | 观看时长加权逻辑回归（正样本权重 $T_i$，负样本权重 $1$） |
+| **在线服务（Serving）形态** | 导出视频向量 $v_j$，对用户向量 $u$ 执行近似最近邻（ANN）检索 Top-$N$ | 对每个候选视频前向传播 MLP，通过 $\exp(\text{logit})$ 预测预期观看时长 |
+| **输出规模与硬约束** | 输出百级候选；受数十毫秒延迟与全局向量索引刷新约束 | 输出十级展示列表；受单次请求 CPU 算力预算与特征拉取延迟约束 |
 
-这张表也解释了为什么推荐系统不能只做一个统一大模型来排序全量 item。理论上可以，工程上很难承受。
+站在 2016 年之后的十年技术演进视角回望，现代工业推荐系统的诸多前沿进展，均可视为对 YouTube DNN 特定简化假设的针对性升级：
+- **从 Softmax 类别向量到显式双塔（Two-Tower）内容编码**：YouTube 2016 论文在候选生成阶段的视频侧向量 $v_j$ 本质上是 Softmax 输出层的独立 ID 类别参数，对毫无历史观看记录的纯新上传视频缺乏基于视频内容特征的泛化编码能力。现代双塔召回架构将视频/物品侧显式扩展为独立的 **Item Tower** $g_\phi(\text{item features})$，把标题文本、封面视觉、类目属性与统计特征实时编码为物品向量 $v = g_\phi(y)$，与用户塔 $u = f_\theta(x)$ 进行内积匹配，从而彻底打通了新物品的内容冷启动通道。
+- **从无序平均池化到目标注意力与序列模型（DIN / DIEN / Transformer）**：YouTube DNN 采用简单的算术平均池化（Average Pooling）聚合历史观看与搜索序列，不仅抹平了行为的先后次序与时间间隔，而且面对不同候选视频时用户历史表征始终固定不变。随后阿里提出的 DIN（Deep Interest Network）引入目标候选注意力机制（Target Attention），根据当前待打分的候选视频动态加权用户的历史观看记录；DIEN、SASRec 以及近年兴起的生成式序列推荐（如 HSTU）则进一步引入自回归 Transformer 架构，深度建模长周期兴趣演化轨迹。
+- **从单一用户向量到多兴趣向量召回（MIND / ComiRec）**：在候选生成阶段将一位用户数十次跨领域的观看历史强行压缩为单一 256 维向量 $u$，容易导致多峰兴趣（例如同一用户既看硬核编程教程、又看古典音乐与健身视频）在求平均后落入几个领域的几何中间地带。后续的 MIND（Multi-Interest Network with Dynamic Routing）与 ComiRec 通过胶囊网络或自注意力机制为每位用户提取多个兴趣胶囊向量 $\{u_1, u_2, \dots, u_K\}$，分别并发检索 ANN 索引再合并候选，显著改善了多兴趣用户的召回覆盖度。
+- **从单一预期观看时长到多目标优化与安全生态治理**：论文通过加权逻辑回归将优化目标从 CTR 推进至 Expected Watch Time，成功遏制了浅层标题党；但在长期运营中，单纯追求观看时长仍会产生偏爱超长视频、诱导沉迷与信息窄化等副作用。现代大型推荐平台普遍演进为基于 MMoE 或 PLE 的多任务学习框架，同时预测点击、完播率、长观看时长、显式点赞/收藏、分享、负向点踩/不感兴趣以及随机抽样问卷满意度（Satisfaction Survey），并通过带约束的多目标融合公式兼顾创作者公平曝光与平台内容生态健康。
 
-## 15. 这篇论文的工业经验
+## 10. 论文局限性审视、核心工程启示与精读路径
 
-### 15.1 召回不是排序
+客观审视这篇工业界经典文献，读者在借鉴其设计时应当留意四个历史与披露边界：其一，作为一篇工业架构概述论文，文中未披露完整的特征词表细节、分布式训练超参数、在线流式特征更新架构与线上 A/B 的具体提升百分比，不可将其当作开箱即用的完整复现手册；其二，所有实验结论均建立在 YouTube 超高密度的视频消费场景之上，对于低频高客单价的电商或重度依赖静态内容的垂类平台，特征重要性排序可能存在显著差异；其三，如第 9 节所述，候选生成侧缺乏显式的物品内容编码塔，且平均池化舍弃了序列顺序；其四，这篇 2016 年的论文仅代表 YouTube 转向深度学习初期的架构快照，如今的线上系统早已融入了深层序列建模、实时流式反馈与多目标强化学习。
 
-Candidate generation 返回的是“可能相关”的候选，不是最终列表。它的分数也不一定可直接跨来源比较。Ranking 必须对候选重新校准。
+尽管如此，这篇论文浓缩的五条工程方法论至今仍是构建任何推荐系统的必修课：
+1. **严格区分训练目标与在线服务形态**：候选生成在离线是带采样的极大规模多分类，在线则是免配分函数的 ANN 最大内积检索；精排在离线是样本加权的交叉熵二分类，在线则是经 $\exp(\text{logit})$ 转换的预期时长打分。
+2. **用防穿越的时间回滚构造替代随机留出**：离线样本必须严守在线服务时的信息边界（只用时刻 $t$ 之前的历史预测时刻 $t$ 的未来观看），必要时甚至需主动阉割过强的近期搜索结构特征，防止模型在代理任务上走捷径而损害真实首页体验。
+3. **把时间非平稳性显式编码进模型**：通过 Example Age 在训练期学习流行度随时间的演化曲面，并在服务期置零输出当下时刻分布，比手工拍脑袋给新视频加固定偏置分更为精准优雅。
+4. **召回与精排必须通过召回源特征紧密咬合**：ANN 召回仅提供一路候选池，精排模型必须显式消费候选来源 ID 与原始通道分数，并在曝光级（Impression）特征空间内融合疲劳度惩罚完成最终校准。
+5. **模型收益高度依赖连续特征变换与目标函数对齐**：经验 CDF 分位数归一化配合 $[\tilde{x}, \tilde{x}^2, \sqrt{\tilde{x}}]$ 幂次展开保障了梯度平稳，而观看时长样本加权带来的 $4.1\%$ 逆序损失降幅更是远超多层网络堆叠。（关于如何在缺乏初始样本的业务中从零落地曝光日志、防穿越样本契约、双塔召回与四阶段上线闭环，可进一步参阅站内姊妹篇[《简单推荐算法实施指南：从冷启动弱监督到真实反馈闭环》](/blog/simple-recommender-cold-start-to-feedback-loop)。）
 
-这对工程落地很重要：第一版 ANN 召回上线时，不应该让 ANN score 直接接管最终排序。更稳妥做法是低权重进入候选源，然后让 rank policy 或 ranker 融合：
+对于希望对照英文原版深入研读的读者，建议按以下十步线索串联阅读，并结合延伸文献拓展视野：
+1. **Abstract & Section 1**：把握 Scale、Freshness、Noise 三大核心挑战。
+2. **Section 2 & Fig. 2**：厘清 Candidate Generation 与 Ranking 两阶段漏斗的算力与职责边界。
+3. **Section 3.1**：精读极大规模多分类形式化、Sampled Softmax 与在线 ANN 检索的衔接。
+4. **Section 3.2 & Fig. 3**：分析观看/搜索历史平均池化与塔式 ReLU 结构。
+5. **Section 3.3 & Fig. 4**：重点吃透异构特征融合与 Example Age 的训练/服务一致性设计。
+6. **Section 3.4 & Fig. 5**：重点理解时序回滚（Rollback）、搜索特征去结构化与每用户定额采样。
+7. **Section 3.5 & Fig. 6**：对照四条特征曲线与深度变化分析离线 MAP 收益。
+8. **Section 4.1 & Fig. 7**：掌握单值/多值特征、Query/Impression 特征解耦、跨槽位共享 Embedding 与分位数归一化。
+9. **Section 4.2**：推导加权逻辑回归的 Odds 公式与在线 $\exp(z)$ 激活。
+10. **Section 4.3 & Table 1**：对比不同深宽度的加权逆序损失与两项关键消融实验。
 
-```text
-final_candidates =
-  ann_candidates
-  + rule_candidates
-  + hot_candidates
-  + profile_candidates
-  + exploration_candidates
-
-ranker_features include:
-  candidate_source
-  source_score
-  source_rank
-  model_version
-  index_version
-```
-
-### 15.2 样本构造决定线上迁移
-
-论文反复强调 surrogate problem 的选择。预测随机 held-out watch 离线可能好，但线上不如预测 future watch。保留太多站内结构信息会让模型复现搜索页而不是做首页推荐。
-
-这说明推荐训练样本必须模拟 serving 时的信息边界：
-
-| 问题 | 正确做法 |
+| 拓展研究主题 | 经典参考文献 |
 | --- | --- |
-| 用户特征是否包含曝光后行为 | 不包含，必须用 snapshot at time |
-| label 是否来自未来 | 可以是 future watch，但 input 只能 rollback 到 label 前 |
-| 未曝光 item 是否是负样本 | 不是真实负反馈 |
-| 曝光未点击是否是负样本 | 可以是低权重负反馈，但需有曝光上下文 |
-| 旧策略偏差如何处理 | 记录 logging policy，必要时做探索和校正 |
+| YouTube 早期图与关联规则推荐 | Davidson et al., *The YouTube Video Recommendation System*, RecSys 2010 |
+| 大词表线性排序与采样训练 | Weston et al., *WSABIE: Scaling Up To Large Vocabulary Image Annotation*, IJCAI 2011; Jean et al., ACL 2015 |
+| 隐式反馈与停留时长建模 | Hu, Koren, Volinsky, ICDM 2008; Yi et al., *Beyond Clicks: Dwell Time for Personalization*, RecSys 2014 |
+| 记忆与泛化联合精排架构 | Cheng et al., *Wide & Deep Learning for Recommender Systems*, DLRS 2016; DeepFM, IJCAI 2017; DCN, KDD 2017 |
+| 序列注意力与多兴趣推荐 | Zhou et al., *DIN*, KDD 2018; *DIEN*, AAAI 2019; *MIND*, CIKM 2019; *SASRec*, ICDM 2018 |
 
-### 15.3 Freshness 要进模型和系统
+## 11. 结语
 
-Example age 是模型层面的 freshness；但系统还需要索引 freshness、内容上线到首曝时延、新内容探索预算、实时反馈更新。
+回望 **Deep Neural Networks for YouTube Recommendations**，它之所以能在发表多年后依然被奉为工业推荐系统设计的圭臬，是因为作者没有将视野局限于某个精巧的局部网络算子，而是完整呈现了超大规模推荐系统从问题拆解、代理任务定义、防穿越样本构造、时效性偏差校准、特征归一化到商业目标函数对齐的系统工程全貌。
 
-如果 item embedding 每天导出一次，新视频入库后没有 embedding 或没有索引更新，再好的 example age 也无法召回它。因此 freshness 是一条链：
-
-```text
-content ingestion
-  -> feature extraction
-  -> candidate embedding
-  -> ANN index update
-  -> exploration exposure
-  -> feedback collection
-  -> training sample
-  -> retraining / continual update
-```
-
-YouTube DNN 论文没有展开这整条链，但 Fig. 4 提醒我们：推荐系统面对的是非平稳分布。
-
-### 15.4 Watch time 目标优于 CTR，但不是终点
-
-论文对 CTR 的批判非常清楚：点击容易奖励 clickbait。Watch time 更接近 engagement。
-
-但今天看，watch time 也不是最终答案。它可能鼓励沉迷、长视频偏置、重复消费、低质量长停留。成熟系统通常需要多目标：
-
-| 目标 | 可能指标 |
-| --- | --- |
-| 短期 engagement | CTR、watch time、long view |
-| 满意度 | survey、like/dislike、not interested |
-| 长期留存 | next-day return、session quality |
-| 多样性 | category diversity、creator diversity |
-| 安全 | policy violation risk、borderline content |
-| 生态 | creator exposure fairness、new creator coverage |
-
-因此，论文里的 expected watch time 是理解工业目标函数的起点，不是今天所有推荐系统的终点。
-
-## 16. 与现代推荐系统的关系
-
-### 16.1 与双塔召回
-
-今天的双塔召回常写成：
-
-$$
-u = f_\theta(\text{user features})
-$$
-
-$$
-v = g_\phi(\text{item features})
-$$
-
-$$
-s(u,v)=u^\top v
-$$
-
-YouTube DNN candidate generation 是一种早期形态：用户侧由 watch/search/context features 经过 DNN 得到 $u$，视频侧是 softmax output embedding $v_j$，线上通过 nearest neighbor 检索。
-
-区别在于现代双塔通常会显式建 item tower，把 item 的文本、图像、类目、作者、统计特征编码成向量，方便冷启动 item。YouTube 2016 论文里的视频 output embedding 更依赖 ID 类别和观看反馈，对全新视频的内容冷启动披露较少。
-
-### 16.2 与 Wide & Deep / DeepFM
-
-Google 同期另一篇重要工作是 Wide & Deep。Wide 部分记忆稀疏共现，Deep 部分泛化。YouTube DNN 里没有显式 wide linear cross，但它同样面对“记忆和泛化”的问题：
-
-| 问题 | YouTube DNN 的处理 |
-| --- | --- |
-| 记忆历史协同信号 | video ID embedding |
-| 泛化到新组合 | ReLU tower + heterogeneous signals |
-| 高基数类别 | shared embeddings + vocabulary truncation |
-| 连续特征 | quantile normalization + powers |
-
-DeepFM、xDeepFM、DCN 等后续模型更系统地建模 feature crossing，而 YouTube DNN 更强调大规模系统里的可服务化。
-
-### 16.3 与 DIN/DIEN/Transformer 推荐
-
-YouTube DNN 使用 average pooling 处理历史。后来的 DIN 使用 target attention，根据候选 item 对用户历史加权；DIEN 建模兴趣演化；Transformer 模型进一步建模序列顺序和长程依赖。
-
-可以把它们看作在补足 YouTube DNN 的一个简化：
-
-```text
-YouTube DNN:
-  history embeddings -> average -> fixed vector
-
-DIN:
-  history embeddings + target item -> attention pooling
-
-Transformer:
-  ordered behavior sequence -> contextual sequence representation
-```
-
-但这些模型通常更重，在线成本更高。是否值得使用，取决于候选规模、特征系统、延迟预算和业务收益。
-
-### 16.4 与多兴趣召回
-
-YouTube DNN 把用户压成一个向量 $u$。但用户兴趣常常是多峰的：同一个人可能同时喜欢音乐、编程、健身和新闻。单向量召回可能混合兴趣，导致某些兴趣被平均掉。
-
-后来的 MIND、ComiRec、多兴趣 capsule 等方法会为一个用户生成多个兴趣向量：
-
-$$
-\{u_1,u_2,\ldots,u_K\}
-$$
-
-然后每个兴趣向量召回一批候选。这可以看作对 YouTube DNN 单用户向量召回的扩展。
-
-### 16.5 与在线学习和近实时特征
-
-论文提到 up-to-the-second impression and watch history 对 responsive recommendations 很重要，但细节超出论文范围。今天的推荐系统会更强调：
-
-1. 实时曝光去重
-2. session 内短期行为更新
-3. feature store 的在线/离线一致性
-4. streaming training examples
-5. nearline model update
-6. ANN index incremental update
-7. bandit exploration 和 OPE
-
-YouTube DNN 论文是一个静态快照，但它已经指出了实时反馈的重要性。
-
-## 17. 与冷启动 Blog 的衔接
-
-这篇论文对“简单推荐算法从冷启动到稳定闭环”的启发非常直接。
-
-### 17.1 未曝光不是负样本
-
-Candidate generation 的 sampled negatives 是为了近似 softmax，不代表用户真实不喜欢。Ranking 的 negatives 是 unclicked impressions，前提是视频确实展示给用户。
-
-因此：
-
-```text
-unseen item != negative feedback
-exposed but no click = weak negative with context
-sampled negative = training denominator / contrastive negative
-```
-
-这条边界对冷启动系统非常关键。
-
-### 17.2 召回是一路候选源
-
-Fig. 2 里有 other candidate sources。第一版 ANN 召回不应该接管全部推荐，而应该作为一路候选源，在低权重或 shadow 模式下收集反馈。
-
-### 17.3 Freshness 需要显式建模
-
-如果新 item 没有曝光机会、没有 embedding、没有索引刷新，模型会天然偏旧。冷启动商品同样如此。需要 new item exploration、content prior、index refresh 和反馈闭环共同工作。
-
-### 17.4 线上 A/B 是最终裁判
-
-论文明确说离线指标不一定和线上 A/B 相关。冷启动系统上线时也不能只看离线 Recall@K。至少要看：
-
-1. exposure log 写入成功率
-2. interaction join rate
-3. candidate valid rate
-4. new item coverage
-5. CTR / long dwell / conversion
-6. hide / dislike / report
-7. session-level guardrail
-
-### 17.5 样本快照必须防止数据穿越
-
-Fig. 5 的 rollback 思想可以直接映射到训练样本契约：
-
-```text
-TrainingExampleV1:
-  user_snapshot_at_t: only features before exposure/label time
-  positive_item: watched/clicked item
-  negative_items: exposed but no action, sampled negatives with source
-  exposure_context: request_id, position, page, source, model_version
-  label_time: event time
-```
-
-如果 user snapshot 包含 label 之后行为，离线指标会虚高，线上效果会崩。
-
-## 18. 简化复刻清单
-
-如果要做一个教学版或中小规模业务版 YouTube DNN，不需要一开始复刻 YouTube 的全部复杂性。可以按下面顺序做。
-
-### 18.1 数据与日志
-
-先定义日志。
-
-```text
-ExposureLog:
-  request_id
-  user_id
-  item_id
-  position
-  candidate_source
-  source_score
-  rank_score
-  model_version
-  index_version
-  policy_version
-  exposed_at
-
-InteractionLog:
-  request_id
-  user_id
-  item_id
-  event_type
-  watch_time_or_dwell_time
-  occurred_at
-```
-
-没有曝光日志，ranking 的负样本语义不成立。
-
-### 18.2 Candidate generation 样本
-
-构造 rollback future watch 样本：
-
-```text
-for each user:
-  sort watch events by time
-  choose label event at t
-  input = events before t
-  label = watched item at t
-```
-
-对每个用户控制样本数量，避免高活跃用户主导训练。
-
-### 18.3 Candidate generation 模型
-
-最小结构：
-
-```text
-watch_history_item_ids -> item embeddings -> mean pooling
-search_or_query_tokens -> token embeddings -> mean pooling
-context features -> embeddings / normalized dense values
-concat -> MLP -> user embedding
-sampled softmax over item IDs
-```
-
-训练后导出 item output embedding，建立 ANN index。
-
-### 18.4 ANN serving
-
-```text
-request user features
-  -> user tower
-  -> user embedding
-  -> ANN topN
-  -> hard filters
-  -> merge with rule/hot/profile candidates
-  -> ranker
-  -> exposure log
-```
-
-ANN index 需要记录版本：
-
-```text
-index_version = model_version + item_embedding_snapshot + build_time
-```
-
-### 18.5 Ranking 样本
-
-Ranking 样本必须来自曝光：
-
-```text
-positive:
-  exposed and clicked/watched
-  weight = watch_time or dwell_time
-
-negative:
-  exposed and not clicked after attribution window
-  weight = 1 or low weight
-```
-
-推荐系统第一版如果没有足够曝光样本，不要假装能训练成熟 ranker。可以先用规则 rank policy，把日志积累起来。
-
-### 18.6 Ranking 模型
-
-最小 ranker 输入：
-
-1. user features
-2. item features
-3. user-item cross features
-4. candidate source
-5. source score
-6. recent exposure count
-7. time since last interaction
-8. normalized continuous features and powers
-
-输出可以先做 expected dwell/watch time：
-
-```text
-clicked positive weight = dwell/watch time
-unclicked negative weight = 1
-activation = exp(logit)
-score approximates expected time
-```
-
-### 18.7 上线流程
-
-```text
-shadow:
-  produce ANN candidates but not affect ranking
-  log overlap, valid rate, latency
-
-low weight:
-  ANN candidates enter candidate pool
-  keep rule/hot/profile fallback
-  monitor guardrails
-
-ramp-up:
-  increase ANN source quota or rank weight
-  A/B test by user bucket
-
-stable:
-  periodic retraining
-  index publishing
-  rollback model/index/policy independently
-```
-
-## 19. 局限性与批判
-
-这篇论文影响很大，但不能过度外推。
-
-### 19.1 论文披露有限
-
-论文只给出高层架构和关键经验，没有完整数据 schema、训练 pipeline、特征列表、ANN 实现细节、在线基础设施、A/B 配置或代码。读者不能把文中模型图当作完整可复现系统。
-
-### 19.2 实验基于内部数据
-
-实验结果来自 YouTube 内部数据和在线 A/B，没有公开数据集复现。Fig. 6 和 Table 1 只能说明在当时 YouTube 场景下这些设计有效，不能直接证明所有推荐业务都应采用同样结构。
-
-### 19.3 Watch time 不是满意度等价物
-
-Watch time 能抑制一部分 clickbait，但它可能鼓励长时间停留而非长期满意。今天需要多目标、长期指标和安全策略共同约束。
-
-### 19.4 Candidate generation 对内容冷启动披露不足
-
-论文主要讲 watch/search/demographic 和视频 ID embedding，没有详细说明全新视频如何基于内容特征进入召回。对于商品推荐、UGC 新内容推荐或资产库推荐，item cold start 需要文本、图像、类目、作者、质量分、探索机制等额外设计。
-
-### 19.5 Average pooling 丢失序列结构
-
-简单平均 watch/search embedding 稳定高效，但会丢失顺序、时间间隔、session 内上下文和目标 item 相关性。现代系统常用 attention、序列模型或多兴趣召回来补足。
-
-### 19.6 2016 架构不等于今天的 YouTube
-
-这篇论文是 2016 年公开快照，不代表今天 YouTube 的推荐系统。今天的系统必然更复杂，包括更强的序列建模、多目标、安全约束、创作者生态、实时反馈和更重的基础设施。
-
-## 20. 推荐阅读路径
-
-如果只读论文原文，建议按下面顺序：
-
-1. Abstract: 把握两阶段问题拆分。
-2. Fig. 2 + Section 2: 理解 candidate generation 和 ranking 的系统边界。
-3. Section 3.1: 理解 recommendation as classification 和 sampled softmax。
-4. Fig. 3: 看 training softmax 与 serving ANN 的差异。
-5. Fig. 4: 重点读 example age 如何处理 freshness。
-6. Fig. 5: 重点读 label/context selection 和 rollback。
-7. Fig. 6: 看 features 与 depth 的离线效果。
-8. Section 4.1: 读 ranking feature representation。
-9. Section 4.2: 读 expected watch time 的 weighted logistic regression。
-10. Table 1: 看 ranking 深度、宽度和 CPU budget 的取舍。
-
-延伸阅读可以按主题分：
-
-| 主题 | 推荐材料 |
-| --- | --- |
-| YouTube 早期推荐 | Davidson et al., The YouTube Video Recommendation System, RecSys 2010 |
-| 大规模排序 | WSABIE, Weston et al., IJCAI 2011 |
-| 隐式反馈 | Oard and Kim 1998; Hu, Koren, Volinsky 2008 |
-| Dwell time | Yi et al., Beyond Clicks, RecSys 2014 |
-| 大词表训练 | Jean et al., candidate sampling for large vocabulary |
-| 双塔召回 | YouTube DNN candidate generation 后续工业实践 |
-| Wide & Deep | Cheng et al., 2016 |
-| 特征交叉 | DeepFM、DCN、xDeepFM |
-| 序列推荐 | DIN、DIEN、SASRec、BERT4Rec |
-| 冷启动 | DropoutNet、content-based retrieval、bandit exploration |
-
-## 21. 结论
-
-Deep Neural Networks for YouTube Recommendations 的长期价值，不在于“用 ReLU MLP 替代矩阵分解”这个表层结论，而在于它把推荐系统拆成了可以工程化迭代的完整链路。
-
-它告诉我们：
-
-1. 超大规模推荐必须先做候选生成，再做排序。
-2. Candidate generation 可以写成 extreme multiclass classification，训练用 sampled softmax，服务用 ANN。
-3. Ranking 面对的是 impression，不是抽象用户-视频对，因此需要更丰富的上下文和候选源特征。
-4. 样本构造是核心。Rollback future watch 比随机 held-out 更接近线上场景。
-5. Freshness 需要显式建模，example age 是一个经典方法。
-6. CTR 不是足够好的目标，watch time 加权 logistic regression 是当时 YouTube 抑制 clickbait 的有效工程选择。
-7. 离线指标只是迭代工具，最终仍要靠线上 A/B 和产品指标验证。
-
-如果把这篇论文用于今天的工程实践，最重要的不是照抄网络结构，而是继承它的问题分解方式：先把召回、排序、样本、日志、目标函数、索引、A/B 和反馈闭环分清楚，再决定模型复杂度。
-
-一个简单推荐系统也应该从这个原则出发。不要一开始就幻想一个模型解决全部问题；先让系统能展示、能记录、能 join、能训练、能回滚、能 A/B。模型会不断变化，但这个闭环才是推荐系统真正的基础设施。
+对于今天的算法工程师而言，研读这篇论文最大的收获在于习得其**面向生产约束的问题分解思维**：在面对海量候选与严苛延迟时，用“轻量向量召回 + 重度交叉精排”解耦算力；在面对历史滑动窗口与动态内容流冲突时，用 Example Age 显式对齐训练与服务的时间相位；在面对离线指标与线上体验背离时，毫不犹豫地通过时序回滚与特征裁剪修正样本构造；在面对标题党侵蚀用户体验时，用数学上自洽的观看时长加权逻辑回归重塑优化目标。无论底层神经网络从当年的多层 ReLU 演进为如今的深层 Transformer 还是生成式大模型，这套将算法模型严丝合缝嵌入数据闭环与产品界面的工程哲学，始终是工业界推荐系统迭代演进的基石。
 
 ## 参考资料
 

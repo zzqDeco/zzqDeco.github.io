@@ -13,7 +13,7 @@ tags:
 draft: false
 ---
 
-长期收益强化学习听起来像一个单独的算法问题，但更准确地说，它是一组相互缠绕的训练困难。标准强化学习本来就最大化长期累计回报：
+长期收益强化学习涵盖了一组相互交织的序列决策与优化难题。标准强化学习的目标函数本身即定义为长期累计回报的期望最大化：
 
 $$
 J(\pi)=\mathbb{E}_{\tau\sim \pi}
@@ -22,15 +22,9 @@ J(\pi)=\mathbb{E}_{\tau\sim \pi}
 \right],
 $$
 
-其中 $\tau=(s_0,a_0,r_0,\dots,s_T)$ 是策略 $\pi$ 诱导出的轨迹，$\gamma\in[0,1)$ 是折扣因子。问题不在于目标函数是否“长期”，而在于当奖励非常稀疏、非常延迟、任务 horizon 很长、环境部分可观测、动作空间又很大时，训练系统很难判断哪些早期决策真正导致了最终结果。
+其中 $\tau=(s_0,a_0,r_0,\dots,s_T)$ 表示策略 $\pi$ 诱导出的轨迹，$\gamma\in[0,1)$ 为折扣因子。尽管理论形式已经囊括远期收益，但在实际训练中，当环境同时呈现奖励高度稀疏、反馈严重延迟、决策视野（horizon）漫长、状态部分可观测以及动作空间庞大等特征时，优化算法极难从有限样本中辨识出究竟是哪些早期决策促成了最终结果。
 
-这篇报告讨论的“长期收益 RL”主要覆盖三类场景。
-
-第一类是 **finite-horizon sparse-reward tasks**：例如机器人操作、Atari hard exploration、网页任务、AppWorld 任务。它们通常有明确 episode，最终成功或失败才给奖励。
-
-第二类是 **long-horizon goal-conditioned RL**：目标 $g$ 显式出现，策略写成 $\pi(a\mid s,g)$。这类问题的难点常常是目标空间大、随机探索很难碰到成功轨迹。
-
-第三类是 **continuing tasks**：推荐、调度、长期用户价值、能源管理等任务没有自然 episode。此时 discounted return 未必是唯一合理目标，average reward criterion 可能更贴近真实业务：
+文献中讨论的“长期收益 RL”主要对应三类问题设定。第一类是**有限时域稀疏奖励任务（finite-horizon sparse-reward tasks）**，典型代表包括机器人精细操作、Atari 硬探索游戏、网页导航与 AppWorld 任务，这类场景具有明确的回合（episode）边界，通常仅在任务最终成功或失败时给出反馈。第二类是**长时域目标条件强化学习（long-horizon goal-conditioned RL）**，目标状态 $g$ 显式作为策略输入 $\pi(a\mid s,g)$，核心瓶颈在于目标空间体积庞大，无向随机探索极难触达成功轨迹。第三类是**持续性任务（continuing tasks）**，涵盖推荐系统、资源调度、长期用户留存优化与能源管理等无自然终止边界的场景；在此类任务中，折扣回报往往只是一种工程近似，平均奖励准则（average reward criterion）更能直接刻画系统的稳态表现：
 
 $$
 \rho(\pi)=
@@ -42,11 +36,11 @@ $$
 \right].
 $$
 
-这三类问题都会被称为“长期收益”，但算法假设和评估方式并不相同。把它们混在一起，会导致两个常见误解：一是把“奖励传播慢”误认为所有长时域任务的唯一瓶颈；二是把某个机器人 manipulation 或网页 agent 结果外推成一般 RL 结论。
+上述三类设定在算法假设与评估方式上存在显著差异。若将三者混为一谈，容易产生两类常见偏差：一是将“价值传播缓慢”误判为所有长时域任务的唯一瓶颈；二是将特定机器人操作或网页智能体的实验结论盲目外推为通用强化学习规律。
 
-## 1. 长期收益 RL 到底难在哪里
+## 1. 长期收益 RL 的核心症结与问题解耦
 
-用 Markov Decision Process 表示，强化学习任务由状态空间 $\mathcal{S}$、动作空间 $\mathcal{A}$、转移分布 $P(s'\mid s,a)$、奖励函数 $r(s,a,s')$、初始分布 $\mu_0$ 和折扣因子 $\gamma$ 组成。策略 $\pi(a\mid s)$ 的目标是最大化价值函数：
+在马尔可夫决策过程（MDP）框架下，强化学习环境由状态空间 $\mathcal{S}$、动作空间 $\mathcal{A}$、转移分布 $P(s'\mid s,a)$、奖励函数 $r(s,a,s')$、初始状态分布 $\mu_0$ 以及折扣因子 $\gamma$ 共同定义。策略 $\pi(a\mid s)$ 致力于最大化状态价值函数
 
 $$
 V^{\pi}(s)
@@ -59,7 +53,7 @@ V^{\pi}(s)
 \right],
 $$
 
-以及动作价值函数：
+以及动作价值函数
 
 $$
 Q^{\pi}(s,a)
@@ -72,57 +66,38 @@ Q^{\pi}(s,a)
 \right].
 $$
 
-在短 horizon、dense reward 的任务里，局部动作和后续奖励之间的统计关系相对容易学习。长时域稀疏奖励任务则把问题拆成四个困难。
+在短时域、稠密奖励任务中，局部动作与即时后续回报之间的统计关联清晰易学。一旦进入长时域稀疏奖励场景，训练困难便分化为四个相互耦合的维度：
 
-**Temporal credit assignment**：最终奖励应该分给哪些早期动作？如果一个 agent 在第 200 步成功开门，真正关键的可能是第 20 步拿钥匙、第 70 步保存路线信息、第 130 步避开障碍，而不是第 199 步的最后一个动作。
+- **时间信用分配（Temporal credit assignment）**：终局奖励应归因于哪些早期关键动作？当智能体在第 200 步成功开门时，真正决定成败的往往是第 20 步拾取钥匙、第 70 步记录路线信息以及第 130 步规避障碍，第 199 步的临门一脚仅是顺理成章的收尾。
+- **价值传播（Value propagation）**：终局反馈如何高效回传至早期状态？一阶时序差分（TD）每次 Bellman 备份仅将奖励信号向前推进一个时间步，在数百步的延迟下，早期状态的价值估计需要消耗海量样本才能形成有效梯度。
+- **稀疏探索（Exploration）**：首个成功轨迹从何而来？若初始策略在随机探索下触达目标状态的概率趋近于零，任何精密的信用分配机制都将因缺乏正样本而失效。
+- **时间抽象（Temporal abstraction）**：如何将底层原子动作提炼为技能、子目标、选项（option）、动作块（action chunk）或高层计划？一旦有效决策频率从每步一次降低为每 $K$ 步一次，有效规划视野将大幅缩短。
 
-**Value propagation**：终局奖励如何快速传回早期状态？一阶 TD 每次 Bellman backup 只把信息往前传一步。在几百步延迟下，价值估计可能需要大量样本才能形成可用梯度。
+Pignatelli 等人在 [Temporal Credit Assignment Survey](https://arxiv.org/abs/2312.01072) 中将信用分配严格定义为“从有限经验中推断过往动作对未来结果的影响”，并指出真实环境反馈往往伴随高噪声与长延迟，极少直接揭示因果责任（causal responsibility）。因此，解决长期收益问题需要在有限轨迹中重建跨时间步的因果影响链条。围绕这一目标，学术界逐渐演化出十条互补的技术路线：多步 TD 基础设施、显式信用分配、稀疏探索与课程学习、分层强化学习（HRL）、动作分块（action chunking）、世界模型与规划、离线到在线强化学习（offline-to-online RL）、LLM Agent RL、奖励塑形与过程奖励，以及平均奖励强化学习。
 
-**Exploration**：成功轨迹从哪里来？如果随机策略几乎不可能完成任务，再好的 credit assignment 也没有正样本可分配。
+在深入具体算法前，有必要先厘清五个常被混用的概念维度：
 
-**Temporal abstraction**：是否应该把单步动作提升为技能、子目标、option、action chunk 或高层计划？如果有效决策频率从每步一次变为每 $K$ 步一次，优化问题会变得完全不同。
+1. **决策视野长（Long horizon）**：回合总步数或有效决策链条极长。即便每步都提供稠密奖励，只要策略需要在漫长序列中维持稳定控制（如长程导航、多工序装配、长期留存优化），依然属于长时域优化问题。
+2. **奖励延迟大（Reward delay）**：关键决策与结果反馈之间相隔大量时间步。延迟奖励可以与稠密小奖励并存，但决定最终成败的往往是早期的准备工作。
+3. **奖励稀疏度高（Reward sparsity）**：绝大多数时间步反馈为零，首要瓶颈在于如何首次采到非零奖励样本。
+4. **部分可观测性强（Partial observability）**：当前观测 $o_t$ 不满足马尔可夫性质，智能体必须依赖历史记忆做决策，使得长程信用分配与记忆表征学习深度纠缠。
+5. **持续性目标（Continuing objective）**：任务无自然终点，核心诉求在于优化稳态平均效用或长期约束满足率。
 
-[Temporal Credit Assignment Survey](https://arxiv.org/abs/2312.01072) 把 credit assignment 定义为从有限经验中学习动作对后续结果的影响，并强调现实反馈往往 noisy、delayed，且几乎不说明 causal responsibility。这一点非常关键：长期收益 RL 不是简单把 return 里的 $\gamma$ 调大，而是要在有限轨迹中识别影响链条。
+不同业务场景往往呈现出上述维度的不同组合：网页智能体通常兼具长视野、稀疏终局反馈、部分可观测性与复杂结构化动作空间；推荐系统较少面临单回合终局稀疏奖励，却受制于延迟业务指标与持续性目标；机器人拾取与装配则主要受困于稀疏探索与富含接触的动力学控制。在工程选型时，可以先通过以下诊断矩阵定位核心矛盾：
 
-从这个视角看，长期收益 RL 的历史可以理解为十条互补路线：多步 TD 基础设施、显式 credit assignment、稀疏探索、HRL、action chunking、world model、offline/offline-to-online、LLM Agent RL、reward shaping、average reward。
-
-为了避免后文混淆，先把几个经常被合并使用的术语拆开。
-
-**Horizon 长** 指 episode 或有效决策链条很长。即使每步都有 dense reward，只要策略必须在很长时间内保持稳定，仍然是 long-horizon optimization。典型例子是长程导航、长序列机器人装配、长期用户留存优化。
-
-**Reward delay 大** 指关键动作和回报之间相隔很多步。延迟奖励不一定稀疏，例如一个任务可能每步都有小 reward，但真正决定成功的是很早的准备动作。
-
-**Reward sparsity 高** 指非零 reward 很少。它首先是探索问题：agent 必须先碰到奖励，才有信号可学习。
-
-**Partial observability 强** 指当前 observation 不足以决定最优动作，agent 必须依赖记忆。此时长时域 credit assignment 往往和 memory learning 纠缠在一起。
-
-**Continuing objective** 指任务没有自然终止。此时优化长期平均效用、长期约束违约率或稳定状态收益，和有限 episode 成功率不是同一个问题。
-
-这几个维度可以同时出现，也可以分开出现。一个网页 agent 任务通常同时有长 horizon、稀疏最终 reward、部分可观测和复杂动作空间；一个推荐系统任务可能没有稀疏终局成功，却有 delayed business metric 和 continuing objective；一个机器人 pick-and-place 任务可能主要是 sparse exploration 和 contact-rich control，而不是 memory。
-
-因此，选择算法前更有用的问题不是“哪个 long-horizon RL 算法最好”，而是：
-
-| 诊断问题 | 指向的主要路线 |
+| 核心诊断问题 | 优先技术路线 |
 | --- | --- |
-| 成功轨迹几乎采不到吗？ | exploration、curriculum、offline prior、demonstration |
-| 成功轨迹有了，但不知道哪些步骤关键吗？ | RUDDER、TVT、COCOA、HCAPO、process reward |
-| 原子动作太细，决策链条太长吗？ | HRL、options、subgoal、action chunking |
-| 在线交互昂贵或危险吗？ | offline RL、offline-to-online、安全在线改进 |
-| 环境可预测且交互样本贵吗？ | world model、MPC、latent planning |
-| 任务没有自然 episode 吗？ | average reward、continuing RL、OPE、safe policy improvement |
-| reward 来自 verifier 或偏好模型吗？ | reward shaping、PRM、reward hacking control |
+| 随机或现有策略几乎采不到成功轨迹？ | 稀疏探索、自动课程学习、离线行为先验、专家示范 |
+| 已有成功轨迹，但难以区分关键步骤与冗余动作？ | RUDDER、TVT、Synthetic Returns、COCOA、HCAPO、过程奖励 |
+| 底层原子动作粒度过细，导致决策链条过长？ | 分层强化学习（HRL）、Options、子目标生成、动作分块（Action Chunking） |
+| 在线试错成本高昂或存在物理/业务安全风险？ | 离线强化学习（Offline RL）、离线到在线微调、保守策略更新 |
+| 环境动力学局部可预测且真实交互样本昂贵？ | 世界模型（World Model）、短程模型预测控制（MPC）、潜空间规划 |
+| 任务无自然终止边界、关注稳态长期收益？ | 平均奖励强化学习、持续性任务优化、离策略评估（OPE） |
+| 奖励依赖外部验证器或人类偏好模型？ | 势函数奖励塑形（PBRS）、过程奖励模型（PRM）、防奖励黑客约束 |
 
-## 2. 多步 TD、eligibility trace 与 GAE：长期收益的基础设施
+## 2. 多步 TD、资格迹与 GAE：价值传播的基础设施
 
-最基础的路线不改变任务结构，只改变 return 或 advantage 的估计方式。
-
-普通一阶 TD 目标为：
-
-$$
-y_t=r_t+\gamma V(s_{t+1}).
-$$
-
-它的优点是方差低、更新稳定，缺点是在长延迟奖励中传播很慢。$n$-step return 把未来 $n$ 步奖励一次性纳入目标：
+最基础的改进路线保持任务结构不变，通过重塑回报或优势函数的估计器来加速远期信号回传。标准一阶 TD 学习采用 $y_t=r_t+\gamma V(s_{t+1})$ 作为自举（bootstrap）目标，具有低方差与高稳定性的优点，但在长延迟场景下传播极慢。若将自举跨度扩展为 $n$ 步，多步回报（$n$-step return）可一次性纳入未来 $n$ 步的真实奖励：
 
 $$
 G_t^{(n)}
@@ -132,9 +107,7 @@ G_t^{(n)}
 \gamma^n V(s_{t+n}).
 $$
 
-当 $n$ 变大时，奖励传播更快，但估计方差通常也更高；在 off-policy 场景中，如果轨迹来自行为策略 $\mu$ 而目标策略是 $\pi$，还会引入分布不匹配问题。
-
-TD($\lambda$) 和 eligibility traces 用指数加权的多步 return 做折中：
+增大 $n$ 能够加快终局信号向前回传的速度，但也会推高回报估计的方差；在离策略（off-policy）训练中，若轨迹采自行为策略 $\mu$ 而评估目标为当前策略 $\pi$，多步累积还会放大分布偏移。TD($\lambda$) 与资格迹（eligibility traces）通过对不同步数的回报做指数加权平均来平衡这一矛盾：
 
 $$
 G_t^{\lambda}
@@ -144,27 +117,9 @@ G_t^{\lambda}
 \lambda^{n-1}G_t^{(n)}.
 $$
 
-等价地，eligibility trace 为最近访问过的状态或参数保留“资格”：
+在后向视图（backward view）中，资格迹通过向量 $e_t=\gamma\lambda e_{t-1}+\nabla_{\theta} V_{\theta}(s_t)$ 为近期访问过的状态或模型参数维持逐步衰减的“短期记忆”，并结合单步 TD 误差 $\delta_t=r_t+\gamma V_{\theta}(s_{t+1})-V_{\theta}(s_t)$ 将更新信号沿访问轨迹向后分配。
 
-$$
-e_t=\gamma\lambda e_{t-1}+\nabla_{\theta} V_{\theta}(s_t),
-$$
-
-然后用 TD error 更新：
-
-$$
-\delta_t=r_t+\gamma V_{\theta}(s_{t+1})-V_{\theta}(s_t).
-$$
-
-这让误差信号能够沿访问轨迹向后分配，而不是只更新当前状态。
-
-在 policy gradient 和 actor-critic 中，[GAE](https://arxiv.org/abs/1506.02438) 把这种思想用于 advantage estimation。先定义 TD residual：
-
-$$
-\delta_t^V=r_t+\gamma V(s_{t+1})-V(s_t),
-$$
-
-再定义：
+在策略梯度与 Actor-Critic 框架中，[GAE（Generalized Advantage Estimation）](https://arxiv.org/abs/1506.02438)将指数加权多步残差思想引入优势函数估计。给定价值函数的单步 TD 残差 $\delta_t^V=r_t+\gamma V(s_{t+1})-V(s_t)$，GAE 定义优势估计器为：
 
 $$
 \hat A_t^{\text{GAE}(\gamma,\lambda)}
@@ -173,284 +128,150 @@ $$
 (\gamma\lambda)^l \delta_{t+l}^{V}.
 $$
 
-GAE 的价值在于降低 policy gradient 方差，并通过 $\lambda$ 控制 bias-variance trade-off。它不是长期 credit assignment 的完整答案，因为它仍依赖 value function 是否能表示远期影响。
+通过调节 $\lambda\in[0,1]$，GAE 在单步 TD 残差的低方差与蒙特卡洛回报的低偏差之间实现平滑过渡，并成为 [PPO](https://arxiv.org/abs/1707.06347) 等主流策略优化算法的标准组件。当训练进入分布式异步采样或重放缓冲区（replay buffer）场景时，离策略多步修正变得不可或缺：[Retrace($\lambda$)](https://arxiv.org/abs/1606.02647) 通过截断重要性采样比率保证离策略多步备份的收缩性质；[IMPALA](https://arxiv.org/abs/1802.01561) 则在 Actor-Learner 分布式架构中引入 V-trace，修正采样 Actor 滞后策略与 Learner 最新策略之间的分布偏差。2025 年提出的 [Deep Reinforcement Learning with Gradient Eligibility Traces](https://arxiv.org/abs/2507.09087) 进一步将梯度 TD 资格迹推广至深度网络，证明经典的多步迹机制在现代深度强化学习中依然具备挖掘潜力。
 
-off-policy 多步学习又进一步引出 Retrace、V-trace 和 IMPALA。[Retrace($\lambda$)](https://arxiv.org/abs/1606.02647) 通过截断重要性采样系数提高 off-policy 多步 return 的安全性。[IMPALA](https://arxiv.org/abs/1802.01561) 用 actor-learner 架构扩展采样吞吐，并用 V-trace 修正 actor 生成数据与 learner 当前策略之间的偏差。[PPO](https://arxiv.org/abs/1707.06347) 则通过 clipped surrogate objective 提供稳定 policy optimization，因此经常作为长时域任务的训练底座。
-
-这些方法的共同作用是改善 **value propagation** 和优化稳定性。它们解决的不是“如何发现关键事件”，而是“已有奖励信号如何更有效地进入价值估计和策略梯度”。
-
-| 方法 | 核心作用 | 对长期收益的帮助 | 主要限制 |
+| 方法 | 核心机制 | 长期收益增益 | 能力边界 |
 | --- | --- | --- | --- |
-| 1-step TD | 低方差 bootstrapping | 稳定训练 | 延迟奖励传播慢 |
-| $n$-step return | 一次传播多步奖励 | 更快回传终局信号 | 方差更高，off-policy 更难 |
-| TD($\lambda$) / eligibility trace | 多步 return 加权折中 | 改善短到中等延迟 | 极长 horizon 仍不够 |
-| GAE | actor-critic 中稳定优势估计 | 降低 policy gradient 方差 | 依赖 value function 质量 |
-| Retrace / V-trace | off-policy 多步修正 | 分布式训练更稳定 | 不解决探索与任务结构 |
+| 1-step TD | 单步自举更新 | 极低方差，训练稳定 | 远期奖励需经逐轮迭代缓慢回传 |
+| $n$-step Return | 显式累加 $n$ 步奖励后自举 | 按跨度 $n$ 倍速回传终局信号 | 跨度增大时方差剧增，离策略修正困难 |
+| TD($\lambda$) / 资格迹 | 多步回报的几何加权与后向迹分配 | 兼顾传播速度与方差控制 | 按时间距离均匀衰减，无法跳步归因 |
+| GAE | 指数加权 TD 残差估计优势函数 | 显著改善策略梯度的偏差-方差折中 | 强依赖基线价值函数 $V_\theta$ 的表征精度 |
+| Retrace / V-trace | 截断重要性采样修正多步残差 | 支撑大规模分布式异步多步训练 | 仅修正分布偏移，不涉及探索与任务解构 |
 
-进一步看，这些方法实际在调三个旋钮。
+从优化机制剖析，上述方法本质上围绕三个核心旋钮展开权衡：
+- **自举深度（Bootstrap depth）**：决定依赖价值函数预测与依赖真实采样轨迹的比例。跨度太浅会导致终局反馈无法及时抵达早期状态，跨度过深则会令累积环境噪声淹没梯度信号。
+- **同策略与离策略权衡（On-policy vs. Off-policy）**：同策略直接利用当前策略轨迹做无偏多步估计，但样本复用率低；离策略能够聚合历史轨迹与海量异步 Actor 数据，但必须承受重要性采样截断带来的偏差。
+- **价值网络的表征瓶颈**：在策略梯度公式 $\nabla_\theta J(\pi_\theta)\approx\mathbb{E}[\nabla_\theta \log \pi_\theta(a_t\mid s_t)\hat A_t]$ 中，若价值网络 $V_\theta$ 无法捕捉早期关键状态与远期成功概率之间的非线性关联，早期时间步的优势估计 $\hat A_t$ 仍会退化为随机噪声。
 
-第一个旋钮是 **bootstrap depth**。1-step TD 几乎完全依赖 bootstrap，Monte Carlo return 完全不 bootstrap，$n$-step return 和 $\lambda$-return 在中间取折中。长时域任务中，如果 bootstrap 太浅，终局 reward 传不回来；如果完全不用 bootstrap，方差又可能让 policy gradient 淹没在噪声里。
+总体而言，多步 TD、资格迹与 GAE 构成了长时域强化学习的底层算子，专注于提升已有奖励信号的沿途传播效率；然而由于它们严格按照时间距离做指数衰减，当关键动作与结果反馈之间夹杂数百步无关操作时，必须引入更具结构针对性的信用分配与时间抽象机制。
 
-第二个旋钮是 **on-policy 还是 off-policy**。on-policy 方法可以更直接使用当前策略轨迹，但样本效率较低；off-policy 方法可以复用 replay buffer 或大规模 actor 采样，但多步 return 会遇到重要性采样系数爆炸、截断偏差和分布漂移。
+## 3. 显式时间信用分配：跨时间步的因果与关联归因
 
-第三个旋钮是 **value function 的表示能力**。即使 TD($\lambda$) 或 GAE 形式上能把长期 reward 写进 target，如果 $V_\theta$ 无法表示“早期关键状态”和“远期成功概率”之间的关系，更新仍然会退化为噪声。许多长时域失败不是 Bellman 方程错了，而是函数逼近、数据覆盖和探索共同不足。
+面对数百步延迟的终局奖励，显式时间信用分配（explicit temporal credit assignment）试图绕开按部就班的 Bellman 逐步回传，直接建立过去事件与远期结果之间的归因通路。从演进脉络看，这一方向经历了从“序列回报分解”到“记忆注意力传输”，再到“状态直接关联”、“反事实因果推断”以及“大语言模型事后归因”的深化过程。
 
-这一点在 actor-critic 中尤其明显。策略梯度常写作：
+### 3.1 轨迹回报重分配与记忆价值传输
 
-$$
-\nabla_\theta J(\pi_\theta)
-\approx
-\mathbb{E}
-\left[
-\nabla_\theta \log \pi_\theta(a_t\mid s_t)\hat A_t
-\right].
-$$
-
-如果 $\hat A_t$ 对早期动作几乎全是零或噪声，策略更新就不会偏向真正关键的早期决策。GAE 改善的是 $\hat A_t$ 的估计质量，但它不能凭空生成“成功轨迹”，也不能保证 advantage 的因果解释正确。
-
-2025 年的 [Deep Reinforcement Learning with Gradient Eligibility Traces](https://arxiv.org/abs/2507.09087) 也反映了一个趋势：eligibility trace 这类早期思想正在被重新带回深度 RL。动机很直接：一阶 TD 的 credit assignment 太慢，而更原则化的 gradient TD trace 在深度场景里仍有工程空间。
-
-结论是：多步 TD、eligibility trace、GAE、Retrace 和 V-trace 是长期收益 RL 的基础设施，但不是终点。它们改善的是传播和估计，不能单独解决稀疏探索、因果贡献识别或时间抽象。
-
-## 3. 显式时间信用分配：把远期奖励分给真正的过去事件
-
-如果最终奖励隔了几百步才出现，另一条路线是不等 Bellman backup 慢慢传播，而是直接学习“哪些过去事件贡献了未来奖励”。
-
-### 3.1 RUDDER：reward redistribution
-
-[RUDDER](https://arxiv.org/abs/1806.07857) 是显式 credit assignment 的代表。它的核心思想是 reward redistribution：训练一个 return decomposition model，把 episode-level return 分解到轨迹中的关键事件上。
-
-如果原始 return 是：
-
-$$
-G_0=\sum_{t=0}^{T}\gamma^t r_t,
-$$
-
-RUDDER 希望构造一个 redistributed reward $r'_t$，使新过程和原过程 return-equivalent，同时把远期奖励提前分配到真正有贡献的时间点。理想情况下，重分配后的 expected future reward 接近 0：
+[RUDDER（Return Decomposition for Delayed Rewards）](https://arxiv.org/abs/1806.07857) 开创了通过序列模型进行奖励重分配（reward redistribution）的典型范式。给定原始回合回报 $G_0=\sum_{t=0}^{T}\gamma^t r_t$，RUDDER 训练一个回归模型预测整条轨迹的最终回报，并利用序列特征变化将回合总回报分解到具体的历史时间步上，构造出满足回报等价性（return-equivalent）的重分配奖励 $r'_t$。在理想重分配下，所有远期奖励已被提前折算至触发该结果的早期关键动作处，使得后续状态的期望未来奖励趋近于零：
 
 $$
 \mathbb{E}\left[\sum_{k=1}^{\infty}\gamma^k r'_{t+k}\mid s_t,a_t\right]\approx 0.
 $$
 
-这样 $Q$-value 估计主要变成估计 immediate redistributed reward，而不是长链条的未来回报。
+一旦满足该条件，$Q$ 值的学习便简化为对即时重分配奖励 $r'_t$ 的拟合，彻底消除了长链条自举偏差。不过，RUDDER 的成败高度取决于回报分解模型能否在有限样本中准确识别关键事件；在高维视觉输入或复杂多模态轨迹中，分解模型容易将偶然共现的统计相关性误判为真实贡献。
 
-RUDDER 的直觉很强：如果第 20 步拿钥匙导致第 200 步开门成功，那么训练信号不应只在第 200 步出现，而应该部分回到第 20 步。它的主要难点也很清楚：return decomposition model 本身要能识别关键贡献事件。在高维视觉、多模态轨迹、复杂工具调用中，贡献识别可能和原任务一样难。
-
-### 3.2 Temporal Value Transport：用记忆注意力传送价值
-
-[Temporal Value Transport](https://arxiv.org/abs/1810.06721) 关注需要记忆的长时域任务。它使用 memory attention：如果 agent 当前为了预测 reward 或 value 注意到了很久以前的 memory，那么当前价值可以被 transport 回那个过去事件。
-
-形式化地说，当前 value target 不只更新当前状态，还通过 attention weights $w_{t,k}$ 更新被访问的过去记忆 $m_k$：
+当长时域任务同时伴随部分可观测性时，早期事件往往通过“写入外部记忆并在远期读取”的方式影响最终收益。[Temporal Value Transport（TVT）](https://arxiv.org/abs/1810.06721) 针对此类需要跨期回忆（recall）的 POMDP 任务，利用记忆模块的注意力权重构建价值直通车：若智能体在时刻 $t$ 预测价值或执行动作时，通过注意力机制高度聚焦于过去时刻 $k$ 写入的记忆槽 $m_k$（注意力权重为 $w_{t,k}$），TVT 便将当前时刻的价值更新量按比例直接传输回历史事件 $k$：
 
 $$
 \Delta V(m_k) \propto w_{t,k}\,\Delta V(s_t).
 $$
 
-这类方法尤其适合 POMDP 或需要 recall 的任务。例如 agent 很早看到密码、钥匙位置或地图结构，几十步后才使用这些信息。TVT 的风险是 attention 相关不等于因果贡献。模型注意到某个 memory，不代表那个 memory 对奖励有真实 causal responsibility。
+这种机制使“早期观察密码或钥匙位置、数十步后凭记忆开门”的任务得以绕过中间无关探索步，直接完成跨期价值绑定。其潜在局限在于注意力权重仅反映表征读取强度，读取某一历史记忆未必等同于该历史动作对最终奖励负有因果责任。
 
-### 3.3 Synthetic Returns：学习状态和远期奖励的直接关联
+### 3.2 状态关联预测与反事实贡献分析
 
-[Synthetic Returns](https://arxiv.org/abs/2102.12425) 提出 state-associative learning，让 agent 学习某个状态对任意远未来奖励的贡献，并把这种预测作为 synthetic return 用于 TD learning。
+为了进一步摆脱对显式记忆读取结构的依赖，[Synthetic Returns](https://arxiv.org/abs/2102.12425) 提出了状态关联学习（state-associative learning）。传统 TD 依赖 $s_0 \leftarrow s_1 \leftarrow \cdots \leftarrow r_T$ 的链式回传，而 Synthetic Returns 直接训练一个辅助网络，预测任意状态 $s_k$ 对未来任意远期奖励的增量贡献（$s_k \rightarrow \text{future reward contribution}$），并将该预测值作为合成回报（synthetic return）注入 TD 目标。与 RUDDER 针对完整轨迹做全局事后分解不同，Synthetic Returns 侧重于学习状态特征与远期事件之间的点对点预测关联，使关键准备状态在训练早期即可获得密集梯度指导。
 
-普通 TD 依赖一步步传播：
-
-$$
-s_0 \leftarrow s_1 \leftarrow s_2 \leftarrow \cdots \leftarrow r_T.
-$$
-
-Synthetic Returns 试图直接学习：
-
-$$
-s_k \rightarrow \text{future reward contribution}.
-$$
-
-它和 RUDDER 的区别在于：RUDDER 分解整条轨迹 return 并重分配 reward；Synthetic Returns 学状态与远期 reward 的关联，让 TD 不必完全依赖逐步回传。论文中特别强调，长延迟和大量无关中间事件会让 TD 学习失败，而 synthetic return 可以让关键状态更早获得训练信号。
-
-### 3.4 COCOA 与反事实信用分配
-
-更接近因果定义的做法会问：
-
-如果当时没有执行 $a_t$，后面还会得到这个 reward 吗？
-
-[COCOA](https://proceedings.neurips.cc/paper_files/paper/2023/file/d8bd445c2abe1343cce0e14b361b2fb3-Paper-Conference.pdf) 建立在 Hindsight Credit Assignment 之上，用 counterfactual contribution analysis 衡量动作对后续 reward 的贡献。这类方法把 credit 从“时间距离近不近”推进到“动作是否改变了结果分布”。
-
-如果记 $Y$ 为未来 outcome，credit 可以理解为某种反事实差异：
+然而，无论是序列分解、记忆注意力还是状态关联，本质上仍在捕捉统计相关性。更严格的信用分配需要回答反事实问题：“假使当时在状态 $s_t$ 未执行动作 $a_t$，而是改选其他参考动作 $\tilde a_t$，最终结果分布 $Y$ 会发生多大改变？”建立在事后信用分配（Hindsight Credit Assignment, HCA）框架之上的 [COCOA](https://proceedings.neurips.cc/paper_files/paper/2023/file/d8bd445c2abe1343cce0e14b361b2fb3-Paper-Conference.pdf) 利用反事实贡献分析（counterfactual contribution analysis）将时间信用形式化为期望结果的反事实差分：
 
 $$
 C_t
 \approx
 \mathbb{E}[Y\mid s_t,a_t]
 -
-\mathbb{E}[Y\mid s_t,\tilde a_t],
+\mathbb{E}[Y\mid s_t,\tilde a_t].
 $$
 
-其中 $\tilde a_t$ 是反事实动作或参考动作。难点在于反事实 outcome 不可直接观测，需要模型、估计器或结构假设。工程复杂度明显高于多步 TD。
+这种表征将信用分配从“时间邻近度”或“共现频率”提升到了“动作是否实质性改变了结果分布”的因果层面。代价在于反事实分支的结果无法在同一次采样中直接观测，必须借助逆动力学模型、后验动作分布估计器或结构化假设进行推断，工程实现复杂度显著高于前几类方法。
 
-### 3.5 LLM Agent 中的 hindsight credit
+### 3.3 多轮 LLM Agent 中的细粒度事后信用分配
 
-显式 credit assignment 在 LLM agent 中重新变热。长时域 LLM agent 的一次 episode 可能包含几十个 thought、tool call、API invocation、网页操作和恢复动作，最终只有成功或失败信号。
+随着大语言模型智能体（LLM Agents）成为研究焦点，显式信用分配在文本与工具交互轨迹中展现出新的生命力。一次复杂的智能体回合往往跨越数十轮思维链推理、API 调用、网页操作与错误恢复，而环境通常仅在回合结束时给出一个二元成败信号。[HCAPO（Hindsight Credit Assignment Policy Optimization）](https://arxiv.org/abs/2603.08754) 指出，直接沿用 GRPO 等无价值网络（value-free）方法会将同一回合优势无差别地广播给所有时间步，导致中间冗余动作甚至错误尝试被错误强化；为此，HCAPO 引入事后推理模型（hindsight reasoning critic）对历史步骤的实际贡献做重打分，在 WebShop 与 ALFWorld 等多步基准上显著改善了训练稳定性。[Agentic Credit Assignment Survey](https://arxiv.org/abs/2604.09459) 进一步将 2024–2026 年间的智能体信用分配方法按作用粒度归纳为词元（token）、片段（segment）、步骤（step）、轮次（turn）与多智能体（multi-agent）五个层级。
 
-[HCAPO](https://arxiv.org/abs/2603.08754) 针对 long-horizon LLM agents 的稀疏奖励训练，指出 GRPO 这类 value-free 方法在 step-level $Q$ 估计和 intermediate baseline 上存在问题，并用 hindsight reasoning 细化关键步骤的 credit。它的适用语境不是传统连续控制，而是 multi-step LLM agent benchmark，例如 WebShop 和 ALFWorld。
+| 方法代表 | 归因信号构造机制 | 作用粒度 | 核心归纳偏置 | 典型失效边界 |
+| --- | --- | --- | --- | --- |
+| RUDDER | 序列模型的总回报差分分解 | 单步 $(s_t, a_t)$ | 关键动作伴随预测回报的阶跃变化 | 高维轨迹下易将虚假共现当成因果贡献 |
+| TVT | 外部记忆模块的跨期读取权重 | 记忆写入时间步 | 被远期高价值决策检索的记忆具有高贡献 | 注意力检索相关性与真实因果责任可能背离 |
+| Synthetic Returns | 状态到远期奖励的直接回归预测 | 状态 $s_t$ | 特定瓶颈状态与远期回报存在稳定统计关联 | 策略剧烈演化时关联预测器易受分布偏移影响 |
+| COCOA / HCA | 基于后验分布的反事实期望差分 | 单步动作 $a_t$ | 改变未来结果分布的动作才具备真实信用 | 反事实分布不可直接观测，逆模型估计方差高 |
+| HCAPO | LLM 事后反演与步骤级重加权 | 交互轮次 / 工具调用 | 语义可解释的中间推理轨迹可由事后视角评判 | 依赖判别器或验证器质量，易受奖励黑客攻击 |
 
-[Agentic Credit Assignment Survey](https://arxiv.org/abs/2604.09459) 则把 2024-2026 早期的 agentic credit assignment 方法按粒度整理为 token、segment、step、turn、multi-agent 等层级。这个分类说明，LLM agent 的 credit assignment 比传统控制多了一个维度：credit 可以分给 token、工具调用、自然语言中间步骤，也可以分给整个 turn。
+从工程架构审视，显式信用分配模块相当于在原始环境与策略优化器之间挂载了一层“奖励翻译器（reward translator）”：它接收粗粒度的终局结果与完整历史轨迹，输出细粒度的密集归因信号。当该翻译器准确捕捉任务因果结构时，长时域样本效率将成倍提升；反之，一旦翻译器存在系统性偏差，智能体会迅速利用翻译漏洞收敛到错误的局部捷径。
 
-显式 credit assignment 的核心价值是减少“奖励只出现在终点”的训练浪费。它的核心风险是贡献识别本身依赖模型和假设。如果模型把 credit 分错，训练会被导向错误策略。
+## 4. 稀疏奖励探索与课程学习：获取高价值初始轨迹
 
-把这一组方法放在一起，可以看到它们的差异不在“是否多步”，而在“credit 是怎么被构造出来的”。
+任何信用分配机制都以“经验池中已存在包含非零奖励的轨迹”为前提。在极度稀疏奖励的任务中，智能体面临的首要障碍是无法通过随机探索触达哪怕一次成功状态。围绕“如何从零生成高价值训练轨迹”，研究工作沿着事后目标重标注、状态归档回溯、内在好奇心驱动以及定向课程学习四个方向展开。
 
-| 方法 | credit 来源 | 适合的结构 | 主要失败模式 |
-| --- | --- | --- | --- |
-| RUDDER | return decomposition model | 轨迹里存在可识别关键事件 | 分解模型把相关性误当贡献 |
-| TVT | attention over memory | 远期 reward 依赖早期观察或记忆 | attention 不等于 causality |
-| Synthetic Returns | state-associative prediction | 状态和远期 reward 有直接统计关联 | 关联学习受分布外状态影响 |
-| COCOA / HCA | counterfactual contribution | 能定义合理反事实 baseline | 反事实不可观测，估计器偏差 |
-| HCAPO / Agentic credit | hindsight reasoning / critic | LLM agent 的 turn、tool call、step 轨迹 | verifier 或 hindsight critic 错配 |
+### 4.1 事后目标重标注与状态回溯探索
 
-工程上可以把显式 credit assignment 看成一层“reward translator”：输入原始轨迹和粗粒度 outcome，输出更细粒度的训练信号。这个 translator 可以是序列模型、记忆 attention、反事实模型、LLM judge、verifier 或 process reward model。它一旦可靠，长期训练会明显变简单；它一旦不可靠，错误信号会比 sparse reward 更危险，因为 agent 会更快学到错的捷径。
+针对目标条件强化学习（GCRL），[Hindsight Experience Replay（HER）](https://arxiv.org/abs/1707.01495) 提出了一种极为优雅的数据复用机制：当智能体尝试达成目标 $g$ 失败并最终停留在某状态对应的新目标 $g'$ 时，虽然该轨迹在原目标 $g$ 下回报为零，却完整演示了如何到达 $g'$。HER 将原始转移样本 $(s_t,a_t,s_{t+1},g)$ 重新标注为 $(s_t,a_t,s_{t+1},g')$ 并赋予成功奖励，使海量失败轨迹瞬间转化为密集的有效监督信号。这一机制非常适合目标空间与状态空间存在自然映射的机械臂操作任务（如 reach、push、pick-and-place），但在缺乏显式目标状态表征的开放网页或纯代码任务中难以直接套用。
 
-## 4. 稀疏奖励探索与 curriculum：成功轨迹从哪里来
+对于不具备连续目标重标注条件、且存在大量死胡同或不可逆陷阱的硬探索（hard exploration）任务，失败的根源往往在于智能体偶然到达某个有潜力的中间状态后，下一轮回合又退回起点从头随机游走，导致深层状态覆盖率呈指数衰减。[Go-Explore](https://arxiv.org/abs/1901.10995) 打破了“每回合必须从初始状态盲目采样”的常规，确立了先返回再探索（return-then-explore）的两阶段范式：系统维护一个已发现有趣状态的归档库（archive），每次采样时先从库中挑选一个高潜力边界状态，通过模拟器状态重置或目标条件控制策略直接返回该状态，再从该处开展新一轮探索，待拼出完整通关轨迹后再通过模仿学习进行鲁棒化（robustification）。在 Montezuma's Revenge 与 Pitfall 等经典硬探索基准上的突破表明，长时域探索的关键在于维持边界状态的可返回性与覆盖广度，单纯调大策略熵正则项（entropy bonus）收效甚微。
 
-credit assignment 假设已经有包含奖励的轨迹。稀疏奖励任务常常更早失败：agent 根本碰不到成功状态。
+### 4.2 内在动机、状态覆盖与定向课程生成
 
-### 4.1 HER：把失败轨迹改写成成功经验
+当环境不支持状态重置时，内在动机（intrinsic motivation）方法通过构造自监督内部奖励来驱动智能体主动访问未知区域。[ICM（Intrinsic Curiosity Module）](https://arxiv.org/abs/1705.05363) 在结合逆动力学特征空间的基础上，以转移前向模型的预测误差作为好奇心奖励；[RND（Random Network Distillation）](https://arxiv.org/abs/1810.12894) 则进一步简化结构，训练一个预测网络去拟合随机固定目标网络的输出，直接将蒸馏误差作为状态新颖度（novelty）信号。沿着状态覆盖与无监督技能发现的思路，[Skew-Fit](https://arxiv.org/abs/1903.03698) 通过对已访问状态分布做偏置重加权（skewed sampling），引导目标生成器持续采样低密度边界状态以最大化目标熵；[DIAYN](https://arxiv.org/abs/1802.06070) 则在无外部奖励条件下最大化潜在技能变量与访问状态之间的互信息，预先习得一组行为可区分的底层技能供下游稀疏任务调用。
 
-[Hindsight Experience Replay](https://arxiv.org/abs/1707.01495) 面向 goal-conditioned sparse reward。给定目标 $g$，轨迹没有达到 $g$，按原任务看是失败；但这条轨迹可能到达了另一个目标 $g'$。HER 把同一条经验重标注为：
+然而，在高维长时域空间中，无差别地追求状态新颖度或全空间覆盖容易陷入“看电视噪声（noisy-TV）”陷阱或在无关紧要的旁支区域消耗算力。[Automatic Curriculum Learning（ACL）](https://arxiv.org/abs/2003.04664) 将训练任务分布本身视为动态优化对象，依据智能体当前能力边界由浅入深地编排环境参数或子目标。2025 年提出的 [DISCOVER](https://arxiv.org/abs/2505.19850) 进一步针对超长时域稀疏奖励 GCRL 设计了定向探索机制：算法不再盲目铺开全空间覆盖，而是估计候选探索目标与最终目标任务之间的方向一致性，优先采样沿着任务求解流形延伸的前沿目标。
 
-$$
-(s_t,a_t,s_{t+1},g')
-$$
+探索机制与信用分配在长时域训练闭环中扮演着相辅相成的角色——前者负责在荒漠中开辟出包含奖励的样本路径，后者负责从路径中提炼出关键决策梯度。工程实践中，可依据当前经验池的样本状态确定优化优先级：
 
-并把它当作达成 $g'$ 的成功样本。
-
-它的关键不是直接让 agent 达成原目标，而是提高 sparse reward 下的数据利用率。HER 特别适合目标表示清晰的任务，例如机械臂 reach、push、pick-and-place。不适合没有自然 goal representation 的任务，例如开放网页任务或纯语言 agent。
-
-### 4.2 Go-Explore：先回到有希望的状态，再探索
-
-[Go-Explore](https://arxiv.org/abs/1901.10995) 指出 hard exploration 任务失败常常不是价值函数问题，而是 agent 无法稳定回到有希望的中间状态继续探索。它的核心流程是：
-
-```text
-1. 记住已经发现的 interesting states；
-2. 选择一个 promising state；
-3. 返回该状态；
-4. 从那里继续探索；
-5. 找到解后再 robustify。
-```
-
-在 Montezuma's Revenge 和 Pitfall 这类 Atari 任务中，这种“先返回，再探索”的思路比纯随机探索有效得多。它告诉我们：长期收益 RL 中的探索不能只靠更大的 entropy bonus。状态覆盖、可返回性和 archive 机制都很重要。
-
-### 4.3 Intrinsic motivation：RND、ICM、Skew-Fit、DIAYN
-
-[RND](https://arxiv.org/abs/1810.12894) 使用随机网络蒸馏，把预测误差作为 novelty signal，引导 agent 探索不熟悉状态。[ICM](https://arxiv.org/abs/1705.05363) 用 forward/inverse dynamics 的预测误差构造 curiosity。它们的共同思想是：外部 reward 稀疏时，用内部奖励提供探索梯度。
-
-[Skew-Fit](https://arxiv.org/abs/1903.03698) 关注 goal distribution，通过最大化状态覆盖来训练 goal-reaching agent。它不是手工指定所有目标，而是让 agent 逐渐把目标分布推向当前不常见但可达的状态。
-
-[DIAYN](https://arxiv.org/abs/1802.06070) 在没有外部奖励的情况下学习多样技能，通过最大化 skill 和状态之间的互信息，使不同 skill 对应可区分的行为模式。它解决的是“先学会做很多事情”，再服务下游稀疏奖励任务。
-
-这些方法对长期收益的帮助主要是产生有价值数据，而不是解释终局 reward 的因果来源。它们和 RUDDER、TVT、HCAPO 这类 credit assignment 方法是互补关系。
-
-### 4.4 自动课程学习与 directed exploration
-
-[Automatic Curriculum Learning](https://arxiv.org/abs/2003.04664) 把训练任务分布作为可调对象：不让 agent 一开始就面对最难任务，而是根据能力动态选择难度、目标或环境参数。
-
-2026 前后的 [DISCOVER](https://arxiv.org/abs/2505.19850) 更明确地面向 sparse-reward goal-conditioned very long-horizon RL：它选择“朝向目标任务方向”的 exploratory goals，而不是在所有可达目标里无方向地覆盖。这个方向重要，因为长时域任务空间的体积可能巨大，无差别探索会浪费样本。
-
-探索类方法回答的问题是：成功轨迹从哪里来？credit assignment 回答的是：成功轨迹里的哪些动作重要？长期收益 RL 往往必须二者结合。
-
-一个实用的判断方式是把任务放进下面的二维表。
-
-| 轨迹里有成功样本吗？ | 能判断哪些步骤重要吗？ | 更优先的方向 |
+| 经验池正样本丰度 | 关键步骤可辨识度 | 第一优先级技术动作 |
 | --- | --- | --- |
-| 没有 | 否 | exploration、curriculum、demonstration、offline prior |
-| 有少量 | 否 | reward redistribution、hindsight credit、process reward |
-| 有较多 | 是 | actor-critic 稳定化、offline-to-online、model-based planning |
-| 没有但有目标结构 | 部分可以 | HER、goal relabeling、goal curriculum、Skew-Fit |
+| 几乎为零 | 低 | 引入专家示范、离线先验数据、状态重置回溯（Go-Explore）或定向课程学习 |
+| 具备明确目标结构但正样本稀缺 | 中 | 部署事后目标重标注（HER）、偏置目标采样（Skew-Fit / DISCOVER） |
+| 已采到少量成功轨迹 | 低 | 挂载奖励重分配（RUDDER）、事后信用归因（HCAPO）或过程奖励模型（PRM） |
+| 成功样本充足 | 高 | 聚焦 Actor-Critic 稳定化、离策略多步修正、动作分块与世界模型规划 |
 
-这解释了为什么很多长期收益系统必须先做数据工程。对于极稀疏任务，算法论文里看起来核心是 critic 或 policy loss，实际落地时第一优先级常常是构造可学习数据：示范、脚本策略、回放轨迹、课程环境、可逆 reset、模拟器并行、失败轨迹重标注。没有这些，credit assignment 只能在全零 reward 上运行。
+这一结构也揭示了长时域强化学习落地的工程铁律：当任务极度稀疏时，单纯微调 Critic 损失函数无异于巧妇难为无米之炊；优先通过示范采集、脚本策略、课程环境设计、可逆重置接口与失败轨迹重标注完成“数据破冰”，往往比更换优化算法更为紧迫。
 
-## 5. 时间抽象与 HRL：把长 horizon 分解成可执行结构
+## 5. 时间抽象：从分层强化学习（HRL）到动作分块（Action Chunking）
 
-如果一个任务需要 1000 个 primitive actions，直接学习 $\pi(a_t\mid s_t)$ 会让 credit assignment 和 exploration 都非常困难。Hierarchical Reinforcement Learning 的直觉是把底层动作提升为 temporally extended actions。
+当一项任务需要连续执行上千个底层原子动作（primitive actions）才能完成时，在单步粒度上直接优化 $\pi(a_t\mid s_t)$ 会同时引爆探索空间与信用分配跨度。时间抽象（temporal abstraction）的核心洞见是将多步底层控制封装为在时间上延展的宏动作、闭环技能或连贯动作块。
 
-### 5.1 Options framework
+### 5.1 Options 框架与经典分层架构演进
 
-[Options framework](https://www-anw.cs.umass.edu/~barto/courses/cs687/Sutton-Precup-Singh-AIJ99.pdf) 把普通动作扩展为 option。一个 option $o$ 包含三部分：
+Sutton 等人提出的 [Options 框架](https://www-anw.cs.umass.edu/~barto/courses/cs687/Sutton-Precup-Singh-AIJ99.pdf) 奠定了时间抽象的半马尔可夫决策过程（SMDP）理论基础。一个选项（option）由三元组定义为：
 
 $$
 o=(\mathcal{I}_o,\pi_o,\beta_o),
 $$
 
-其中 $\mathcal{I}_o$ 是 initiation set，$\pi_o(a\mid s)$ 是 option 内部策略，$\beta_o(s)$ 是终止概率。option 可以理解为一段 closed-loop policy，例如“走到门口”“抓取物体”“打开网页中的某个菜单”。
+其中 $\mathcal{I}_o\subseteq\mathcal{S}$ 为允许启动该选项的初始状态集，$\pi_o(a\mid s)$ 为选项内部的闭环执行策略，$\beta_o(s)\in[0,1]$ 为在各状态下的终止概率。若每个选项平均持续 $K$ 个底层时间步，高层策略的有效决策视野便可近似压缩为 $H_{\text{effective}}\approx H/K$。高层控制器只需在选项切换边界做宏观路由（如“走向房门”→“握住把手”→“推门进入”），局部扰动由选项内部闭环策略 $\pi_o$ 自行消化。
 
-如果平均 option length 是 $K$，有效决策 horizon 可以粗略理解为：
+围绕“如何自动发现并稳定训练分层结构”，深度 HRL 发展出三条代表性脉络：
+1. **端到端选项学习**：[Option-Critic](https://arxiv.org/abs/1609.05140) 推导了选项内部策略与终止函数的策略梯度定理，尝试无需人工先验地端到端学习选项；但在缺乏额外正则约束时，极易发生选项退化（option collapse）——要么单个选项包揽全过程，要么每个选项每步立即终止、退化回原子动作。
+2. **多时间尺度表征解耦**：[FeUdal Networks（FuN）](https://arxiv.org/abs/1703.01161) 采用 Manager-Worker 双层架构，低频运行的 Manager 在潜表征空间输出方向性目标向量，高频运行的 Worker 通过最大化内在余弦相似度奖励来落实该方向，将不同时间尺度的信用分配显式解耦到两个网络模块中。
+3. **离策略目标条件分层控制**：[HIRO](https://arxiv.org/abs/1805.08296) 将高低层接口直接定义为原始状态空间中的相对子目标（subgoal），以适配连续控制与离策略训练。针对“底层策略更新导致同一高层子目标对应的实际状态轨迹发生漂移”的非平稳耦合难题，HIRO 引入离策略子目标重标注（off-policy correction），将历史经验中的高层动作修正为能让当前底层策略复现相同状态转移的等效子目标。
 
-$$
-H_{\text{effective}}\approx \frac{H}{K}.
-$$
+### 5.2 离线分层学习与大语言模型引导的时序子目标
 
-这不是严格保证，因为 option 本身也可能失败或产生副作用，但它说明了时间抽象为什么有用：高层策略不必在每个 primitive timestep 上重新规划。
+近年来，随着离线数据集与基础模型的发展，HRL 的重心正从“在线盲目试错发现技能”转向“从离线轨迹与先验知识中提炼可靠子目标”。在离线长时域稀疏奖励场景下，[Guider](https://www.ijcai.org/proceedings/2023/0469.pdf) 通过高层策略序列化生成子目标来引导底层离线策略拼接；[RD-HRL](https://openreview.net/forum?id=5E5sd3TWGD) 引入价值引导的子目标规划与可达性约束，防止高层规划器输出超出底层执行能力的分布外（OOD）目标；[OHIO](https://openreview.net/forum?id=dTPz4rEDok) 则专门解决离线数据由异构策略采集、高层隐变量不可直接观测时的分层策略反演问题。
 
-### 5.2 Option-Critic、FeUdal Networks、HIRO
+与此同时，大语言模型为子目标分解提供了丰富的语义先验。2026 年提出的 [STO-RL（Subgoal Temporal Order RL）](https://arxiv.org/abs/2601.08107) 利用 LLM 为长时域稀疏任务生成具有严格偏序关系的子目标序列，通过状态-阶段映射函数追踪任务进度，并结合势函数奖励塑形（PBRS）合成时序一致的稠密奖励。这一设计直击 HRL 的核心痛点：子目标之间往往存在强时序依赖（例如必须先填写必填项、再点击提交按钮），若奖励塑形忽视先后顺序，智能体极易在局部子目标之间反复横跳以刷取中间分数。
 
-[Option-Critic](https://arxiv.org/abs/1609.05140) 试图端到端学习 option 内部策略和 termination condition，不依赖人工定义 option。它推进了 HRL 的可学习性，但也带来 option collapse、语义不稳定和探索不足等问题。
-
-[FeUdal Networks](https://arxiv.org/abs/1703.01161) 用 Manager/Worker 架构区分时间尺度：Manager 在较慢频率上输出抽象 goal，Worker 在环境步上执行动作。它把 long timescale credit assignment 显式写进架构设计。
-
-[HIRO](https://arxiv.org/abs/1805.08296) 面向 continuous control 和 off-policy HRL。高层策略提出 subgoal，低层策略负责达到 subgoal。由于低层策略会变化，高层动作的语义也会变，因此 HIRO 提出 off-policy correction 来缓解高低层非平稳耦合。
-
-| 方法 | 时间抽象形式 | 解决的问题 | 主要风险 |
+| 架构范式 | 高低层通信接口 | 核心归纳偏置与机制 | 主要工程瓶颈 |
 | --- | --- | --- | --- |
-| Options | closed-loop option | temporally extended actions | option discovery 难 |
-| Option-Critic | 端到端 option 学习 | 减少人工 option 设计 | collapse、终止不稳定 |
-| FeUdal Networks | Manager/Worker | 多时间尺度 credit | goal 表示依赖强 |
-| HIRO | high-level subgoal | off-policy HRL 连续控制 | 高低层非平稳 |
+| Options / Option-Critic | 离散选项索引 $o$ 与终止概率 $\beta_o$ | SMDP 闭环子策略，端到端优化终止条件 | 易发生选项坍缩或语义碎片化 |
+| FeUdal Networks | 潜空间方向向量 $g_t\in\mathbb{R}^d$ | 多时间尺度隐藏状态与方向性内在奖励 | 潜空间目标缺乏直观物理可解释性 |
+| HIRO | 状态空间相对偏移子目标 | 离策略子目标重标注缓解高低层非平稳性 | 高维观测（如图像）下难以直接定义状态距离 |
+| Guider / RD-HRL / OHIO | 离线分布内可达状态子目标 | 结合保守价值估计与离线轨迹拼接（stitching） | 受制于离线数据集的序列覆盖完备度 |
+| STO-RL | 具偏序约束的语义子目标阶段 | LLM 常识先验拆解 + 势函数保序稠密塑形 | 依赖阶段映射器精度与先验子目标的物理可达性 |
 
-### 5.3 Offline HRL 与 LLM-guided subgoal
+综合来看，任何基于子目标的分层系统要想在工程中稳定奏效，其生成的中间子目标都必须同时满足四项硬性准则：**动力学可达性**（底层策略在合理步数内能够稳定抵达）、**完成度可验证性**（系统可通过状态断言、DOM 检查或验证器准确判定子目标是否达成）、**时序偏序一致性**（前序子目标为后续子目标创造前置条件而非制造冲突）以及**全局目标对齐性**（达成子目标序列能够单调逼近最终任务回报，避免落入局部死胡同）。
 
-随着 offline RL 重要性上升，HRL 也开始从在线探索转向离线数据中的子目标提取。[Guider](https://www.ijcai.org/proceedings/2023/0469.pdf) 用高层策略顺序生成 subgoal，引导 offline long-horizon sparse-reward task 学习。[RD-HRL](https://openreview.net/forum?id=5E5sd3TWGD) 强调 reliable sub-goals 和 value-guided sub-goal planning，目标是缩短高低层 planner 的有效 horizon。[OHIO](https://openreview.net/forum?id=dTPz4rEDok) 则处理 offline hierarchical policy learning 中高层动作不可观测、数据来自不同策略结构的问题。
+### 5.3 从单步备份到块级价值评估：Q-Chunking 的机制突破
 
-2026 年的 [STO-RL](https://arxiv.org/abs/2601.08107) 把 LLM 用于生成有时间顺序的 subgoal sequence，再把状态映射到 subgoal stage，并用 potential-based reward shaping 生成 temporally consistent 的 dense reward。它的重要点不只是“LLM 生成子目标”，而是强调子目标之间有时间依赖：如果 shaping 忽略顺序，agent 可能被错误中间目标牵引。
+传统分层强化学习虽然具备闭环技能表达力，但高低层联合训练的非平稳性与终止条件设计长期制约着工程落地。2025–2026 年间，源于机器人模仿学习（如 ACT、Diffusion Policy）的**动作分块**（Action Chunking）技术大举进入强化学习领域，成为长时域稀疏奖励与离线到在线（offline-to-online）微调中最具活力的轻量级时间抽象路线。
 
-HRL 的核心瓶颈始终是子目标质量。好的子目标缩短 horizon；坏的子目标制造错误优化方向。LLM 可以提供任务先验，但不能替代可验证的可达性和奖励一致性检查。
-
-一个好的子目标通常需要同时满足四个条件。
-
-**可达性**：低层策略在足够多初始状态下能达到子目标。如果子目标只是语言上合理，但在动力学上不可达，高层计划会变成空中楼阁。
-
-**可验证性**：系统能判断子目标是否完成。机器人里可能是位姿、接触状态或视觉检测；网页 agent 里可能是 DOM 状态、API response 或 verifier；语言任务里可能是单元测试或结构化检查。
-
-**时间顺序一致性**：子目标之间不能互相打架。例如“先提交表单，再补全必填字段”就是错误顺序。STO-RL 这类方法强调 temporal order，原因就在这里。
-
-**对最终目标有贡献**：子目标不能只是容易完成，还必须推动最终 return。许多 curriculum 方法早期能提高中间成功率，但如果中间目标和最终目标错配，会形成局部策略。
-
-从实现角度看，HRL 和 action chunking 的差别也很重要。HRL 通常希望得到 closed-loop skill：执行中能根据状态反馈调整；action chunking 更常得到 semi-open-loop action sequence：一段时间内按序执行。前者表达力更强但训练更复杂，后者工程更简单但对扰动更敏感。
-
-## 6. Action Chunking：近两年的工程友好时间抽象
-
-Action chunking 是 2025-2026 年长期收益 RL 中非常活跃的路线，尤其在机器人和 offline-to-online RL 中。
-
-普通策略每步输出一个动作：
-
-$$
-\pi(a_t\mid s_t).
-$$
-
-Action chunking 让策略一次输出一段动作：
+标准策略每步仅输出单个动作 $\pi(a_t\mid s_t)$，而动作分块策略直接以 $K$ 步动作序列作为基本输出单元：
 
 $$
 \pi(a_{t:t+K-1}\mid s_t).
 $$
 
-它的直接好处有三个：降低有效决策频率；让探索更 temporally coherent；让 $K$-step backup 更自然。它和 HRL 相似，但更轻量。它通常不学习 initiation set 或 termination condition，而是直接把动作空间从 $\mathcal{A}$ 变成 $\mathcal{A}^K$。
+将动作空间从 $\mathcal{A}$ 提升至 $\mathcal{A}^K$ 带来了三重直接收益：一是将有效决策周期缩短为原来的 $1/K$；二是天然保证了多步探索动作的时序连贯性（temporal coherence），克服了单步高斯噪声在连续控制中相互抵消的抖动问题；三是无需额外学习选项终止条件或子目标语义。
 
-### 6.1 Q-chunking：chunk-level critic
-
-[Reinforcement Learning with Action Chunking](https://arxiv.org/abs/2507.07969) 提出 Q-chunking，面向 long-horizon sparse-reward offline-to-online RL。它的关键不是简单使用 $n$-step return，而是把 critic 的评价对象改为整段 action chunk：
-
-$$
-Q_K(s_t,a_{t:t+K-1}).
-$$
-
-对应 target 可以写成：
+[Reinforcement Learning with Action Chunking（Q-Chunking）](https://arxiv.org/abs/2507.07969) 敏锐地指出，要在强化学习中充分发挥动作分块的威力，必须将 Critic 的评估对象同步升级为整段动作块 $Q_K(s_t,a_{t:t+K-1})$，其 Bellman 目标定义为：
 
 $$
 y_t
@@ -464,9 +285,7 @@ s_{t+K},
 \right).
 $$
 
-普通 $n$-step TD 仍然把多步 reward 回填到单步 $Q(s_t,a_t)$；Q-chunking 明确评价整段 action sequence。因此它更能利用离线数据中的 temporally consistent behavior，也更适合 offline prior 到 online exploration 的转换。
-
-这一区别可以写得更直接。普通 $n$-step Q-learning 学的是：
+初学者容易将 Q-Chunking 与经典 $n$-step Q-learning 混为一谈，但二者在决策变量建模上存在本质差异。经典 $n$-step Q-learning 的更新式为：
 
 $$
 Q(s_t,a_t)
@@ -476,67 +295,34 @@ Q(s_t,a_t)
 \gamma^n \max_{a'} Q(s_{t+n},a').
 $$
 
-也就是说，训练目标跨了 $n$ 步，但 action variable 仍然只有 $a_t$。如果中间动作 $a_{t+1:t+n-1}$ 来自 replay buffer，它们只是 target 的一部分，不是 critic 要评价的决策对象。
+尽管右侧目标跨越了 $n$ 步奖励，但左侧 Critic 的自变量依然仅包含单步动作 $a_t$；中间步骤 $a_{t+1:t+n-1}$ 隐式受控于重放缓冲区中的历史采样策略，Critic 无法显式评估或控制这 $n-1$ 步的动作组合。相比之下，Q-Chunking 的价值函数 $Q_K(s_t,a_t,a_{t+1},\dots,a_{t+K-1})$ 将整段动作序列显式纳入输入，使 Critic 能够精确区分“起点状态与首步动作相同、但后续连贯动作走势迥异”的轨迹质量，从而将离线示范数据中的时序连贯先验直接转化为在线探索优势。
 
-Q-chunking 学的是：
+### 5.4 连续块控制、序列 Critic 与自适应分块边界
 
-$$
-Q_K(s_t,a_t,a_{t+1},\dots,a_{t+K-1}),
-$$
+尽管固定长度分块简洁高效，但也引入了新的结构性张力：动作空间维度随块长 $K$ 线性膨胀（$\dim(\mathcal{A}^K)=K\dim(\mathcal{A})$），且在块内 $K$ 步执行期间策略处于开环（open-loop）状态。在自由空间移动阶段，长块有助于快速跨越距离并加速价值回传；然而一旦进入富含接触的精细操作或环境突发扰动阶段，过长的开环块会导致智能体反应迟钝。围绕这一核心矛盾，近期研究衍生出四条改进分支：
 
-critic 的输入显式包含整个动作片段。这样一来，critic 可以区分“同一个起点和第一个动作，但后续动作序列不同”的情况。在长时域稀疏奖励里，这个差异很关键：单步动作往往没有足够信息，真正有意义的是一段连贯操作。
+- **面向稀疏操作任务的连续块 Actor-Critic**：[AC3（Actor-Critic for Continuous Action Chunks）](https://arxiv.org/abs/2508.11143) 针对长时域机器人稀疏奖励操作，将连续动作块融入 Actor-Critic 架构，通过仅在成功轨迹上更新 Actor、在 Critic 侧结合块内多步回报（intra-chunk $n$-step returns）以及引入自监督内在奖励，在 BiGym 与 RLBench 的 25 项长程操作任务上实现了稳定收敛。
+- **仅在 Critic 侧引入序列感知**：[T-SAC（Chunking the Critic）](https://arxiv.org/abs/2503.03660) 另辟蹊径，保留 Actor 的单步闭环输出能力以维持高频反应性，同时采用 Transformer 架构构建序列条件 Critic，使其在评估多步目标时能够显式建模短轨迹片段内的动作交互。
+- **因果 Transformer 驱动的自适应块长**：[ACSAC（Adaptive Chunk Size Actor-Critic）](https://arxiv.org/abs/2605.11009) 利用因果 Transformer Q 网络同时输出不同前缀长度 $k\in\{1,\dots,K_{\max}\}$ 的动作块价值，在每个分块边界根据当前环境状态动态裁定最优执行跨度 $K$，兼顾自由移动期的长程连贯性与接触交互期的闭环敏捷度。
+- **消除跨尺度折扣偏差的优势分块选择**：[AQC（Adaptive Q-Chunking）](https://arxiv.org/abs/2605.05544) 揭示了自适应分块中的一个隐蔽数值陷阱——由于不同块长 $k$ 对应的 Bellman 目标具有不同的折扣缩放因子 $\gamma^k$，直接比较原始 $Q_k$ 值会产生系统性的尺度偏差（scale mismatch），导致策略倾向于短块。AQC 通过计算各视野跨度相对于其自身基线的优势值（horizon-normalized advantage）来裁定块长，在离线到在线微调中取得了更为稳健的自适应切换效果。
+- **模型基离线强化学习中的块级转移**：[MAC（Model-Based RL with Action Chunks）](https://openreview.net/forum?id=WXGb9unEHo) 进一步将动作分块引入离线世界模型，直接学习块级动力学模型 $\hat s_{t+K}=f_\theta(s_t,a_{t:t+K-1})$。相比单步模型自回归滚动 $K$ 次，单次块级预测大幅削减了复合建模误差（compounding error），并配合富有表现力的行为分块策略（如流模型或扩散模型）做拒绝采样，有效遏制了规划器对分布外动作的恶意利用。
 
-但是这个收益也有代价。动作空间从 $\mathcal{A}$ 变成 $\mathcal{A}^K$，维度随 $K$ 线性增加；如果每步动作是连续向量，chunk policy 的输出维度会明显变大。固定 $K$ 还会把“何时重新决策”写死。自由空间移动阶段适合长 chunk，接触、避障、网页状态变化或工具调用失败阶段则需要短 chunk 或闭环修正。
+| 方法 | Actor 输出形式 | Critic 评估对象 | 块长 $K$ 策略 | 解决的核心痛点 |
+| --- | --- | --- | --- | --- |
+| Q-Chunking | 固定长度动作块 $a_{t:t+K-1}$ | 块级价值 $Q_K(s_t, a_{t:t+K-1})$ | 固定超参数 | 离线到在线转换中的连贯探索与多步价值备份 |
+| AC3 | 连续动作块 $a_{t:t+K-1}$ | 结合块内多步回报的块级 Critic | 固定超参数 | 极稀疏奖励下长程机器人操作的训练崩溃 |
+| T-SAC | 单步动作 $a_t$（保持闭环） | 短轨迹段 Transformer Critic | Critic 视野固定，Actor 单步 | 兼顾多步信用分配与单步高频闭环反馈 |
+| ACSAC | 可变长度动作块 | 因果 Transformer 多前缀 Q 网络 | 按状态动态选择 | 平衡长块时序连贯性与接触阶段的反应敏捷度 |
+| AQC | 可变长度动作块 | 消除折扣尺度偏差的多视野优势 | 基于相对优势自适应选择 | 修正不同视野 $Q$ 值直接比较导致的短视偏置 |
+| MAC | 行为分块分布采样 | 块级世界模型 + 保守价值估计 | 固定块级跳跃 | 抑制离线长程模型滚动的复合误差与 OOD 利用 |
 
-不过，chunked policy 常常更 open-loop。如果环境需要每步强反馈控制，过长 chunk 会降低反应性。这也是后续 adaptive chunk size 方法出现的原因。
+## 6. 世界模型与潜空间规划：短程动力学预测与长期价值自举
 
-### 6.2 AC3、T-SAC、ACSAC、AQC
+当真实环境交互代价高昂时，模型基强化学习（Model-Based RL）通过学习环境动力学模型并在想象轨迹（imagined trajectories）中优化策略或执行规划，提供了极具吸引力的样本效率优势。然而在长时域任务中，单步转移模型自回归滚动 $k$ 步生成的预测状态 $\hat s_{t+k}=f_{\theta}^{(k)}(s_t,a_{t:t+k-1})$ 不可避免地遭受复合误差累积——微小的单步预测偏差在数十步迭代后会被指数放大，导致远期想象轨迹彻底脱离真实物理流形。因此，现代长时域世界模型普遍摒弃了“依靠模型开环预测整个漫长未来”的幻想，转而确立了**短程潜空间规划 + 长期价值函数自举 + 时间抽象 + 分布外动作约束**的协同范式。
 
-[AC3](https://arxiv.org/abs/2508.11143) 把 continuous action chunk 放进 actor-critic，用于 long-horizon robotic manipulation with sparse reward。它的稳定机制包括：actor 只从成功轨迹更新，critic 使用 intra-chunk $n$-step returns，并引入自监督 intrinsic reward。论文在 BiGym 和 RLBench 的 25 个任务上实验，定位很明确：机器人长时域操作。
+[DreamerV3](https://arxiv.org/abs/2301.04104) 展示了循环状态空间模型（RSSM）在跨领域长时域任务中的通用性：通过将高维观测压缩至紧凑的离散潜空间，并配合符号对数变换（symlog）、百分位回报归一化等鲁棒化设计，DreamerV3 用同一套超参数在百余项任务上超越专用算法，并在 Minecraft 中无需人工课程示范即从零学会收集钻石。其核心策略是在潜空间中仅展开有限步数的想象轨迹（通常 $H=15$），在想象视野末端挂载长期价值函数进行自举，从而将模型误差严格限制在短程窗口内。
 
-[T-SAC](https://arxiv.org/abs/2503.03660) 的角度不同。它不一定让 actor 输出 chunk，而是让 critic 看到短 trajectory segment，用 Transformer critic 和 $N$-step target 增强 long-horizon credit assignment，同时保持 SAC 风格的一步 policy update。它更像“chunking the critic”，而不是“chunking the actor”。
-
-[ACSAC](https://arxiv.org/abs/2605.11009) 针对固定 chunk size 的局限，使用 causal Transformer critic 评估不同 chunk size 的 expected return，在 chunk boundary 自适应选择 $K$。它要平衡两个矛盾：长 chunk 有 temporal coherence 和快速 value backup，短 chunk 有更强 reactivity。
-
-[AQC](https://arxiv.org/abs/2605.05544) 也解决固定 chunk size 问题，但强调 naive 比较不同 horizon 的 Q 值会因为 discount-scale mismatch 偏向短 chunk。它通过相对每个 horizon baseline 的 advantage 比较来做 chunk size selection。
-
-| 方法 | 关键对象 | 主要贡献 | 主要限制 |
-| --- | --- | --- | --- |
-| Q-chunking | $Q_K(s,a_{t:t+K-1})$ | chunk-level TD 与 offline-to-online exploration | 固定 $K$，open-loop 反应性下降 |
-| AC3 | continuous action chunks | 稳定机器人 sparse reward 操作 | 依赖成功轨迹和任务设置 |
-| T-SAC | sequence-conditioned critic | critic 侧建模短轨迹段 | 不直接解决 actor chunk policy |
-| ACSAC | adaptive chunk size | 根据状态选择 chunk size | 额外 critic/Transformer 复杂度 |
-| AQC | advantage-based chunk selection | 缓解 horizon 比较偏差 | 仍依赖多 horizon 估计质量 |
-
-### 6.3 MAC：action chunks 进入 model-based offline RL
-
-[MAC](https://openreview.net/forum?id=WXGb9unEHo) 把 action chunking 引入 offline model-based RL。传统 model-based value expansion 用模型 rollout 若干步，rollout 长度越长，bootstrap bias 越小，但 compounding model error 越大。MAC 用 action-chunk model 从一段动作直接预测未来状态，以减少逐步模型误差累积；同时通过从 expressive behavioral action-chunk policy 中 rejection sampling，降低 model exploitation 的 OOD action 风险。
-
-这说明 action chunking 不只是 actor-critic 技巧，也开始影响 world model 和 offline model-based pipeline。
-
-Action chunking 的定位可以总结为：它比传统 HRL 更工程友好，因为不需要学习 option termination，也不需要显式 subgoal semantics；但它也比 option/skill 更少闭环结构，过长 chunk 可能在 contact-rich 或反馈敏感阶段出问题。
-
-从算法设计上，chunk size $K$ 是最核心的超参数。$K$ 太小，退化回单步控制；$K$ 太大，策略反应慢、动作维度高、离线数据覆盖变稀。实际系统里常见的折中是：在行为克隆或离线阶段用 chunk 捕捉 demonstration 的连贯性，在在线阶段加入 adaptive boundary、replanning、MPC 或 low-level feedback，让 chunk 不至于完全 open-loop。
-
-## 7. 世界模型与规划：短程模型 + 长期价值
-
-长期收益任务中，model-based RL 的吸引力很明显：如果真实环境交互昂贵，可以先学习世界模型，再在 imagined trajectories 中训练策略或规划。
-
-### 7.1 DreamerV3
-
-[DreamerV3](https://arxiv.org/abs/2301.04104) 学习 latent world model，并在 imagined future scenarios 中优化 actor-critic。它报告用单一配置覆盖大量任务，并在 Minecraft 中从零开始采集 diamond。这个结果对长期收益 RL 很有启发：agent 不一定只在真实环境里等待稀疏奖励，可以通过模型想象提高样本效率。
-
-但 world model 的限制也非常明确。长 rollout 会产生 compounding error：
-
-$$
-\hat s_{t+k}=f_{\theta}^{(k)}(s_t,a_{t:t+k-1}),
-$$
-
-当 $k$ 增大时，模型误差会不断累积，最终 imagined trajectory 可能偏离真实环境。
-
-### 7.2 TD-MPC2
-
-[TD-MPC2](https://arxiv.org/abs/2310.16828) 代表另一种实用路线：在 learned latent space 里做 local trajectory optimization，并结合 terminal value function。短期由模型做 MPC，长期由 value function bootstrap：
+[TD-MPC2](https://arxiv.org/abs/2310.16828) 则将隐式无解码器（decoder-free）世界模型与局部模型预测控制（MPC）深度融合。在每个决策时刻，系统在学习到的潜空间 $z_t$ 中求解带终端价值自举的有限视野轨迹优化问题：
 
 $$
 \max_{a_{t:t+H-1}}
@@ -548,62 +334,22 @@ $$
 \right].
 $$
 
-这避免了精确预测整个长未来的要求。它更像“短程规划 + 长期价值估计”，而不是长程 open-loop rollout。
+这种设计将长时域决策职责清晰拆分为三层架构：
+1. **表征压缩层（Representation model）**：将非马尔可夫的历史观测与动作编码为紧凑潜状态 $z_t$，在过滤像素冗余噪声的同时满足局部可预测性。
+2. **短程动力学预测层（Short-horizon predictor）**：仅负责预测未来数步（或如前文 MAC 所述预测单个动作块跨度 $\hat s_{t+K}=f_{\theta}(s_t,a_{t:t+K-1})$）内的潜状态转移、即时奖励与终止信号，确保局部推演高保真。
+3. **规划与终端价值接口（Planner / Value interface）**：利用短程模型通过交叉熵方法（CEM）或采样评估候选动作序列的近期得失，而将视野 $H$ 之外的漫长远期收益交由终端价值函数 $V(z_{t+H})$ 兜底。
 
-### 7.3 世界模型与 action chunking 合流
+当这一架构应用于离线长时域数据时，规划器极易搜寻到模型预测虚高但偏离数据集支撑集的对抗性动作。因此，结合行为分块先验与拒绝采样（如 MAC）以封堵模型漏洞，已成为长时域模型基离线强化学习的标准配置。
 
-MAC 进一步说明，world model 和 temporal abstraction 正在合流。模型不一定只预测单步转移 $s_{t+1}$，也可以围绕 action chunks 预测较远未来：
+## 7. 离线与离线到在线强化学习：长时域工程落地的主干道
 
-$$
-\hat s_{t+K}=f_{\theta}(s_t,a_{t:t+K-1}).
-$$
+在工业界真实场景中，让智能体从零开始在线随机试错往往是不可接受的：机械臂失控会损毁硬件，网页与企业智能体乱点会触发不可逆的业务副作用，推荐与金融系统的激进探索则会直接伤害用户体验与资金安全。因此，先利用历史日志或专家示范开展离线预训练（Offline RL），再在安全围栏内执行小规模在线微调（Offline-to-Online RL），构成了长时域强化学习工程落地的主干路线。
 
-这在长 horizon offline RL 中尤其有价值，因为离线数据里往往存在 temporally coherent behavior。模型如果只看单步动作，容易在长 rollout 中积累误差；如果建模 chunk-level transition，可能更稳定。
+### 7.1 分布外动作抑制与离线轨迹拼接
 
-因此，长期收益任务中更可靠的 model-based 模式通常是：
+[D4RL](https://arxiv.org/abs/2004.07219) 基准系统揭示了离线数据集的异构特性：历史数据可能源于手工控制器、人类遥操作、随机策略或次优混合策略。在标准 Bellman 最优算子中，最大化操作 $\max_a Q(s,a)$ 极易选出未包含在离线数据集 $\mathcal{D}$ 中的分布外（OOD）动作；由于缺乏真实样本纠偏，Critic 对这些 OOD 动作的过高估计会通过自举迅速传遍全图，引发价值崩溃。围绕这一核心瓶颈，主流离线算法形成了三种互补的约束机制：
 
-```text
-短程模型规划
-+ 长期 value bootstrap
-+ temporal abstraction
-+ OOD action control
-```
-
-而不是盲目追求无限长世界模型预测。
-
-可以把 world model 在长期收益里的角色分成三层。
-
-第一层是 **representation model**：学习一个 latent state $z_t$，让历史 observation、动作和任务相关信息被压缩到可预测空间。POMDP 中这一步尤其重要，因为原始 observation 不是 Markov state。
-
-第二层是 **short-horizon predictor**：预测接下来几步或一个 chunk 后的 latent state、reward、termination。这里追求的是局部可靠，而不是完美模拟整个未来。
-
-第三层是 **planner / value interface**：用模型生成候选短轨迹，再用 value function 估计轨迹尾部长期价值。TD-MPC2 这类方法的实用性就在于它不要求模型承担所有长期预测。
-
-这也解释了为什么 model-based RL 和 offline RL 容易互相吸引。离线数据足以训练模型，但 offline model-based 方法容易被 planner 利用模型漏洞。长期任务会放大这个问题：短期小误差经过多步规划后可能变成虚假的高价值轨迹。因此，MAC 这样的工作才会强调 behavioral chunk policy、rejection sampling 和 OOD action control。
-
-## 8. Offline 与 Offline-to-Online RL：长期收益工程落地的主路线
-
-真实长期收益任务通常不能让 agent 从零在线乱探索。机器人会损坏设备，网页 agent 会触发副作用，推荐系统会影响用户体验，企业 agent 可能修改真实数据。因此 offline 或 offline-to-online 往往是默认前提。
-
-### 8.1 Offline RL 基础
-
-[D4RL](https://arxiv.org/abs/2004.07219) 把 offline RL benchmark 系统化，强调离线数据可能来自 hand-designed controllers、human demonstrations、random policies、多任务数据或 mixture policies。它指出普通 online RL benchmark 不能充分评估 dataset coverage、distribution shift 和 stitching 能力。
-
-[CQL](https://arxiv.org/abs/2006.04779) 的核心是 conservative Q-function。offline RL 中，policy 可能选择数据集外动作，critic 对这些动作的 value 会过估计。CQL 通过压低 unseen actions 的 Q 值，让 learned policy value 成为更保守的 lower bound。
-
-[IQL](https://arxiv.org/abs/2110.06169) 避免直接评价 dataset 外动作，通过 expectile value regression 和 advantage-weighted behavioral cloning 做隐式策略改进。它的实用价值在于绕开 explicit out-of-distribution action maximization。
-
-[TD3+BC](https://arxiv.org/abs/2106.06860) 展示了 minimalist route：在 TD3 上加入 behavior cloning 项和状态归一化，就能在 D4RL 上取得强结果。这说明 offline RL 的很多性能来自非常朴素但有效的 in-distribution regularization。
-
-这几类方法可以用一个共同原则概括：offline RL 不敢无约束地做
-
-$$
-\max_a Q(s,a),
-$$
-
-因为 $\arg\max$ 很可能落在数据集没有覆盖的动作上。CQL 选择让 critic 对 OOD action 保守；IQL 选择尽量不显式查询 OOD action；TD3+BC 选择在 actor update 里把策略拉回行为数据附近。
-
-CQL 的直觉可写成：
+- **保守价值惩罚**：[CQL（Conservative Q-Learning）](https://arxiv.org/abs/2006.04779) 在标准 Bellman 误差之上显式加入正则项，压低全动作空间上的高 $Q$ 值并推高数据集内动作的 $Q$ 值，优化目标为：
 
 $$
 \min_Q
@@ -617,9 +363,8 @@ $$
 \text{Bellman error}.
 $$
 
-它惩罚所有动作上的高 Q，同时相对保留数据动作的 Q。连续动作中实现会用采样近似。
-
-IQL 的核心是先用 expectile regression 学价值：
+这一约束保证学习到的价值函数成为真实策略价值的保守下界。
+- **分布内隐式期望回归**：[IQL（Implicit Q-Learning）](https://arxiv.org/abs/2110.06169) 彻底规避了在训练中采样未见动作的操作，仅对数据集内动作 $(s,a)\sim\mathcal{D}$ 采用非对称期望分位数回归（expectile regression）拟合价值上限：
 
 $$
 L_V(\psi)
@@ -633,7 +378,7 @@ Q_{\theta}(s,a)-V_{\psi}(s)
 \right],
 $$
 
-再用 advantage-weighted regression 更新策略：
+随后通过优势加权回归（AWR）提取策略：
 
 $$
 \max_{\pi}
@@ -643,130 +388,60 @@ $$
 \right].
 $$
 
-TD3+BC 则把 actor 目标写成 RL objective 加 BC regularization。它提醒我们：长期收益任务里，一个简单稳定的行为先验有时比复杂的价值外推更重要。
+- **极简行为克隆正则**：[TD3+BC](https://arxiv.org/abs/2106.06860) 直接在确定性策略梯度目标上叠加均方行为克隆项并配合状态归一化，证明在许多连续控制任务中，稳健的分布内行为锚定比复杂的价值外推更为有效。
 
-### 8.2 Offline-to-online：从历史数据到小规模在线改进
+当任务视野拉长时，离线强化学习的考核重点从单步分布匹配升级为跨片段的**轨迹拼接**（trajectory stitching）与长程推理。近期发布的 [OGBench](https://arxiv.org/abs/2410.20092) 专门围绕离线目标条件强化学习设计了涵盖多段拼接、长程规划、高维视觉输入与随机动力学的基准测试，推动离线算法从“模仿单条完整好轨迹”迈向“将多条次优局部片段组合成全局最优长路径”。
 
-[AWAC](https://arxiv.org/abs/2006.09359) 关注先用离线数据降低探索成本，再在线微调策略。它用 advantage-weighted behavioral cloning 风格的更新，让策略偏向数据中 advantage 高的动作。
+### 7.2 从离线先验到在线微调：序列级数据覆盖观
 
-Q-chunking 也明确定位于 offline-to-online：离线数据不是只用来保守训练，而是要转化为好的 exploratory policy。长时域任务中，这一点尤其重要。因为离线数据的优势不只是状态覆盖，也包括 action sequence distribution。一个机器人 demonstration 的价值常常不在单个动作，而在动作序列的连贯性。
+离线预训练虽然消除了冷启动盲目探索的代价，但最终策略性能的天花板仍受制于历史数据集的覆盖边界。离线到在线（Offline-to-Online）强化学习旨在以离线策略为安全起点，通过少量在线交互突破离线数据的次优限制。[AWAC](https://arxiv.org/abs/2006.09359) 采用优势加权行为克隆格式的更新规则，使策略在从离线向在线过渡时避免因突发分布偏移而清洗掉预训练权重；前文介绍的 Q-Chunking、AQC 与 MAC 则进一步表明，在长时域稀疏奖励任务中，离线数据的真正财富在于**动作序列级（sequence-level）的时序连贯先验**。
 
-MAC 也强调了这个 sequence-level 视角：用 behavioral action-chunk policy 进行 rejection sampling，可以减少模型利用 OOD action 的风险。
+在长时域视角下，评估一份离线数据集的质量必须同时审视三个层级的覆盖度：
+1. **状态覆盖（State coverage）**：数据是否囊括了通往终局所必经的瓶颈中间状态（如“已拾取钥匙”状态）；若关键阶段完全缺失，任何离线算法都无从凭空捏造后续技能。
+2. **动作覆盖（Action coverage）**：在关键决策点附近是否包含多样化的动作尝试，使 Critic 能够分辨优劣而非仅做盲目克隆。
+3. **序列与拼接覆盖（Sequence & stitching coverage）**：数据集中是否包含可首尾相接的连贯动作片段。许多长时域离线训练的失败，皆源于单步状态看似均有覆盖，但多段子技能在交接边界处缺乏可达过渡，导致在线执行时在拼接点频繁坠崖。
 
-### 8.3 OGBench 与 long-horizon reasoning benchmark
+因此，离线先验决定了初始探索的安全基线与可学行为边界，而在线微调则必须在严格控制价值漂移、物理安全与奖励黑客的前提下，重点填补跨阶段交接处的序列覆盖空白。
 
-[OGBench](https://arxiv.org/abs/2410.20092) 是更近的 offline goal-conditioned RL benchmark，任务设计关注 stitching、long-horizon reasoning、高维输入和随机性。这标志着 benchmark 也在从普通 locomotion return 转向更能暴露长期推理能力的设置。
+## 8. LLM Agent RL、奖励塑形与过程验证器设计
 
-Offline/offline-to-online RL 的统一结论是：
+### 8.1 多轮软件交互中的 LLM Agent RL 演进
 
-```text
-offline prior 能降低探索成本，
-但 dataset coverage 决定了可学行为边界；
-online fine-tuning 能突破离线数据限制，
-但必须控制安全、分布偏移和 reward hacking。
-```
+2024 年以来，大语言模型智能体（LLM Agents）将长期收益强化学习推向了一个全新的软件交互舞台。在这类任务中，智能体的动作空间涵盖自然语言思维链（thought tokens）、结构化工具调用（tool/API calls）、浏览器 DOM 交互、终端命令执行、代码库编辑与数据库查询；一个完整任务回合往往跨越数十轮环境反馈，直至最终通过单元测试或任务验证器判定成败。
 
-对于长期收益 RL，数据不是简单的 replay buffer，而是行为先验、轨迹结构和探索边界。
-
-更具体地说，长时域 offline 数据至少有三种覆盖概念。
-
-**State coverage**：数据是否包含关键状态和中间阶段。如果从未出现“钥匙已拿到”的状态，后续开门策略很难被学到。
-
-**Action coverage**：关键状态附近是否有足够动作变化。只有一个 demonstration 可能告诉 agent 怎么做，却不足以告诉 critic 其他动作为什么差。
-
-**Sequence coverage**：数据是否包含完整或可拼接的成功片段。长时域任务中，单步覆盖不等于序列覆盖。很多失败不是某一步没见过，而是多段技能无法在正确顺序上拼起来。
-
-这也是 OGBench、Q-chunking、MAC 这些工作重要的原因：它们把 benchmark 和算法关注点从单步 $(s,a)$ 分布推进到 goal-conditioned stitching 和 action sequence distribution。对于 offline-to-online，安全在线改进的核心不是“能否探索”，而是“能否在不破坏已有能力和安全边界的情况下探索”。
-
-## 9. LLM Agent RL：长时域问题进入软件环境
-
-2024 之后，长期收益 RL 的一个新场景快速变热：LLM agents。这里的动作不再只是连续控制或离散游戏动作，而是 token、tool call、API call、网页点击、代码修改、数据库查询、文件操作等。一个 episode 可能需要几十轮甚至上百步，最终才知道是否完成任务。
-
-这和机器人任务非常相似：最终 reward 稀疏，中间动作多，状态部分可观测，失败路径复杂，训练成本高。但 LLM agent 也有特殊优势：可以引入 verifier、tool feedback、process reward、LLM-generated subgoal 和语言化 hindsight reasoning。
-
-把 LLM agent 写成 RL 问题时，状态和动作通常不是单一张量，而是一组结构化事件。
-
-observation $o_t$ 通常包含：用户请求、对话历史、工具输出、环境状态快照、错误信息、权限状态和任务上下文。动作 $a_t$ 则可能落在多个层级：token generation、tool call、browser action、API call、code edit 或 final answer。
-
-轨迹可以写成：
+将多轮交互智能体置于强化学习框架下，其轨迹可形式化为结构化事件序列：
 
 $$
 \tau =
 (o_0,a_0,y_0,o_1,a_1,y_1,\dots,o_T,R),
 $$
 
-其中 $y_t$ 是工具返回、错误信息、网页 DOM、测试输出或 verifier feedback。这个形式说明了 LLM Agent RL 的额外难点：observation 是非平稳文本和工具状态，action 有离散 token 和结构化工具调用两种层次，reward 常常由外部 verifier 在终点给出。
+其中观测 $o_t$ 聚合了用户指令、多轮对话上下文与系统状态快照，动作 $a_t$ 兼具词元级自回归生成与工具调用两层结构，环境返回 $y_t$ 包含 API 响应、编译器报错、网页渲染结果或验证器反馈，$R$ 为终局奖励。与传统连续控制相比，LLM Agent RL 面临非平稳文本观测空间、高昂的外部环境执行延迟与副作用风险；但同时它也拥有独特的结构红利——语言空间天然支持语义子目标规划、代码与规则验证器（verifier）以及事后自然语言反思。构建一套可扩展的智能体强化学习系统，需要在工程上打通四大核心接口：
 
-因此，一个可训练的 agent RL 系统通常需要四个接口。
-
-| 接口 | 作用 | 典型问题 |
+| 系统接口层 | 核心职责 | 工程挑战与痛点 |
 | --- | --- | --- |
-| rollout interface | 记录每个 turn、tool call、observation、latency、错误 | 动态 workflow 很难标准化 |
-| reward interface | 把 outcome、verifier、human feedback 转成 reward | reward hacking 和 judge 偏差 |
-| credit interface | 把 episode reward 分配到 step、turn 或 token | 长轨迹中关键步骤稀疏 |
-| safety interface | sandbox、权限、回滚、side-effect control | 在线探索可能影响真实系统 |
+| 采样与轨迹接口（Rollout） | 并发调度多轮对话、工具执行、异常捕获与状态快照记录 | 异构动态工作流与外部 API 延迟极难对齐为标准张量批次 |
+| 奖励与验证接口（Reward） | 集成单元测试、环境断言、规则检查器与偏好/过程奖励模型 | 开放任务缺乏精确验证器，代理奖励易遭长序列奖励黑客攻击 |
+| 多粒度归因接口（Credit） | 将回合级反馈拆解至轮次（turn）、工具调用（step）或词元（token） | 数千词元与数十步工具调用中真正决定成败的决策点极度稀疏 |
+| 安全与隔离接口（Safety） | 容器沙箱、文件系统快照回滚、细粒度权限控制与副作用拦截 | 在线探索可能污染真实数据库、触发外部写操作或耗尽 API 配额 |
 
-### 9.1 LOOP：在 stateful digital environments 中训练 LLM agent
+围绕上述四个层面，近期代表性工作从算法显存效率、课程演化、系统解耦与过程归因多点突破：
+- **有状态数字环境中的显存高效在线 RL**：Apple 提出的 [LOOP](https://arxiv.org/abs/2502.01600) 将交互式数字智能体建模为 POMDP，设计了无需独立价值网络（value-free）、支持多轮交互的留一法 PPO 变体，使强化学习微调显存开销接近普通 SFT；在 AppWorld 基准上，32B 参数的 LOOP 智能体超越了体量更大的 OpenAI o1 模型 9 个百分点，证实了在有状态软件环境中直接开展多轮 RL 优化的有效性。
+- **网页智能体的自演化在线课程**：[WebRL](https://arxiv.org/abs/2411.02337) 针对网页导航任务中训练指令稀缺、结果奖励稀疏以及在线更新易引发策略遗忘三大难题，构建了根据智能体当前能力边界动态生成新任务的自演化在线课程（self-evolving curriculum），辅以结果监督奖励模型与 KL 锚定经验回放，使 Llama-3.1-8B 与 GLM-4-9B 在 WebArena-Lite 上的成功率实现大幅跃升。
+- **智能体执行与强化学习训练管线解耦**：[AgentGym-RL](https://openreview.net/forum?id=ZgCCDwcGwn)（ICLR 2026 Oral）构建了覆盖多领域长时域决策的统一开源多轮 RL 训练框架，并通过 ScalingInter-RL 分阶段交互扩展策略稳定长程训练；[Agent Lightning](https://arxiv.org/abs/2508.03680) 则从系统架构层面彻底解耦“智能体工作流执行”与“底层 RL 训练”，通过统一的事件追踪协议捕获任意复杂智能体（含多智能体协作、动态路由与外部检索）的运行轨迹，再利用分层强化学习与信用分配模块将其自动转化为标准 RL 训练转移样本。
+- **面向长轨迹的过程奖励与逐步进度归因**：为破解终局二元反馈过粗的困局，[AgentPRM](https://arxiv.org/abs/2502.10325) 利用蒙特卡洛滚动（Monte Carlo rollouts）估计中间状态达成终局目标的期望概率，训练轻量级智能体过程奖励模型（Process Reward Model）；[SPA（Stepwise Progress Attribution）](https://arxiv.org/abs/2505.20732) 则将长时域任务视为逐步累积任务进度（progress）的过程，通过将终局奖励按步骤进度增量进行重分配，为每轮工具交互提供稠密且对齐全局目标的推进信号。
 
-Apple 的 [LOOP](https://arxiv.org/abs/2502.01600) 把 interactive digital agents 形式化为 POMDP，并提出 memory-efficient PPO 变体。LOOP 不使用 value network，只保留一份 LLM，因此显存需求接近普通 fine-tuning。论文报告 32B LOOP agent 在 AppWorld 上超过更大的 OpenAI o1 agent 9 个百分点。
+### 8.2 势函数奖励塑形、过程奖励模型（PRM）与防黑客验证器
 
-更重要的不是单个 benchmark 数字，而是它证明了一个方向：LLM agent 可以在 stateful digital environments 中通过 RL 直接优化交互行为，而不只是靠 SFT、prompt engineering 或 rejection sampling。
+在长时域任务中，将稀疏终局反馈改写为稠密中间信号是最直观的工程加速手段，但粗暴的人工奖励塑形（reward shaping）极易扭曲最优策略——例如为足球机器人设置“靠近球即给正奖励”，可能导致机器人围着球原地打转而拒绝射门。
 
-### 9.2 AgentGym-RL 与训练系统标准化
-
-[AgentGym-RL](https://openreview.net/forum?id=ZgCCDwcGwn) 是 ICLR 2026 Oral，提出面向 LLM agents 的统一开源 RL 框架，并提出 ScalingInter-RL staged training 来稳定 long-horizon RL training。
-
-这类工作的重要性在系统层面：LLM agent RL 的难点不是单个 loss，而是环境接口、rollout、失败恢复、reward、并行采样、trajectory logging、tool sandbox 和训练框架要同时成立。长期收益 RL 在这里变成了系统工程问题。
-
-### 9.3 WebRL：网页 agent 的 online curriculum
-
-[WebRL](https://arxiv.org/abs/2411.02337) 面向网页 agent，提出 self-evolving online curriculum RL。它处理三个问题：训练任务稀缺、反馈稀疏、online learning 中 policy distribution drift。报告中 Llama-3.1-8B 和 GLM-4-9B 在 WebArena-Lite 上的成功率显著提升。
-
-WebRL 和前面的 curriculum/exploration 主题完全呼应。区别只是环境从机器人或游戏变成网页交互，reward 从物理目标变成任务完成 verifier。
-
-### 9.4 Agent Lightning：解耦 agent 执行和 RL 训练
-
-[Agent Lightning](https://arxiv.org/abs/2508.03680) 从系统角度提出“任何 agent 都可接入 RL”的框架。它把 agent execution 和 training 解耦，定义统一数据接口，并用 hierarchical RL 和 credit assignment module 把 trajectory-level return 分解成 transition。
-
-它的意义在于把长期收益 RL 的核心问题工程化：不是要求 agent 框架重写成某个 RL loop，而是把已有 agent 的执行轨迹转化为可训练数据。这对真实工具调用 agent 很关键，因为真实 agent 往往包含动态 workflow、多 agent 协作、检索、代码执行和外部 API。
-
-### 9.5 Process reward 与 stepwise progress
-
-[AgentPRM](https://arxiv.org/abs/2502.10325) 提出 Agent Process Reward Models，用 Monte Carlo rollouts 计算 reward targets，并以轻量 actor-critic 方式训练 LLM agents。它关注的是 outcome reward 太稀疏时如何构造 process-level feedback。
-
-[SPA](https://arxiv.org/abs/2505.20732) 提出 Stepwise Progress Attribution，把 agentic task 看成由多个步骤累积 progress 完成，并基于 stepwise progress 产生中间 reward。
-
-LLM Agent RL 的核心问题和传统 RL 一样，但 credit 粒度更细：token、segment、step、turn、tool call 都可能成为训练单位。真正困难的是 verifier 与 reward model 是否可靠。长期任务给了 agent 更多步骤，也给了 reward hacking 更多空间。
-
-从传统 RL 的角度看，LLM Agent RL 的新意不在“长期”二字，而在训练对象从固定环境动作扩展到复杂软件行为。网页点击失败、API 参数错、代码测试不过、文件状态被污染、工具超时，都会成为 trajectory 的一部分。一个 agent 训练框架如果只保存最终文本和最终 reward，就丢掉了最重要的 credit assignment 信息。
-
-所以，Agent Lightning 这类“执行和训练解耦”的工作很关键。它们把现有 agent 框架产生的 execution trace 转换为 RL transition，使得不同 agent、不同工具、不同环境可以共享训练管线。这个方向和传统 distributed RL 的 actor-learner 分离类似，但多了工具协议、权限、安全和结构化日志。
-
-## 10. Reward shaping、过程奖励与 verifier
-
-长期收益任务里，最直接的工程手段是把 sparse terminal reward 变成 dense reward。但 reward shaping 有风险：错误 shaping 会改变最优策略。
-
-[Ng, Harada and Russell](https://people.eecs.berkeley.edu/~russell/papers/icml99-shaping.pdf) 的 potential-based reward shaping 结果说明，满足以下形式的 shaping term 可以保持 policy invariance：
+Ng、Harada 与 Russell 在经典论文 [Policy Invariance Under Reward Transformations](https://people.eecs.berkeley.edu/~russell/papers/icml99-shaping.pdf) 中证明，若附加塑形奖励 $F(s,a,s')$ 严格取为状态势函数 $\Phi:\mathcal{S}\to\mathbb{R}$ 的折扣差分形式：
 
 $$
-F(s,a,s')=\gamma \Phi(s')-\Phi(s).
+F(s,a,s')=\gamma \Phi(s')-\Phi(s),
 $$
 
-因为沿轨迹求和时会产生 telescoping effect，最优策略不被改变。直觉上，potential $\Phi$ 可以奖励“朝目标进展”，但不能偷偷改变任务偏好。
-
-现代长期收益 RL 中，reward shaping 出现三种新形态。
-
-第一是 **subgoal-based shaping**：根据子目标进展给奖励。例如 STO-RL 用 LLM 生成 temporally ordered subgoals，再用 potential-based shaping 把 sparse reward 转成有序 dense signal。
-
-第二是 **learned reward model**：[Human Preferences RL](https://arxiv.org/abs/1706.03741) 用人类对 trajectory segment 的偏好训练 reward model，是 learned reward 的经典起点。现代 agent 任务中，偏好数据、轨迹比较、LLM-as-judge 和 verifier 都可以成为 reward model 来源。
-
-第三是 **process reward**：给中间步骤、tool call、reasoning step 打分。例如 AgentPRM 和 SPA 都试图把 outcome-level supervision 分配到过程层。
-
-这条线的最大风险是 reward hacking。长期任务的 action sequence 更长，agent 有更多机会利用 proxy reward 的漏洞。一个网页 agent 可能学会触发 verifier 的关键词而不完成任务；一个工具调用 agent 可能通过无意义调用制造 progress signal；一个机器人 agent 可能追逐 shaped reward 而不达成真实目标。
-
-因此，process reward 不能只看密度，还要看三点：是否和最终任务一致；是否可以被简单 hack；是否在 OOD 状态下仍然可靠。
-
-PBRS 的特殊地位在于它有明确的不改变最优策略条件。沿一条轨迹累加 shaping term：
+则沿任意长度为 $T$ 的轨迹累加该塑形项会产生裂项相消（telescoping sum）：
 
 $$
 \sum_{t=0}^{T-1}\gamma^t
@@ -777,25 +452,30 @@ $$
 -\Phi(s_0)+\gamma^T\Phi(s_T).
 $$
 
-在固定初始状态和适当终止条件下，它只改变回报的常数项或终止 potential，不改变动作排序。相比之下，learned process reward 往往没有这个 telescoping guarantee。它也许更强，因为可以学复杂过程质量；也更危险，因为它可能把“看起来像进展”的行为奖励成真正目标。
+在固定初始状态与适当的终止势约束下，轨迹总塑形回报仅相差一个与中间动作路径无关的边界项，从而严格保证了**最优策略不变性（policy invariance）**。这一理论揭示了安全奖励塑形的本质：势函数 $\Phi(s)$ 可以度量“向目标靠近的潜在进度”，但绝不能赋予某个中间状态可通过循环刷分无限累加的净收益。
 
-LLM agent 里常见的 verifier 也要分层理解。
+在现代长时域与智能体强化学习中，稠密监督信号主要演化出三类实现形态：
+1. **基于子目标偏序的势函数塑形**：如 STO-RL 将 LLM 规划出的有序子目标阶段映射为势函数 $\Phi(s)$，在享受语义先验引导的同时坚守策略不变性底线。
+2. **基于人类偏好与轨迹对比的学习型奖励模型**：源自 [Christiano et al. (2017)](https://arxiv.org/abs/1706.03741) 的轨迹片段偏好学习（RLHF），通过成对比较训练奖励模型，适合难以用代码规则定义成败的主观质量评估。
+3. **面向推理与交互步骤的过程奖励模型（PRM）**：如 AgentPRM 与 SPA，针对每个工具调用或环境状态转移评估中间进度。
 
-| verifier 类型 | 信号粒度 | 优点 | 风险 |
+需要注意的是，学习型过程奖励模型与启发式步骤打分通常不具备势函数差分的结构形式，因而在长时域训练中极易诱发**奖励黑客（reward hacking）**。视野越长，智能体可用于钻空子的动作组合空间就越大：网页智能体可能学会在输入框内反复拼写触发验证器高分的关键词而不提交表单，代码智能体可能通过删除测试断言来伪造单测全绿。为此，工业界普遍采用多层级复合奖励架构来平衡信号密度与抗攻击鲁棒性：
+
+| 验证与奖励层级 | 信号粒度 | 核心优势 | 漏洞风险与防范重点 |
 | --- | --- | --- | --- |
-| unit test / exact checker | episode 或 step | 客观、可自动化 | 覆盖不全，可能被过拟合 |
-| environment success flag | episode | 与任务直接相关 | 稀疏，诊断信息少 |
-| rule-based process checker | step / tool call | 便宜、可解释 | 规则错配，容易被钻空子 |
-| learned reward model | segment / trajectory | 能覆盖主观质量 | 偏差、OOD 不稳定 |
-| LLM-as-judge | step / final | 灵活，适合开放任务 | judge drift、提示敏感、可被诱导 |
+| 单元测试 / 精确状态断言 | 回合终局或关键检查点 | 客观确定、零幻觉、可全自动并发执行 | 测试覆盖不全时易被硬编码绕过，需保留隐藏测试集 |
+| 环境成败标志（Success Flag） | 回合终局 | 与真实业务目标完全一致，无代理偏差 | 信号极度稀疏，无法单独提供早期梯度方向 |
+| 规则式过程检查器 | 单步 / 工具调用 | 计算开销极低、语义透明可解释 | 静态规则易被高频重复调用刷分，需配额上限或势函数化 |
+| 学习型过程奖励模型（PRM） | 步骤 / 轨迹片段 | 能够密集量化向终局目标的推进概率 | 在分布外状态易产生虚高外推，需不确定性惩罚与终局锚定 |
+| LLM-as-a-Judge | 轮次 / 终局汇总 | 适配开放域无标准答案任务，泛化能力强 | 存在位置偏置、冗长偏置与提示词注入风险，需交叉校验 |
 
-长期收益训练中，最稳的做法通常不是只依赖一种 reward，而是分层组合：硬约束负责安全和格式，verifier 负责最终成功，process reward 负责中间进展，人工或离线评估负责抽样校准。
+稳健的工程实践通常将硬性规则作为安全护栏（拦截非法格式与危险调用），以精确验证器作为终局胜负锚点，将过程奖励严格限制为辅助优势估计或势函数差分项，并通过定期离线抽样审查防范代理指标异化。
 
-## 11. Average Reward 与 continuing tasks：另一种“长期收益”
+## 9. 平均奖励准则与持续性任务：无终止边界的长期收益
 
-很多真实长期收益问题没有自然 episode。例如推荐系统优化长期留存、网络调度优化长期吞吐、能源系统优化长期效率、企业 agent 持续处理任务流。此时 discounted episodic return 可能只是工程近似。
+前述讨论大多建立在具有明确终止状态的回合制（episodic）任务之上。然而，推荐系统长期用户留存优化、数据中心动态能耗与算力调度、库存与供应链持续补货、常驻企业后台自动化等核心工业场景，均属于**无自然终点的持续性任务（continuing tasks）**。在这类系统中，强行设定人工截断窗口或套用较小的折扣因子 $\gamma$，往往会掩盖策略对系统稳态分布的深远影响。
 
-Average reward objective 写作：
+平均奖励强化学习（Average-Reward RL）直接以单位时间步的稳态期望收益作为优化目标：
 
 $$
 \rho(\pi)
@@ -808,7 +488,7 @@ $$
 \right].
 $$
 
-与 discounted value 不同，average reward 更直接描述 steady-state performance。对应的 differential value function 为：
+在遍历性（ergodic）马尔可夫链假设下，$\rho(\pi)$ 与初始状态无关，直接刻画策略诱导出的平稳分布下的全局表现。为评估特定状态的瞬时优劣，算法定义差分价值函数（differential value function）来度量从状态 $s$ 出发相对于稳态平均收益的累计偏差：
 
 $$
 h^{\pi}(s)
@@ -823,173 +503,92 @@ r_t-\rho(\pi)
 \right].
 $$
 
-[On-Policy Deep Reinforcement Learning for the Average-Reward Criterion](https://arxiv.org/abs/2106.07329) 指出，discounted return 下的 policy improvement bound 不一定适合 average-reward setting，并提出 average-reward TRPO 类方法。[Feasible Q-Learning for Average Reward Reinforcement Learning](https://proceedings.mlr.press/v238/jin24b.html) 则关注更可行的 average-reward Q-learning 理论。
+设想两个竞争策略：策略 A 在前 100 步通过激进压榨攫取高额短期回报，却将系统推入难以恢复的低效稳态；策略 B 前期回报温和，但能将系统长期维持在高水平稳态。在短视野评估或较小折扣因子 $\gamma$ 下，折扣回报准则往往受初期高回报主导而错误优选策略 A；唯有平均奖励准则（或 $\gamma\to 1$ 的极限分析）能够剥离短期瞬态幻象，准确识别策略 B 的长期稳态优势。这种张力在真实业务中比比皆是：推荐系统依赖标题党诱导点击可在短期内拉升 CTR，却会加速用户信任耗竭与长期流失；运维调度过度超卖资源可压低当期成本，却会推高未来级联故障风险。
 
-[RVI-SAC](https://arxiv.org/abs/2408.01972) 这类工作说明，现代 deep RL 正在重新关注 continuing tasks。原因很现实：很多业务长期指标不是 finite episode 成功率，而是长期平均效用。
+在算法层面，[Zhang and Ross (2021)](https://arxiv.org/abs/2106.07329) 指出折扣设定下的策略改进下界无法直接平移至平均奖励设定，并据此推导出面向持续性任务的平均奖励置信域策略优化（ATRPO/APO）；[Jin et al. (2024)](https://proceedings.mlr.press/v238/jin24b.html) 建立了更具可操作性的平均奖励 Q-learning 理论框架；[RVI-SAC](https://arxiv.org/abs/2408.01972) 则将相对价值迭代（Relative Value Iteration）与最大熵强化学习相结合，推动平均奖励离策略深度强化学习走向实用。在工程落地中，优化持续性长期收益不仅需要替换 Bellman 更新算子，还必须配套建设跨周期的离策略评估（OPE）、马尔可夫链混合时间（mixing time）监控、长期护栏指标（guardrail metrics）以及渐进式安全发布机制，使长期收益优化上升为完整的决策系统治理工程。
 
-所以，如果“长期收益”指长期用户价值或长期系统效用，就不能只套 sparse terminal reward 的工具箱。需要额外考虑 off-policy evaluation、stationarity、mixing、safe policy improvement 和 delayed business metrics。
+## 10. 统一技术图谱、前沿趋势与工程选型指南
 
-discounted objective 和 average-reward objective 的差别可以用一个简单例子说明。如果一个策略前 100 步收益很高，但之后导致系统进入低收益稳态；另一个策略前期收益较低，但长期稳态更好。短 horizon 或较小 $\gamma$ 的 discounted return 可能偏好前者，而 average reward 会偏好后者。
+### 10.1 十条技术路线对照与模块化架构组合
 
-在业务系统中，这类差异很常见：推荐系统中过度点击诱导可能短期提升 CTR，却长期降低留存；运维调度中过度压榨资源可能短期降低成本，却提高未来故障率；agent 自动化中过度激进的操作可能快速完成当前任务，却积累不可见风险。
+将上述十条技术路线置于同一坐标系下，可以清晰看到各方向的职责边界与适用象限：
 
-continuing tasks 还要求更严格的评估协议。offline evaluation 不能只看单 episode return，需要估计策略改变后的长期分布；online A/B 不能只看短期指标，需要 guardrail metrics；策略更新不能只追求 expected return，还要控制 catastrophic side effects。换句话说，这里的“长期收益”已经从算法估计问题扩展成决策系统治理问题。
-
-## 12. 统一技术图谱
-
-下面这张表把主要路线压缩到同一视角。
-
-| 方向 | 代表论文 / 方法 | 解决的核心问题 | 主要局限 | 适合场景 |
+| 技术路线 | 代表工作 | 解决的核心瓶颈 | 主要局限与代价 | 典型适用场景 |
 | --- | --- | --- | --- | --- |
-| 多步 TD / GAE | TD($\lambda$), GAE, Retrace, V-trace, IMPALA | value propagation, bias-variance | 长 horizon 仍慢，探索无帮助 | actor-critic 基础训练 |
-| 显式 credit assignment | RUDDER, TVT, Synthetic Returns, COCOA, HCAPO | 把远期 reward 分给关键动作 | 贡献识别难，依赖模型/记忆/反事实估计 | delayed reward, LLM agent |
-| 稀疏奖励探索 | HER, Go-Explore, RND, ICM, Skew-Fit, DIAYN, DISCOVER | 找到成功轨迹或有用中间状态 | 不直接解决 reward 分配 | hard exploration, GCRL |
-| HRL / subgoal | Options, Option-Critic, FuN, HIRO, Guider, RD-HRL, STO-RL | 缩短有效 horizon | 子目标质量和训练稳定性 | 结构化任务、机器人、offline HRL |
-| Action chunking | Q-chunking, AC3, T-SAC, ACSAC, AQC, MAC | 时间抽象、coherent exploration、chunk-level backup | chunk size、open-loop 反应性 | manipulation, offline-to-online |
-| World model | DreamerV3, TD-MPC2, MAC | 样本效率、短程规划 | compounding error, OOD exploitation | 连续控制、数据昂贵任务 |
-| Offline / off2on RL | D4RL, CQL, IQL, TD3+BC, AWAC, OGBench | 利用历史数据，降低探索风险 | 数据覆盖不足、分布偏移 | 机器人、推荐、企业 agent |
-| LLM Agent RL | LOOP, WebRL, AgentGym-RL, Agent Lightning | 多轮交互、工具调用、稀疏成功信号 | reward/verifier、环境成本、安全性 | 网页、API、软件 agent |
-| Reward shaping / PRM | PBRS, preference RL, AgentPRM, SPA | 生成中间训练信号 | reward hacking、proxy 错配 | verifier 可用的任务 |
-| Average reward RL | ATRPO/APO, RVI-SAC, feasible Q-learning | continuing long-run objective | 理论和 deep RL 工程仍不成熟 | 长期业务指标、持续系统 |
+| 多步 TD / GAE | TD($\lambda$), GAE, Retrace, V-trace, IMPALA | 加速价值回传、平衡偏差与方差 | 按时间距离盲目衰减，长视野下仍嫌缓慢 | Actor-Critic 通用训练底座 |
+| 显式信用分配 | RUDDER, TVT, Synthetic Returns, COCOA, HCAPO | 跨时间步直接归因关键历史事件 | 归因模型易混入虚假相关，反事实估计复杂 | 严重延迟奖励、记忆型任务、多轮智能体 |
+| 稀疏探索与课程 | HER, Go-Explore, RND, Skew-Fit, DIAYN, DISCOVER | 从零获取包含正反馈的初始轨迹 | 仅解决样本生成，不直接负责精细归因 | 硬探索游戏、目标条件机械臂操作 |
+| 分层强化学习（HRL） | Options, Option-Critic, FuN, HIRO, Guider, STO-RL | 通过子目标或闭环技能缩短有效视野 | 高低层联合训练非平稳，强依赖子目标质量 | 具明显阶段结构的复杂控制与规划 |
+| 动作分块 | Q-Chunking, AC3, T-SAC, ACSAC, AQC, MAC | 轻量级时间抽象、连贯探索与块级备份 | 块内偏开环控制，长块降低突发反馈敏捷度 | 机器人连续操作、离线到在线微调 |
+| 世界模型与规划 | DreamerV3, TD-MPC2, MAC | 利用潜空间短程推演大幅提升样本效率 | 长程滚动存在复合误差，易遭规划器钻漏洞 | 真实采样昂贵的连续控制与视觉控制 |
+| 离线与离线到在线 | D4RL, CQL, IQL, TD3+BC, AWAC, OGBench | 利用历史先验规避冷启动探索风险 | 性能上限受制于数据集状态与序列覆盖度 | 工业机器人、推荐系统、企业级智能体 |
+| LLM Agent RL | LOOP, WebRL, AgentGym-RL, Agent Lightning | 多轮工具调用、软件交互与执行-训练解耦 | 环境交互延迟高、验证器构建难、安全要求严 | 网页导航、代码修复、API 编排智能体 |
+| 奖励塑形与 PRM | PBRS, RLHF, AgentPRM, SPA | 将终局稀疏监督转化为中间过程推进信号 | 非势函数塑形易改变最优策略并诱发奖励黑客 | 具备验证器或过程评估器的多步任务 |
+| 平均奖励 RL | ATRPO/APO, Feasible Q-Learning, RVI-SAC | 优化无终止边界系统的稳态长期平均效用 | 深度函数逼近下差分价值估计方差较大 | 长期留存优化、持续资源调度与控制 |
 
-这张表也说明，长期收益 RL 不是一条线性阶梯，不存在“先用 TD，再换 RUDDER，再换 HRL，再换 Agentic RL”的固定路线。更合理的理解是模块组合：
+长期收益强化学习的系统构建通常围绕六个正交工程维度进行模块化组合：
+- **数据供给机制**：纯在线探索 / 离线预训练 / 离线到在线微调 / 专家示范引导；
+- **时间与动作粒度**：底层原子动作 / 固定或自适应动作块 / 闭环选项与技能 / 高层子目标 / 工具与 API 调用；
+- **奖励与归因粒度**：回合终局奖励 / 势函数塑形 / 步骤级过程奖励（PRM） / 事后反事实与注意力归因；
+- **环境动力学利用**：无模型（Model-Free）直接优化 / 块级转移模型 / 短程潜空间 MPC 规划 + 终端价值自举；
+- **优化目标准则**：有限视野成败率 / 折扣累计回报 / 持续性任务稳态平均奖励；
+- **安全与验证护栏**：保守价值下界 / 容器沙箱与状态回滚 / 精确验证器锚定 / 离策略评估与线上护栏指标。
 
-```text
-数据来源：online / offline / offline-to-online / human demonstration
-动作粒度：primitive action / chunk / option / subgoal / tool call
-奖励粒度：terminal / step / segment / process / verifier
-环境模型：model-free / short-horizon model / latent planner
-目标形式：discounted episodic / finite-horizon success / average reward
-安全机制：conservative value / sandbox / rollback / guardrail / OPE
-```
+例如，一套生产级网页购物智能体通常会组合“离线示范预训练 + 礼貌在线微调”、“工具调用级动作粒度”、“终局结果验证器 + 过程奖励模型（AgentPRM）”、“无模型分组或留一法策略优化（如 LOOP/HCAPO）”、“有限视野任务成功率目标”以及“浏览器沙箱与写操作权限拦截”；而一套工业机器人精密装配系统则更倾向于采用“遥操作示范 + 离线到在线微调”、“自适应动作分块（AQC/ACSAC）+ 底层阻抗控制”、“稀疏成功标志 + 势函数接触引导”、“短程潜空间世界模型（TD-MPC2/MAC）”与“硬件力矩安全限幅”。
 
-真实系统往往需要在每一行选一个配置。例如，一个网页购物 agent 可能是 offline-to-online 数据来源、tool-call 动作粒度、verifier + process reward、model-free PPO、finite-horizon success objective，并带 sandbox 和权限控制；一个机器人装配系统可能是 demonstration + online fine-tuning、action chunk + low-level controller、sparse success + shaped contact reward、短程 world model、finite horizon objective，并带物理安全约束。
+### 10.2 前沿研究趋势与五大开放性难题
 
-## 13. 研究趋势
+纵观近两年的突破性进展，长期收益强化学习正在经历五项深刻的方法论演进：
 
-### 趋势一：从单步动作转向时间扩展动作
+1. **从原子动作优化全面转向时间扩展动作（Temporally Extended Actions）**：无论是经典 Options、分层子目标还是近期大放异彩的 Action Chunking，核心共识都是不再让高层策略在每个底层时间步重复决策。这四类时间抽象形态在闭环反馈能力与工程复杂度上各有取舍：
 
-Options、skills、subgoals、macro-actions、action chunks 都属于这个趋势。区别在于抽象对象不同：
-
-| 抽象 | 形式 | 闭环性 | 典型问题 |
+| 抽象形态 | 数学形式 | 块内闭环反馈能力 | 核心工程挑战 |
 | --- | --- | --- | --- |
-| Option | 内部策略 + 终止条件 | 强 | discovery 和 termination 难 |
-| Action chunk | 动作序列 $a_{t:t+K-1}$ | 弱到中等 | 固定 $K$ 与反应性 |
-| Subgoal | 高层状态目标 | 中等 | 可达性与 reward 一致性 |
-| Skill | 可复用行为 | 强 | 学习成本和组合性 |
+| Option（选项） | $(\mathcal{I}_o,\pi_o,\beta_o)$ | 强（内部闭环策略） | 自动发现语义选项与稳定训练终止条件极难 |
+| Skill（无监督技能） | $\pi(a\mid s,z)$ | 强（潜变量条件闭环） | 无奖励预训练的技能未必对齐下游任务流形 |
+| Subgoal（子目标） | $\pi_{\text{high}}(g\mid s),\pi_{\text{low}}(a\mid s,g)$ | 中（底层朝子目标闭环） | 子目标空间定义、动力学可达性与高低层非平稳性 |
+| Action Chunk（动作块） | $\pi(a_{t:t+K-1}\mid s_t)$ | 弱至中（块内开环，边界闭环） | 固定块长 $K$ 在高频接触阶段反应滞后，需自适应边界 |
 
-Action chunking 火起来，是因为它工程上更轻：不需要显式 option discovery，不需要 termination condition，也贴合 imitation/offline data 中的动作序列。
+Action Chunking 之所以在 2025–2026 年迅速成为主流，正是因为它省去了选项终止函数与子目标可达性校验的沉重包袱，天然契合扩散策略、流匹配策略与离线示范轨迹中的连贯动作块结构。
 
-### 趋势二：从 episode-level reward 转向 step/chunk/turn-level credit
+2. **从回合级粗粒度反馈转向步骤/块/轮次级精细信用分配**：RUDDER、Synthetic Returns、HCAPO、AgentPRM 与 SPA 共同印证了“仅靠终局单一标量奖励更新整条长轨迹”对样本的巨大浪费。传统控制任务正将信用分配下沉至状态-动作对或动作块，而多轮智能体则将归因粒度细化至每次工具调用、每个交互轮次乃至关键推理片段。
+3. **离线行为先验成为长时域训练的默认起点**：面对动辄数百步的稀疏任务，从零在线盲目探索已基本退出工业实践。由离线预训练提取行为分块先验、借助保守价值学习（CQL/IQL）筑牢分布内底线、再结合块级探索开展小规模在线改进，已成为高性价比的标准流水线。
+4. **世界模型放弃超长开环滚动，收敛于“短程模型规划 + 长期价值自举”**：DreamerV3、TD-MPC2 与 MAC 的成功表明，世界模型的优势在于表征压缩与局部多步推演；通过限制规划视野或改用块级单步跳跃，并将远期收益交由价值函数自举，能够有效规避复合建模误差。
+5. **大语言模型以双重身份深度融入长时域 RL**：一方面，**LLM 作为被训练的交互智能体（LLM as Agent）**，通过 LOOP、WebRL、AgentGym-RL 与 Agent Lightning 在有状态软件环境中直接优化多轮工具决策；另一方面，**LLM 作为结构先验与奖励协作者（LLM as Prior / Verifier）**，在 STO-RL、HCAPO 等工作中承担时序子目标拆解、事后反事实反思与过程奖励打分职责。明确区分这两种角色，有助于在工程中合理规划算力开销与验证边界。
 
-RUDDER、Synthetic Returns、HCAPO、AgentPRM、SPA 都体现了同一方向：终局成功/失败信号太粗，必须把 reward 或 advantage 分配到更细粒度。
+与此同时，该领域仍面临五个亟待突破的开放性难题：
+- **第一，长程时间信用分配缺乏统一的诊断与评测基准。** 现有工作各自在延迟奖励游戏、记忆回忆迷宫、机械臂长程操作、离线轨迹拼接或网页工具调用上验证算法，这些场景虽统称为“长时域”，但核心瓶颈迥异。正如 [Temporal Credit Assignment Survey](https://arxiv.org/abs/2312.01072) 所呼吁，学界亟需能够剥离探索干扰、定量测定“真实因果贡献识别精度”的标准化评测协议。
+- **第二，时间抽象的动态边界划分尚无通用最优解。** 固定动作块长在自由移动与精细接触之间的顾此失彼，推动了 ACSAC 与 AQC 等自适应分块研究；然而如何在高维部分可观测环境中，以最小算力代价实时感知动力学突变并无缝切换闭环控制频率，仍需更优雅的理论与架构支撑。
+- **第三，离线先验的“赋能”与“禁锢”难以两全。** 离线数据集赋予了长时域智能体宝贵的初始序列先验，却也将策略锁死在历史采集策略的动作流形附近。当在线环境出现分布偏移或需要拼接跨度极大的新技能组合时，如何既放开探索脚步又防止预训练表征灾难性遗忘，依然考验着离线到在线算法的平衡艺术。
+- **第四，长视野下的过程奖励黑客（Reward Hacking）极难根除。** 除严格满足裂项相消条件的势函数塑形（PBRS）外，绝大多数学习型过程奖励模型（PRM）与 LLM 裁判都存在代理偏差。决策链条越长，策略搜寻并放大奖励模型盲区的自由度就越高，亟需发展具备形式化保序保证与不确定性感知的过程监督机制。
+- **第五，LLM Agent RL 的训练成本控制与安全隔离机制尚处探索阶段。** 真实软件环境中的多轮滚动采样受限于网页加载、代码编译与外部 API 响应，吞吐量远低于传统张量物理模拟器；同时，带副作用的工具调用要求训练基础设施全面配备轻量级容器快照、事务级状态回滚与细粒度权限护栏。
 
-传统 RL 里这个粒度常是 state-action；机器人里可以是 chunk；LLM agent 里可以是 tool call、turn 或 reasoning segment。
+### 10.3 场景选型矩阵与递进式文献阅读路径
 
-### 趋势三：offline prior 成为长期收益 RL 的默认前提
+针对不同业务场景的核心矛盾，可参照以下选型矩阵确定技术突破口：
 
-长时域稀疏奖励任务从零在线探索太贵。因此 D4RL、OGBench、offline HRL、Q-chunking、AWAC、MAC 都强调历史数据、demonstration 或 behavior prior。
-
-未来更常见的模式可能是：
-
-```text
-offline pretraining
-+ conservative / in-distribution value learning
-+ temporal abstraction
-+ small-scale online improvement
-+ verifier / safety gate
-```
-
-### 趋势四：world model 不再追求无限长 rollout
-
-DreamerV3 和 TD-MPC2 表明 world model 是长期收益的重要路线，但稳定方法通常避免长程 open-loop prediction。更实用的是短程模型规划、latent dynamics、terminal value bootstrap 和 OOD action control。
-
-### 趋势五：LLM 进入两个位置
-
-LLM 在长期收益 RL 中有两种角色。
-
-第一，**LLM as agent**：LOOP、WebRL、AgentGym-RL、Agent Lightning 训练 LLM 直接进行多轮工具调用、网页操作、API 操作。
-
-第二，**LLM as prior / planner / reward helper**：STO-RL 用 LLM 生成 subgoal temporal order，AgentPRM/SPA 等方向用语言或 rollout 辅助过程奖励。
-
-这两种角色不能混为一谈。前者训练的是 agent 本身，后者把 LLM 当作结构先验或 reward helper。
-
-## 14. 仍未解决的问题
-
-**第一，长期 credit assignment 缺少统一评价协议。** 不同论文评估 delayed reward、memory、hard exploration、offline stitching、LLM tool use，它们都叫 long-horizon，但失败模式不同。Temporal Credit Assignment Survey 特别强调 credit 定义和诊断协议仍不统一。
-
-**第二，子目标和 chunk 边界难以自动确定。** 固定 chunk size 在自由空间运动中有效，但在接触丰富阶段会降低反应性。ACSAC 和 AQC 正是为了解决这个问题。HRL 中 option termination 和 subgoal boundary 也有同样困难。
-
-**第三，offline data 既是优势，也是偏差来源。** 离线数据提供探索先验，但也限制 policy 的可达行为。长时域任务中，不只是单步 action distribution 重要，action sequence distribution 也重要。
-
-**第四，process reward 容易引入错误目标。** PBRS 有 policy invariance 保证，但 learned PRM、LLM-generated reward、tool-call reward 不一定有。越长的 episode，agent 越可能利用 proxy 漏洞。
-
-**第五，LLM Agent RL 的成本和安全边界仍然早期。** 环境交互昂贵，工具调用可能有副作用，reward/verifier 可能不可靠，agent 训练系统需要 sandbox、rollback、observability 和权限控制。
-
-## 15. 场景选型建议
-
-如果任务是 **机器人长时域 sparse reward manipulation**，优先考虑 offline demonstrations、action chunking、offline-to-online RL、world model 或 HRL。Q-chunking、AC3、AQC、MAC 这类方法更贴近工程现实。
-
-如果任务是 **goal-conditioned sparse reward**，HER、curriculum、Skew-Fit、DISCOVER 和 offline GCRL benchmark 是更合适的阅读入口。核心问题通常是目标覆盖和可达性。
-
-如果任务是 **需要记忆的 delayed reward**，RUDDER、TVT、Synthetic Returns、COCOA 更直接。它们关注的是关键事件识别，而不是单纯探索。
-
-如果任务是 **网页、API、代码、企业流程 agent**，要把传统 long-horizon RL 映射到 agent 轨迹：turn-level credit、tool-call reward、verifier、process reward、环境 sandbox、rollout 成本和安全边界都要一起设计。LOOP、WebRL、AgentGym-RL、HCAPO、Agent Lightning、AgentPRM 是更相关的路线。
-
-如果任务是 **长期业务指标**，不要默认使用 finite-horizon discounted return。average reward、off-policy evaluation、safe policy improvement 和 delayed metric attribution 可能更重要。
-
-更落地的架构选择可以按下面思路做。
-
-| 场景信号 | 首选组合 | 不建议优先做 |
+| 业务与任务场景特征 | 首选技术组合 | 应当规避的误区 |
 | --- | --- | --- |
-| 成功样本极少但可模拟 | curriculum + exploration + hindsight relabeling | 直接上复杂 critic |
-| 有大量专家轨迹 | behavior cloning + offline RL + action chunking | 从零 online RL |
-| 环境交互昂贵但可建模 | latent world model + short MPC + value bootstrap | 超长 open-loop rollout |
-| 工具调用 agent 有 verifier | PPO/GRPO 类训练 + process reward + credit assignment trace | 只用最终成功率更新整段文本 |
-| 任务强安全约束 | offline conservative learning + guarded online improvement | 无约束探索 |
-| 长期业务指标延迟数天 | OPE + causal metric attribution + safe policy rollout | 把业务指标硬塞进短 episode reward |
+| **机器人长时域稀疏奖励操作**（具备少量遥操作示范） | 离线行为分块预训练 + Q-Chunking / AQC / AC3 在线微调 + 短程世界模型（MAC） | 从零开展单步高斯噪声在线探索，或使用过长固定开环块处理精细接触 |
+| **目标条件稀疏奖励任务**（状态与目标空间结构清晰） | 事后目标重标注（HER）+ 偏置/定向目标课程（Skew-Fit / DISCOVER） | 在未采到任何成功样本前耗费算力调整复杂 Critic 结构 |
+| **强部分可观测与长延迟回忆任务**（早期关键事件决定终局） | 记忆增强架构 + 显式信用分配（RUDDER / TVT / Synthetic Returns / COCOA） | 仅依赖单步马尔可夫状态与浅层 TD($\lambda$) 期望信号自然回传 |
+| **网页、代码与企业软件多轮智能体**（工具调用 + 终局验证器） | 执行-训练解耦框架（Agent Lightning / AgentGym-RL）+ 事后/过程归因（HCAPO / AgentPRM / SPA）+ 沙箱回滚 | 仅保存最终回复文本与二元成败分、忽略中间工具返回与轮次归因 |
+| **环境交互极度昂贵或具高安全风险**（工业控制、医疗、金融） | 保守离线强化学习（CQL / IQL）+ 离线分层/块级规划（RD-HRL / MAC）+ 护栏内微调 | 未经离线分布内锚定与安全验证即直接部署在线探索策略 |
+| **无自然终点的持续性业务系统**（推荐留存、长周期调度） | 平均奖励准则（ATRPO / RVI-SAC）+ 延迟指标因果归因 + 离策略评估（OPE）与线上护栏 | 将数天延迟的业务指标硬塞入短视野回合奖励，或仅监控短期瞬态点击率 |
 
-## 16. 推荐阅读顺序
+对于希望系统深入该领域的研究者与工程师，建议按以下六个递进层次开展文献阅读：
+1. **第一层（价值传播与优势估计基石）**：精读 [GAE](https://arxiv.org/abs/1506.02438)、[Retrace($\lambda$)](https://arxiv.org/abs/1606.02647)、[IMPALA](https://arxiv.org/abs/1802.01561)、[PPO](https://arxiv.org/abs/1707.06347) 以及综述 [A Survey of Temporal Credit Assignment in Deep RL](https://arxiv.org/abs/2312.01072)，吃透多步自举、偏差-方差权衡与离策略重要性采样修正。
+2. **第二层（显式时间信用分配）**：依次研读 [RUDDER](https://arxiv.org/abs/1806.07857)、[TVT](https://arxiv.org/abs/1810.06721)、[Synthetic Returns](https://arxiv.org/abs/2102.12425) 与 [COCOA](https://proceedings.neurips.cc/paper_files/paper/2023/file/d8bd445c2abe1343cce0e14b361b2fb3-Paper-Conference.pdf)，理解如何通过序列分解、记忆注意力与反事实推断跨越数百步无关轨迹精准归因。
+3. **第三层（稀疏探索与目标课程）**：阅读 [HER](https://arxiv.org/abs/1707.01495)、[Go-Explore](https://arxiv.org/abs/1901.10995)、[RND](https://arxiv.org/abs/1810.12894)、[Skew-Fit](https://arxiv.org/abs/1903.03698)、[DIAYN](https://arxiv.org/abs/1802.06070)、[ACL Survey](https://arxiv.org/abs/2003.04664) 与 [DISCOVER](https://arxiv.org/abs/2505.19850)，掌握如何从零破冰获取高价值初始轨迹。
+4. **第四层（时间抽象与分层强化学习）**：从经典的 [Options 框架](https://www-anw.cs.umass.edu/~barto/courses/cs687/Sutton-Precup-Singh-AIJ99.pdf)、[Option-Critic](https://arxiv.org/abs/1609.05140)、[FeUdal Networks](https://arxiv.org/abs/1703.01161)、[HIRO](https://arxiv.org/abs/1805.08296) 读到近期的离线与 LLM 引导分层工作 [Guider](https://www.ijcai.org/proceedings/2023/0469.pdf)、[RD-HRL](https://openreview.net/forum?id=5E5sd3TWGD) 与 [STO-RL](https://arxiv.org/abs/2601.08107)，配合 [PBRS](https://people.eecs.berkeley.edu/~russell/papers/icml99-shaping.pdf) 理解子目标分解与保序奖励塑形。
+5. **第五层（动作分块、世界模型与离线到在线合流）**：重点研读 [D4RL](https://arxiv.org/abs/2004.07219)、[CQL](https://arxiv.org/abs/2006.04779)、[IQL](https://arxiv.org/abs/2110.06169)、[OGBench](https://arxiv.org/abs/2410.20092)、[DreamerV3](https://arxiv.org/abs/2301.04104)、[TD-MPC2](https://arxiv.org/abs/2310.16828) 以及 2025–2026 年的动作分块代表作 [Q-Chunking](https://arxiv.org/abs/2507.07969)、[AC3](https://arxiv.org/abs/2508.11143)、[T-SAC](https://arxiv.org/abs/2503.03660)、[ACSAC](https://arxiv.org/abs/2605.11009)、[AQC](https://arxiv.org/abs/2605.05544) 与 [MAC](https://openreview.net/forum?id=WXGb9unEHo)。
+6. **第六层（Agentic RL 与持续性任务）**：跟进 [LOOP](https://arxiv.org/abs/2502.01600)、[WebRL](https://arxiv.org/abs/2411.02337)、[AgentGym-RL](https://openreview.net/forum?id=ZgCCDwcGwn)、[Agent Lightning](https://arxiv.org/abs/2508.03680)、[HCAPO](https://arxiv.org/abs/2603.08754)、[AgentPRM](https://arxiv.org/abs/2502.10325)、[SPA](https://arxiv.org/abs/2505.20732)、[Agentic Credit Assignment Survey](https://arxiv.org/abs/2604.09459) 以及平均奖励代表工作 [ATRPO](https://arxiv.org/abs/2106.07329) 与 [RVI-SAC](https://arxiv.org/abs/2408.01972)。
 
-第一层先读基础：GAE、Retrace、IMPALA/V-trace、PPO，以及 Temporal Credit Assignment Survey。目标是理解 value propagation、advantage estimation 和 off-policy correction。
+### 10.4 结语
 
-第二层读显式 credit assignment：RUDDER、TVT、Synthetic Returns、COCOA。目标是理解 reward redistribution、memory-based credit 和 counterfactual contribution。
+回顾长期收益强化学习的演进历程，领域范式已经完成了从早期“单步原子动作 + 回合级稀疏奖励 + 一阶 TD 逐步备份”，向“多尺度时间抽象 + 多粒度显式信用分配 + 离线行为先验 + 定向课程探索 + 短程世界模型规划 + 验证器与过程奖励协同 + 安全在线微调”的系统性跃迁。前沿研究的焦点早已超越单一 Bellman 备份公式的局部修补，全面转向对轨迹结构、动作粒度、奖励拓扑与数据闭环的联合重构。
 
-第三层读探索和目标条件 RL：HER、Go-Explore、RND/ICM、Skew-Fit、DIAYN、Automatic Curriculum Learning、DISCOVER。目标是理解成功轨迹如何产生。
-
-第四层读时间抽象：Options、Option-Critic、FeUdal Networks、HIRO、Guider、RD-HRL、STO-RL。目标是理解 subgoal、skill、option 和 offline HRL 的结构性取舍。
-
-第五层读 2025-2026 前沿：Q-chunking、AC3、T-SAC、ACSAC、AQC、MAC、DreamerV3、TD-MPC2。目标是理解 action chunking、world model 和 offline-to-online 如何合流。
-
-第六层读 Agentic RL：LOOP、WebRL、AgentGym-RL、HCAPO、Agent Lightning、AgentPRM、SPA。目标是理解长时域 credit assignment 如何进入 LLM agent、tool use 和多轮交互。
-
-## 17. 结论
-
-长期收益强化学习的进展，不是某一个算法突然解决了所有问题。更准确的图景是，领域共识正在从：
-
-```text
-单步动作
-+ episode-level sparse reward
-+ 1-step TD
-```
-
-转向：
-
-```text
-时间抽象
-+ 多粒度 credit assignment
-+ offline prior
-+ curriculum exploration
-+ world model / planning
-+ process reward / verifier
-+ safe online improvement
-```
-
-也就是说，长期收益 RL 的前沿已经从“如何写一个更好的 Bellman backup”扩展成“如何重新组织轨迹、奖励、动作粒度、数据来源和训练系统”。
-
-对于传统机器人和控制任务，当前最活跃的是 offline-to-online、action chunking 和 world model 的结合。对于 LLM agent 和多轮软件交互任务，当前最活跃的是 process reward、hindsight credit assignment 和 agent RL framework。对于真实长期业务指标，不能只看 discounted episodic return，还要考虑 average reward、off-policy evaluation、safe online improvement 和 reward hacking 控制。
-
-最终，长期收益 RL 不是一个单点算法栈，而是一套关于时间的建模方式：把长未来拆成可学习的信号，把粗粒度终局反馈拆成可归因的中间贡献，把单步动作组织成可复用的时间结构，再把离线数据、在线探索、验证器和安全约束放进同一个训练闭环。
+在物理机器人与连续控制领域，离线到在线微调、自适应动作分块与潜空间短程世界模型的深度耦合正在重塑长程操作的样本效率天花板；在多轮软件交互与大语言模型智能体领域，执行与训练解耦框架、事后反事实归因与防黑客过程奖励模型正将强化学习推向复杂工具链编排；而在无自然终点的工业决策系统中，平均奖励准则、离策略评估与安全发布护栏则为稳态长期价值提供了严谨的治理框架。归根结底，长期收益强化学习的本质是一套关于时间结构的工程与数学方法论——它将漫长混沌的未来拆解为可验证的阶段信号，将粗粒度的终局成败还原为可归因的步骤贡献，将底层原子动作封装为可复用的时序积木，并在离线先验、在线探索与安全边界的闭环交织中实现持续进化。
 
 ## 参考文献
 

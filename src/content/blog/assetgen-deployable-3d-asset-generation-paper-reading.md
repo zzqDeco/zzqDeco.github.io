@@ -14,178 +14,82 @@ tags:
 draft: false
 ---
 
-AssetGen 这篇论文真正值得精读的地方，不是它又做了一个 image-to-3D 模型，而是它把 3D 生成问题的评价标准往工程交付方向推了一步。
+将单图生成的三维模型直接送入实时游戏引擎、移动端 AR/VR 或智能体创作闭环（agentic asset creation loop）时，除了多视角渲染图的视觉保真度外，更关键的落地瓶颈在于严苛的工业级资产交付规范：网格必须严格受控于多边形面数预算（polygon budget），必须具备展开良好的 UV 坐标与纹理图集（texture atlas），高模几何细节需通过切线空间法线烘焙（normal baking）转移至低模表面，且端到端生成延迟必须压缩至数十秒以内以维持交互连续性。
 
-过去几年 image-to-3D、text-to-3D、multi-view-to-3D 的论文很多，常见目标是生成更高分辨率的几何、更漂亮的渲染图、更高的 CLIP 分数或更好的多视角一致性。但如果你要把生成结果放进游戏、AR/VR、移动端实时渲染、创作者工具或 agentic asset creation loop，单纯“看起来像”还不够。一个可部署 3D 资产至少要满足几个更朴素但更硬的条件：
+Meta Reality Labs 团队在 **AssetGen: Deployable 3D Asset Generation at Interactive Speed**（[arXiv:2605.26137v1](https://arxiv.org/abs/2605.26137)）中，将单图转 3D 任务重新定义为 **交互速度下的可部署三维资产生成**。该系统将两阶段几何扩散模型（MeshGen）、GPU 并行几何后处理（减面、消隐、UV 展开、法线烘焙）、多视角纹理流匹配模型（TextureGen）以及模型蒸馏与流水线调度深度耦合：默认配置在 H100 部署环境下约 30 秒即可交付一个带烘焙法线贴图与彩色纹理图集的低面数网格，而面向快速预览的 **AssetGen Flash** 变体更是将端到端耗时进一步压低至约 14 秒。由于官方尚未公开源码仓库与模型权重（文中引用的 CuMesh、xatlas、DRTK、FlashAttention-3 等均为底层依赖组件），本文将基于论文全文与图表数据，系统拆解其算法架构、系统延迟优化阶梯与工程复现要素。
 
-- mesh 不能无限高面数，要有可控 polygon budget。
-- 要有 UV coordinates 和 texture atlas，否则很难进入普通实时引擎管线。
-- 高模细节需要通过 normal baking 转移到低模上。
-- 纹理要能稳定贴回 UV atlas，而不是只在几张渲染图里看起来合理。
-- 整个流程不能动辄几分钟，否则交互式创作和 agent 循环会断掉。
+## 1. 问题背景与可部署三维资产契约
 
-AssetGen 的核心贡献就在这里：它把 image-to-3D 重新定义为 **deployable 3D asset generation at interactive speed**。论文声称默认 AssetGen 在 H100 部署上约 30 秒输出一个 simplified、UV-unwrapped、normal-baked textured mesh；AssetGen Flash 则以约 14 秒生成 preview 级结果。这个目标把模型、几何处理、纹理融合和系统优化绑在一起，而不是只优化某一个 diffusion block。
-
-本文精读对象是 arXiv `2605.26137v1`：**AssetGen: Deployable 3D Asset Generation at Interactive Speed**。用户原始链接写成了 `https://arxiv.org/pdf/2605/26137`，规范 PDF 地址应为 `https://arxiv.org/pdf/2605.26137`。arXiv 页面显示论文提交于 2026-05-22，subjects 为 `cs.GR`、`cs.AI`、`cs.CV`，DOI 为 `10.48550/arXiv.2605.26137`。论文 PDF 共 30 页，license 显示为 arXiv perpetual non-exclusive license。
-
-实施时我检查了 arXiv 页面、HTML 版本和 TeX source。没有发现 AssetGen 官方 GitHub、project page、checkpoint 或 demo 链接；源文件中引用了 CuMesh、xatlas、DRTK、FlashAttention-3、PyTorch compile 等依赖或相关组件，但它们不是 AssetGen 完整开源实现。因此本文只做论文级精读、图表解读和工程复现清单，不声称完成代码复现。
-
-## 1. 一句话贡献
-
-AssetGen 的一句话贡献是：
-
-> 从单张参考图生成一个能直接进入实时渲染工作流的显式 3D asset，并把几何生成、几何后处理、纹理生成、UV 回投、法线烘焙和系统延迟一起优化。
-
-这句话里有三个关键词。
-
-第一是 **asset**。论文关心的不是 NeRF、3DGS 或多视角图片本身，而是显式 mesh、UV、normal map、texture atlas 组成的可导出资产。
-
-第二是 **deployable**。结果要控制面数、支持移动端和实时渲染，不是只在论文渲染器里展示。
-
-第三是 **interactive speed**。30 秒和 14 秒不是普通 benchmark 小数点，而是论文想服务的产品体验：用户或 agent 可以快速试错、评估、修改、再生成。
-
-## 2. 论文信息与版本边界
-
-论文基本信息如下。
+### 1.1 论文信息与研究定位
 
 | 项目 | 内容 |
 | --- | --- |
-| Title | AssetGen: Deployable 3D Asset Generation at Interactive Speed |
-| arXiv | `2605.26137v1` |
-| Date | 2026-05-22 |
-| Authors | Dilin Wang, Xiaoyu Xiang, Kihyuk Sohn, Tom Monnier, Yu-Ying Yeh, Thu Nguyen-Phuoc, Jiawen Zhang, Yuchen Fan, Antoine Toisoul, Hyunyoung Jung, Prithviraj Dhar, Michael Bunnell, Nikolaos Sarafianos, Chuhang Zou, Roman Shapovalov, Andrea Vedaldi, Rakesh Ranjan |
-| Institution | Reality Labs, Meta |
-| PDF | 30 pages |
-| DOI | `10.48550/arXiv.2605.26137` |
-| License | arXiv perpetual non-exclusive license |
-| Code status | 未发现官方代码、模型权重或项目页 |
+| 论文标题 | AssetGen: Deployable 3D Asset Generation at Interactive Speed |
+| 预印本信息 | [arXiv:2605.26137v1](https://arxiv.org/abs/2605.26137)（2026-05-22 提交，共 30 页，DOI: `10.48550/arXiv.2605.26137`） |
+| 作者团队 | Dilin Wang, Xiaoyu Xiang, Kihyuk Sohn, Tom Monnier, Yu-Ying Yeh, Thu Nguyen-Phuoc, Jiawen Zhang, Yuchen Fan, Antoine Toisoul, Hyunyoung Jung, Prithviraj Dhar, Michael Bunnell, Nikolaos Sarafianos, Chuhang Zou, Roman Shapovalov, Andrea Vedaldi, Rakesh Ranjan |
+| 研究机构 | Reality Labs, Meta |
+| 开源状态 | 论文级技术报告（官方代码、权重与在线 Demo 暂未开放） |
 
-论文的摘要已经把系统定位讲得很清楚：给一张参考图，默认配置在约 30 秒生成高质量 mesh、baked normals、color texture 和 controlled polygon budget；Flash 变体进一步降到约 14 秒，服务于更快的交互和 agentic creation loop。
+理解 AssetGen 的定位需要明确其核心工程取舍：一方面，系统输出的是面向移动端和实时光栅化管线优化的色彩纹理贴图（color texture atlas）与切线空间法线贴图（normal-baked mesh），与 2024 年主打 PBR 材质分解与重光照的 Meta 3D AssetGen 侧重点不同；另一方面，文中报告的 30 秒（默认模式）与 14 秒（Flash 模式）均系基于服务端 H100 多卡流水线与全套 GPU 算子优化的系统实测延迟。
 
-这里要先避免两个误读。
+### 1.2 从研究演示到可部署资产的鸿沟
 
-第一，30 秒和 14 秒是论文报告的 H100 部署结果，不是任何普通 GPU 或本地机器都能达到的延迟。
+在学术评测中，高分辨率网格、神经隐式场或 3D Gaussian Splatting（3DGS）常以渲染视角的图像指标论高下；然而实时图形管线对“可部署资产（deployable asset）”有着明确的工程契约：
 
-第二，AssetGen 输出的是 color texture 和 normal-baked mesh。它和强调 PBR material decomposition 的 Meta 3D AssetGen 2024 不是同一个侧重点。本文会在后面单独对比。
-
-## 3. 为什么 3D 生成不等于可部署资产
-
-一个生成模型如果输出了高分辨率 mesh，并不意味着它已经可部署。游戏和移动端实时渲染管线一般关心：
-
-| 维度 | 研究 demo 常见做法 | 可部署资产需要 |
+| 评估维度 | 学术研究 Demo 常见形态 | 实时引擎可部署资产要求 |
 | --- | --- | --- |
-| 几何 | 高面数 mesh、implicit field、3DGS、NeRF | 控制 polygon budget，能实时渲染 |
-| 纹理 | 多视角渲染看起来好 | UV atlas，稳定贴图 |
-| 细节 | 高模几何直接保留 | normal baking 到低模 |
-| 拓扑 | marching cubes 任意三角网格 | 尽量轻量、干净、可导出 |
-| 延迟 | 分钟级也可接受 | 交互式工作流希望几十秒内 |
-| 后处理 | 手工或离线工具完成 | pipeline 内自动完成 |
-
-AssetGen 的系统设计就是围绕这个表展开的。MeshGen 负责生成高质量几何先验；geometry processing 把它变成低面数、UV、normal-baked mesh；TextureGen 负责把 reference appearance 贴回 UV atlas；latency optimization 确保这些步骤不是串行堆加到几分钟。
-
-## 4. Fig. 1：论文真正的目标对象
+| 几何预算 | 百万面级 Marching Cubes 网格、隐式场、3DGS | 严格受控的三角面预算（如 5K–25K 面），支持移动端实时光栅化 |
+| 纹理载体 | 多视角独立渲染图或高密顶点色（vertex color） | 统一的参数化 UV 图集（UV atlas），跨视角无缝贴合 |
+| 高频细节 | 靠无限加密顶点硬撑表面几何起伏 | 低模承载基础轮廓，高频几何细节通过法线贴图烘焙还原 |
+| 拓扑洁净度 | 含大量不可见内腔面、自交面与碎片网格 | 剔除隐藏内表面，网格轻量干净，可直接导出为标准资产格式 |
+| 生成延迟 | 数分钟乃至数十分钟的逐样本优化或串行后处理 | 30 秒以内的交互级响应，支撑创作者快速试错与智能体闭环 |
 
 ![AssetGen teaser](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig01-teaser.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 1, arXiv perpetual non-exclusive license.*
 
-Fig. 1 展示了论文的输出目标：不是一组新视角渲染图，而是一组可作为资产查看的对象。caption 里几个词很关键：high-fidelity、UV-unwrapped、normal-baked、textured 3D meshes、real-time rendering、approximately 30 seconds on H100 GPUs。
-
-这张图解决的问题是“AssetGen 到底交付什么”。很多 image-to-3D 论文在 teaser 中展示的是渲染质量，AssetGen 则强调 asset contract：
+Fig. 1 直观展示了 AssetGen 交付的最终产物形态：从单张参考图像出发，系统按以下资产契约输出完整的显式三维对象：
 
 ```text
-input image
-  -> simplified mesh
-  -> UV coordinates
-  -> baked normal map
-  -> color texture atlas
-  -> exported textured mesh
+Input Image --> Simplified Mesh + UV Coordinates + Baked Normal Map + Color Texture Atlas --> Exported Asset
 ```
-
-这个 contract 比“生成一个 3D 表示”更接近创作者工具和实时引擎的接口。
-
-需要注意的是，teaser 图不能证明所有类别都稳定，也不能证明拓扑适合 rigging。论文自己的 limitation 也承认，marching-cubes extraction 产生的是任意三角网格，简化流程能减面并保持表面相似，但不保证 artist-friendly edge flow、skeleton rigging 或 animation-ready deformation。
-
-## 5. Fig. 2：系统总览与两种运行模式
 
 ![AssetGen system overview](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig02-system-overview.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 2, arXiv perpetual non-exclusive license.*
 
-Fig. 2 是全文最重要的流程图。它把 AssetGen 拆成三大阶段：
+Fig. 2 进一步给出了整套系统的三阶段流水线架构：**MeshGen** 负责从单张输入图像生成稠密、高细节的三维几何；**Geometry Processing** 在 GPU 上完成网格减面、隐藏面剔除、UV 展开与切线空间法线烘焙；**TextureGen** 则生成多视角外观并反投影融合至 UV 图集，经三维感知修补（inpainting）后导出成品网格。围绕这一管线，系统提供了两种运行档位（operating points）：
 
-1. **MeshGen**：从单张输入图生成密集、高细节几何。
-2. **Geometry processing**：mesh simplification、hidden-face removal、UV unwrapping、normal baking。
-3. **TextureGen**：生成多视角纹理，回投到 UV atlas，做 texture inpainting，最后导出 textured mesh。
-
-默认 AssetGen 和 AssetGen Flash 的差别也在这张图里：
-
-| 模式 | 目标 | 关键差异 |
+| 运行模式 | 设计目标 | 核心配置差异 |
 | --- | --- | --- |
-| AssetGen | 质量优先 | 两阶段 MeshGen，TextureGen 1024px，inference-time CFG，per-view super-resolution，2K texture atlas |
-| AssetGen Flash | 延迟优先 | 跳过 MeshGen refinement，TextureGen 768px，CFG distilled conditional-only model，省略 super-resolution，1K atlas |
+| **AssetGen（默认）** | 资产质量优先（~30s） | 两阶段 MeshGen（Coarse + Refine），TextureGen 1024px 采样，推理期双分支 CFG，逐视角超分辨率，导出 2K 纹理图集 |
+| **AssetGen Flash** | 交互延迟优先（~14s） | 跳过 MeshGen 精炼阶段，TextureGen 降为 768px，采用 CFG 蒸馏的单分支条件模型，省去超分模块，导出 1K 纹理图集 |
 
-这说明 AssetGen 不是单模型，而是 pipeline productization。Flash 不是另一篇论文意义上的“小模型 baseline”，而是同一系统里的更快 operating point。
-
-## 6. 数据过滤：可部署质量从数据开始
+## 2. 数据清洗与 Flood-Fill 符号距离场构建
 
 ![AssetGen data filtering](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig03-data-filtering.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 3, arXiv perpetual non-exclusive license.*
 
-Fig. 3 展示了 semantic filtering 移除的资产类型：背景几何、3D scans、错误朝向、低质量 mesh。
-
-这部分容易被读者跳过，但对可部署资产非常关键。训练数据如果混入大量背景、扫描残缺、姿态不一致或低质量 mesh，模型会学到错误先验。对于 image-to-3D 来说，这类错误会表现为：
-
-- 生成对象带上地面、墙面或摄影背景。
-- 正面/背面方向混乱，导致 reference fidelity 指标不稳定。
-- mesh 拓扑破碎，后续简化、UV、normal baking 都变难。
-- TextureGen 学到不一致的多视角纹理。
-
-论文从 in-house licensed datasets 开始，做 duplicate removal、metadata/vertex count filtering、semantic filtering 和 geometric filtering。这提醒我们：AssetGen 的质量不是只靠大模型，更靠资产生产链路的数据清洗。
-
-## 7. Flood-fill sign estimation：SDF 训练的地基
+可部署资产的稳定性首先取决于训练数据的洁净度。如 Fig. 3 所示，原始三维资产库中普遍混杂着环境背景几何（地面、底座、墙面）、残缺的三维扫描件、朝向错乱的模型以及拓扑破碎的低质网格。若不加清洗直接训练，生成模型极易将阴影底座误认为物体本体、混淆正背面朝向或生成难以减面和展开 UV 的破碎表面。为此，AssetGen 对内部授权数据集依次执行了去重、元数据与顶点数过滤、基于视觉语言模型（VLM）的语义过滤以及几何质量过滤。
 
 ![Flood-fill sign estimation](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig04-flood-fill-sign-estimation.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 4, arXiv perpetual non-exclusive license.*
 
-MeshGen 依赖 SDF 表示。SDF 的关键是空间点到表面的 signed distance：点在物体外还是物体内。如果 mesh 是 watertight 且 winding 正确，inside/outside 可以相对稳定地判断。但真实 3D 资产经常有开口、破洞、法线方向混乱和非流形结构。
+在将清洗后的网格转化为符号距离场（SDF）训练真值时，由于真实三维资产常带有细小开口、破洞、非流形边或法线绕序（winding number）不一致，传统的光线投射或绕数法极易在判断内外符号（inside/outside sign）时失效。Fig. 4 展示了论文采用的 **基于泛洪填充的体素符号估计（Flood-fill-based Voxel Sign Estimation）**：算法首先在体素网格上标记紧邻物体表面的窄带（surface band），接着对该表面窄带执行形态学膨胀（dilation）以封闭微小的几何缝隙防止泛洪渗漏，随后从体素网格边界向内执行连通域泛洪填充（flood fill）以精确标定外部自由空间，最终经侵蚀还原得到鲁棒的内外符号分区，为 MeshGen 的 SDF 学习奠定可靠监督。
 
-Fig. 4 展示了论文的 flood-fill-based voxel sign estimation。直觉上：
+## 3. MeshGen：两阶段 VecSet 扩散与渐进蒸馏
 
-1. 在体素网格上标记靠近表面的区域。
-2. 从网格边界 flood fill，找到外部区域。
-3. 对表面 band 做 dilation，封住小缝隙，避免 flood fill 漏进内部。
-4. 最终得到 inside/outside 分区，给 SDF 训练提供符号。
+### 3.1 VecSet 潜空间表示与 2.3B DiT 架构
 
-这个步骤不是生成模型本身，但它决定了 MeshGen 训练数据是否可靠。很多 3D 生成论文把数据预处理一笔带过，AssetGen 把它放进正文，是因为它服务的是 asset pipeline，而不是只展示少量最佳样例。
-
-## 8. MeshGen：从参考图到密集几何
-
-MeshGen 的输入是一张参考图，输出是高细节 3D 几何。它不是直接输出最终低模，而是先生成 dense shape，再交给后处理压缩成可部署 mesh。
-
-论文采用 VecSet 表示。VecSet VAE 把输入 shape 编码成一组 latent tokens：
+MeshGen 的任务是从单张参考图生成高细节稠密几何（dense shape），作为后续减面与法线烘焙的高模先验。论文采用基于点集向量的 **VecSet** 表示：先通过 VecSet VAE 将三维形状编码为固定长度的无序潜变量序列 $\mathbf{z}\in\mathbb{R}^{N\times D}$，由解码器将 $\mathbf{z}$ 映射为可连续查询的 SDF 函数；随后在 VecSet 潜空间上训练条件扩散模型。设干净潜变量为 $\mathbf{z}_0$，高斯噪声为 $\epsilon$，加噪过程写为：
 
 $$
-\mathbf{z}\in\mathbb{R}^{N\times D}
+\mathbf{z}_t=\alpha_t\mathbf{z}_0+\sigma_t\epsilon.
 $$
 
-decoder 则把 $\mathbf{z}$ 映射成可查询的 SDF function。生成时，MeshGen 在 VecSet latent space 上做 conditional diffusion。
-
-给定 clean latent $\mathbf{z}_0$ 和噪声 $\epsilon$，noisy latent 写成：
-
-$$
-\mathbf{z}_t=\alpha_t\mathbf{z}_0+\sigma_t\epsilon
-$$
-
-论文使用 v-prediction：
-
-$$
-\mathbf{v}_t=\alpha_t\epsilon-\sigma_t\mathbf{z}_0
-$$
-
-训练目标为：
+网络采用 $v$-prediction 参数化形式，目标速度定义为 $\mathbf{v}_t=\alpha_t\epsilon-\sigma_t\mathbf{z}_0$，对应的去噪扩散训练损失为：
 
 $$
 \mathcal{L}_{DM}
@@ -194,219 +98,93 @@ $$
 \left\|
 \phi_\theta(\mathbf{z}_t,t,\mathbf{c})-\mathbf{v}_t
 \right\|^2
-\right]
+\right],
 $$
 
-其中 $\mathbf{c}$ 是图像条件。论文使用 frozen DINOv2 ViT-G/14 with registers 编码输入图像，产生 patch tokens 作为 cross-attention 条件。
+其中图像条件 $\mathbf{c}$ 由冻结的 **DINOv2 ViT-G/14（with registers）** 提取局部 patch tokens 并通过交叉注意力注入。MeshGen 的主干网络遵循 DiT 架构（自注意力处理三维潜 token、交叉注意力注入 DINOv2 视觉特征、AdaLN 进行时间步调制、前馈层采用 SwiGLU），其第一阶段（Coarse Stage）核心规格如下：
 
-## 9. MeshGen 架构：2.3B DiT 与 VecSet tokens
+| 架构参数 | Coarse Stage 配置 | Refinement Stage 扩展配置 |
+| --- | --- | --- |
+| 模型参数量 / 层数 | ~2.3B（24 层 Transformer Blocks） | 同架构范式，引入空间锚点条件 |
+| 隐藏层维度 / 注意力头数 | Hidden dim = 2048，Heads = 16 | Hidden dim = 2048，Heads = 16 |
+| 潜变量 Token 规模 | $N=4096,\ D=64$（无先验空间坐标绑定） | $N_{\text{refine}}=16384$（绑定粗网格表面体素锚点） |
+| DINOv2 条件输入分辨率 | $518 \times 518$ px | $1022 \times 1022$ px（约 4 倍视觉 patch tokens） |
 
-MeshGen backbone 遵循 DiT 设计：self-attention 处理 latent tokens，cross-attention 注入图像条件，AdaLN 做 timestep modulation，FFN 使用 SwiGLU。
-
-论文给出的 coarse stage 配置包括：
-
-| 项目 | 配置 |
-| --- | --- |
-| 参数量 | 约 2.3B |
-| blocks | 24 |
-| hidden dim | 2048 |
-| heads | 16 |
-| latent tokens | $N=4096$ |
-| token dim | $D=64$ |
-| image encoder | DINOv2 ViT-G/14 with registers |
-| image resolution | 518px |
-
-推理时还会使用 classifier-free guidance：
-
-$$
-\tilde{\mathbf{v}}_t
-=\mathbf{v}^{uncond}_t
-+s\left(\mathbf{v}^{cond}_t-\mathbf{v}^{uncond}_t\right)
-$$
-
-这会让每个 denoising step 需要 conditional 和 unconditional 两次 forward。后面 MeshGen distillation 的一大价值，就是把 CFG folding 进 student model，减少推理时的双分支成本。
-
-## 10. Coarse-to-refine MeshGen
+### 3.2 由粗到精两阶段生成（Coarse-to-Refine）与渐进蒸馏
 
 ![MeshGen dense meshes](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig05-meshgen-dense-meshes.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 5, arXiv perpetual non-exclusive license.*
 
-Fig. 5 展示了 MeshGen 在几何处理和简化前预测出的 dense meshes。这些结果细节丰富，但显然不是最终移动端或实时渲染要用的低面数资产。
+为了兼顾全局拓扑稳定性与高频表面几何细节，MeshGen 采取由粗到精的两阶段策略（生成的高精度稠密网格效果见 Fig. 5）：第一阶段（Coarse Stage）使用 $N=4096$ 个无位置先验的潜 token 确立整体三维轮廓与拓扑结构；第二阶段（Refinement Stage）则在粗网格表面采样并体素化，生成 $N_{\text{refine}}=16384$ 个带有三维空间坐标锚点的局部 token，同时将 DINOv2 编码分辨率提升至 $1022\text{px}$（视觉 token 密度提升 4 倍），从而在粗几何表面精确雕刻出褶皱、五官与机械凹槽。
 
-论文使用 coarse-to-refine 两阶段：
+在标准推理时，模型依赖无分类器引导（Classifier-Free Guidance, CFG）：
 
-1. **Coarse stage** 用 $N=4096$ tokens 建立全局形状和拓扑。
-2. **Refinement stage** 使用 $N_{refine}=16384$ tokens，在 coarse mesh 表面附近补充局部细节。
+$$
+\tilde{\mathbf{v}}_t
+=\mathbf{v}^{uncond}_t
++s\left(\mathbf{v}^{cond}_t-\mathbf{v}^{uncond}_t\right).
+$$
 
-refinement tokens 的位置来自 coarse mesh surface sampling 和 voxelization，因此每个 token 有空间锚点。论文强调这和 coarse stage 不同：coarse tokens 没有先验空间关联，而 refinement tokens 被绑定到 coarse geometry 的局部区域，更容易恢复细节。
-
-refinement stage 还用更高分辨率 image conditioning：DINOv2 encoder 在 1022px resolution 上运行，产生约 4 倍 patch tokens。这说明细节恢复不仅依赖更密的 3D tokens，也依赖更高分辨率视觉条件。
-
-## 11. MeshGen Distillation：从 120 步到 30 步
-
-默认 MeshGen 原始推理配置包含 100 步 coarse denoising 和 20 步 refinement denoising，并且都使用 CFG。考虑到 CFG 需要双 forward，这个成本非常高。
-
-论文采用 progressive distillation：
-
-- coarse stage 从 100 步降到 25 步。
-- refinement stage 从 20 步降到 5 步。
-- 同时把 CFG folding 到 student model，让 student 学习 guided teacher output。
-
-训练 student 时，teacher 从随机 student timestep 开始跑多个 deterministic DDIM steps，得到 multi-step target；student 用单步 MSE 去匹配这个 target。
+然而，原始配置包含 100 步粗生成与 20 步精炼生成，且每步 CFG 均需执行条件与无条件两次前向传播（合计 240 次网络评估），耗时高达 28 秒以上。为此，论文引入 **渐进式步数蒸馏与 CFG 折叠（Progressive Distillation with CFG Folding）**：在训练学生网络时，教师模型从随机时间步出发执行多步确定性 DDIM 采样并计算 CFG 引导后的目标状态，学生网络通过单步 MSE 损失直接逼近该多步引导目标。经过多轮减半蒸馏，粗生成阶段从 100 步压缩至 25 步，精炼阶段从 20 步压缩至 5 步，且推理时仅需单次条件前向传播。
 
 ![MeshGen distillation human evaluation](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table01-meshgen-distillation-human-eval.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 1, arXiv perpetual non-exclusive license.*
 
-Table 1 是一个很有用的 sanity check。Teacher 是 120 steps，A100 上每样本 28.20 秒；Student 是 30 steps，3.78 秒。人评结果里 teacher wins 32.9%，student wins 30.5%，similar 36.6%。这不是证明 student 永远等同 teacher，而是说明在论文采样的人评协议里，4 倍 step reduction 没有明显感知质量崩溃。
+Table 1 给出了蒸馏前后的盲测对比：在 A100 GPU 上，30 步的学生模型将单样本耗时从 120 步教师模型的 `28.20s` 大幅压缩至 `3.78s`（提速约 7.5 倍），而在人类主观偏好评测中，教师胜出占 `32.9%`、学生胜出占 `30.5%`、两者持平占 `36.6%`，实现了感知质量几乎无损的数量级加速。
 
-这也解释了 AssetGen 的系统思路：如果最终目标是交互式 asset pipeline，模型推理不能只追求最高质量，还要进入可接受的 quality-latency Pareto 区域。
+## 4. GPU 几何后处理管线：减面、消隐、UV 展开与法线烘焙
 
-## 12. Geometry Post-processing：dense mesh 变成 runtime asset
-
-MeshGen 输出的是 dense SDF / dense mesh。要变成 runtime asset，需要一组几何处理步骤：
+MeshGen 解码产出的高模网格包含数十万三角面，无法直接用于实时渲染或作为多视角纹理反投影的载体。AssetGen 将传统离线几何后处理改造为驻留 GPU 的高速流水线：
 
 ```text
-dense mesh
-  -> mesh simplification
-  -> hidden face removal
-  -> UV unwrapping
-  -> tangent-space normal baking
-  -> simplified mesh + UV + normal map
+Dense Mesh --> Mesh Simplification & Hidden-Face Removal --> Parallel UV Unwrapping --> GPU Tangent-Space Normal Baking
 ```
 
-这部分是 AssetGen 与许多 3D generation 论文的关键差别。很多方法生成高质量几何后，后处理交给用户或离线工具；AssetGen 把它放进模型系统的 critical path，并对延迟做优化。
-
-## 13. Mesh simplification：控制 polygon budget
+### 4.1 网格减面与隐藏面剔除（Table 2）
 
 ![Mesh simplification table](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table02-mesh-simplification.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 2, arXiv perpetual non-exclusive license.*
 
-Table 2 比较了 5K 和 10K face targets 下的简化质量。指标包括：
+为了将多边形预算严格控制在实时引擎可接受的范围内（如 5K、10K 或约 23K 面），系统首先执行 **隐藏面剔除（Hidden-Face Removal）**，剥离生成式 SDF 内部常见的封闭内腔与永远不可见的重叠面片，防止其浪费三角形配额并污染 UV 图集；随后采用基于 **CuMesh** 的 GPU 并行边坍缩（parallel edge collapse）与二次误差度量（QEM）算法对网格快速减面。
 
-| 指标 | 含义 |
-| --- | --- |
-| Latency | 简化耗时 |
-| Chamfer | 简化 mesh 与原 mesh 点集距离 |
-| Hausdorff | 最大最小距离，更关注 worst-case deviation |
-| Flipped Normals | 多视角下法线方向不一致的像素 |
-| Baked Mean | 烘焙法线后的角度误差 |
-| Geo Mean | 简化几何自身法线误差 |
+Table 2 对比了 5K 与 10K 目标面数下的减面性能与质量。不同于仅关注点云 Chamfer 距离的传统评估，AssetGen 同步追踪了最坏几何偏差（Hausdorff 距离）、多视角翻转法线像素占比（Flipped Normals）、简化网格自身法线误差（Geo Mean）以及 **法线贴图烘焙后的平均角度误差（Baked Mean）**——因为对实时渲染资产而言，只要低模轮廓合理且烘焙后的切线空间法线能够精准还原高模光影，视觉失真便能降至最低。
 
-论文基于 CuMesh 风格的 GPU parallel edge collapse 和 QEM。QEM 的直觉是，每次边收缩都计算几何误差，选择低误差收缩以减少面数。
-
-重要的是，AssetGen 不只看 Chamfer。对于实时渲染资产，normal map 能否保留高频细节同样关键，所以 Baked Mean 也被纳入评价。这比单纯“几何距离更小”更接近资产交付质量。
-
-## 14. Hidden face removal：不要把不可见内面带进游戏
-
-生成式 3D mesh 常常包含内部面、重叠面或用户永远看不到的背面结构。对于离线展示，这可能不明显；对于实时渲染和移动端，这些面会浪费三角形预算、增加 UV 展开复杂度、干扰 normal baking 和纹理生成。
-
-AssetGen 在 geometry processing 中加入 hidden face removal，目标是把有限 polygon budget 留给可见表面。
-
-这一步的风险也很明显：如果移除过度，某些后续视角或动画变形下可能出现洞；如果移除不足，低模资产又不够轻。论文把它放在可部署资产 pipeline 中，说明它不是可选美化，而是 assetization 的核心环节。
-
-## 15. UV unwrapping：TextureGen 的接口
-
-AssetGen 使用 xatlas 做 UV parameterization，并进一步探索 parallel chart segmentation。UV 是 TextureGen 的关键接口：多视角生成的颜色最终要回投到一个 texture atlas 上，而不是停留在独立视角图片里。
-
-论文实际有一张 `Table3`，PDF 文本中排版为无空格的 `Table3`。它比较 serial 和 parallel xatlas 的 UV unwrapping 人评质量与速度。
+### 4.2 并行 UV 展开与 GPU 切线空间法线烘焙（Table 3 & 4）
 
 ![UV unwrapping human evaluation](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table03-uv-unwrapping-human-eval.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 3, arXiv perpetual non-exclusive license.*
 
-这张表的重点是：parallel 版本速度更快，同时人评上没有明显质量损失。论文把 processing speed 归一化到 serial baseline，结果显示 parallel 从 4.70 秒降到 2.56 秒。对于 30 秒端到端目标来说，这类“看似传统图形学小优化”非常重要。
-
-## 16. Normal baking：把高模细节搬到低模
+在获得干净的低模网格后，系统需要为其构建无重叠的二维参数化 UV 坐标，作为 TextureGen 合成纹理的贴图容器。论文基于 `xatlas` 引入了 **并行图块分割（parallel chart segmentation）** 优化：如 Table 3 所示，并行化改造将 UV 展开的平均耗时从串行基线的 `4.70s` 缩短至 `2.56s`，且在双盲人类主观评测中保持了与串行算法同等的纹理贴图质量。
 
 ![Normal baking table](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table04-normal-baking.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 4, arXiv perpetual non-exclusive license.*
 
-Normal baking 的目标是把 high-poly mesh 的局部表面细节编码到 low-poly mesh 的 tangent-space normal map 中。这样低模在实时渲染时仍能表现出更丰富的光照细节。
+紧接着，系统需要将 MeshGen 原始高模上的精细几何起伏转移到减面后的低模上。如 Table 4 所示，若调用离线 Blender 进行法线烘焙，平均耗时高达 `2920ms`（最坏情况甚至达 `25854ms`），会严重阻塞交互流水线；AssetGen 基于可微光栅化工具包 **DRTK** 实现了全 GPU 驻留的切线空间法线烘焙器（GPU-resident normal baker）与 UV 接缝形态学膨胀填充，将平均烘焙时间压缩至仅 `271ms`（最坏情况 `1147ms`，提速超 10 倍），同时在 Baked Mean 角度误差指标上全面优于 Blender 基线。
 
-Table 4 比较了 GPU-resident implementation 和 Blender。GPU baker 平均 271ms，Blender 平均 2920ms；最坏情况 GPU 1147ms，Blender 25854ms。质量指标上，Baked Mean 也接近或略优。
+## 5. TextureGen：结构化多视角流匹配与三维感知贴图融合
 
-这张表支撑了论文的一个核心判断：AssetGen 的速度不是只靠 diffusion distillation。传统资产处理步骤如果仍然调用慢速离线工具，端到端延迟仍然会被拖垮。GPU-resident normal baking 是系统性能的一部分。
+### 5.1 多视角正交条件设置与结构化稀疏注意力
 
-## 17. TextureGen：从 processed mesh 到 texture atlas
+经过几何管线处理后，系统已持有带 UV 坐标与烘焙法线贴图的低模网格 $\mathcal{M}$。**TextureGen** 的目标是以单张参考图 $\mathbf{I}$ 与几何渲染图（法线图 $\mathbf{N}_k$、世界坐标位置图 $\mathbf{P}_k$）为条件，同步生成 $K=10$ 个正交相机视角（8 个环绕侧视图 + 顶视图 + 底视图）的彩色外观图像 $\{\mathbf{V}_k\}_{k=1}^{K}$，再将其反投影融合至统一的 UV 图集。在训练数据构造中，论文采用多变的 HDRI 环境光照渲染参考图以增强模型对真实世界复杂照明的鲁棒性，而在推理阶段则使用 **DRTK GPU 光栅化器** 替代 Blender 渲染 10 视角法线与位置条件图，将条件渲染耗时从约 5 秒压降至 `500ms` 并保持张量全程驻留显存。
 
-Geometry pipeline 输出的是 simplified mesh、UV、baked normal map 和相关 metadata。TextureGen 接下来要做的事情是：基于参考图和几何条件，生成多视角彩色外观，然后融合到 UV atlas。
+在模型架构上，每个 $1024\times 1024$ 视图经预训练图像 VAE 编码为 $64\times 64$ 的潜空间网格；1 个参考图槽位与 $K=10$ 个目标视角槽位共同拼接为 $1\times(1+K)$ 的多视角潜变量网格 $\mathbf{z}_t$（其中参考图槽位在去噪过程中保持固定无噪，损失仅作用于 $K$ 个目标视角），并采用最优传输条件流匹配（OT-CFM）学习速度场 $\mathbf{v}_\theta(\mathbf{z}_t,t,\mathbf{c})$。除了参考图潜变量、法线图与位置图外，系统还通过交叉注意力注入 T5 与 CLIP 文本提示词嵌入以提供高层语义辅助。
 
-训练数据构造包括：
+由于 11 个视图在 $64\times 64$ 分辨率下共计包含 $45,056$ 个 token，直接执行全局自注意力的计算复杂度过高。论文结合相机空间拓扑设计了 **结构化多视角稀疏注意力（Structured Multi-View Attention）**：
+- 所有目标视角均关注第 1 格的参考图槽位（Reference Slot）以对齐全局色彩与材质风格；
+- 四个正交主侧视图（Cardinal views）各自关注相邻的两个侧视图；
+- 四个斜角视图（Diagonal views）关注参考图及相邻的两个正交主视图；
+- 顶视图与底视图关注参考图及四个正交主侧视图。
 
-- 从随机相机视角渲染 reference image。
-- 从 10 个固定视角渲染 target images：8 个 side views，加 top 和 bottom。
-- 使用 orthographic projection，让目标视图覆盖更稳定。
-- 渲染 normal maps 和 position maps 作为几何条件。
-- 使用不同 HDRI lighting 增强对真实参考图光照变化的鲁棒性。
+这一与相机几何布局严密咬合的稀疏注意力掩码，在完整保留跨视角信息传播路径的前提下，将注意力上下文计算量削减了约 4 倍。
 
-论文明确说 TextureGen 生成的是 color texture，而不是 PBR material。这是一个重要边界：它更适合移动端和 runtime rendering 的简单管线，但不像 Meta 3D AssetGen 2024 那样主打 albedo、metalness、roughness 等 PBR 分解。
+### 5.2 入射角加权 UV 反投影与三维感知空洞修补
 
-## 18. TextureGen Architecture：多视角 diffusion transformer
-
-TextureGen 的核心是多视角 diffusion transformer。设参考图为 $\mathbf{I}$，processed mesh 为 $\mathcal{M}$，第 $k$ 个目标视角的 normal map 和 position map 为 $\mathbf{N}_k,\mathbf{P}_k$，模型同时生成 $K$ 个 target views：
-
-$$
-\{\mathbf{V}_k\}_{k=1}^{K}
-$$
-
-论文使用 pretrained image VAE latent。每个 $1024\times1024$ view 被编码为 $64\times64$ latent。reference image 和 $K$ 个 target views 被组织成 $1\times(1+K)$ latent grid：
-
-- 第一格是 pinned reference latent，在 denoising 中固定。
-- 其余格是 noisy target-view latents。
-- loss 只作用在 target-view slots。
-
-模型条件包括：
-
-| 条件 | 作用 |
-| --- | --- |
-| reference image latent | appearance anchor，提供颜色、材质、风格 |
-| normal maps | 表面朝向，帮助纹理与几何一致 |
-| position maps | world-space correspondence，帮助跨视角对齐 |
-| text prompt | 补充语义信息 |
-| T5 / CLIP embeddings | 通过 cross-attention 注入文本条件 |
-
-## 19. TextureGen 的 flow matching
-
-TextureGen 不只是图像回归。论文使用 optimal-transport conditional flow matching，训练模型预测 velocity field：
-
-$$
-\mathbf{v}_\theta(\mathbf{z}_t,t,\mathbf{c})
-$$
-
-其中 $\mathbf{z}_t$ 是 noisy multi-view latent，$\mathbf{c}$ 包含 reference、geometry renders 和 text conditioning。
-
-这和 MeshGen 的 diffusion 形成了一个很清楚的系统分工：
-
-| 模块 | 表示空间 | 生成对象 | 加速方式 |
-| --- | --- | --- | --- |
-| MeshGen | VecSet shape latent | 3D geometry | progressive distillation + CFG folding |
-| TextureGen | image VAE multi-view latent | target color views | progressive distillation + CFG distillation |
-| Postprocess | UV atlas | final texture | GPU backprojection + blending + inpainting |
-
-## 20. Structured multi-view attention
-
-TextureGen 需要同时处理 reference slot 和 10 个 target views。如果每个 view 是 $64\times64$ latent tokens，那么 $1+K=11$ 个 views 共 45,056 tokens。全 self-attention 成本很高。
-
-论文使用与相机布局匹配的 sparse attention pattern：
-
-- 每个 target view 都看 reference slot。
-- cardinal side views 看相邻两个 views。
-- diagonal views 看 reference 和相邻 cardinal views。
-- top/bottom views 看 reference 和四个 cardinal side views。
-
-这个设计的直觉是：纹理一致性主要来自 reference 和相邻重叠视角，不需要每个视角都全局关注所有视角。它把 attention context 约减少 4 倍，同时保留跨视角传播路径。
-
-## 21. Texture backprojection、blending 和 inpainting
-
-TextureGen 生成的是多张 target-view images，最终还要映射到 UV atlas。论文采用 backward projection：对 atlas 中每个 texel，恢复对应 3D surface position，再投影到每个生成视角读取颜色。
-
-边界和深度不连续处容易采样错误颜色，因此先用 point coordinate maps 的邻域差异构造 edge mask。对于每个 texel，还要处理 grazing angle 和 UV seam 造成的采样 footprint 问题，所以论文使用 anisotropic filtering 和 mip chain。
-
-每个 texel 可能从多个视角获得候选颜色。论文用 incidence-weighted blending：
+当多视角扩散模型输出 10 张目标视图后，系统采用反向投影（backward projection）将其映射到二维 UV 图集：针对 UV 图集中的每个有效纹素（texel），先恢复其对应的三维表面坐标，再投影至各个生成视图中采样颜色；为消除物体边缘与深度不连续处的伪影，算法利用位置图的邻域梯度构造边缘掩码，并结合各向异性过滤（anisotropic filtering）与多级纹理链（mip chain）改善掠射角（grazing angle）下的纹素采样足迹。对于被多个视角同时观测到的纹素，系统通过 **入射角加权融合（Incidence-Weighted Blending）** 计算最终图集颜色 $T$：
 
 $$
 T
@@ -415,331 +193,138 @@ T
 \sum_{k=1}^{K} w_k I_k^\alpha \odot A_k
 }{
 \sum_{k=1}^{K} w_k I_k^\alpha+\epsilon
-}
+},
 $$
 
-其中：
+其中 $A_k$ 为第 $k$ 个视角反投影得到的局部纹理图集，$I_k$ 为该纹素表面法线与第 $k$ 个视角视线方向的入射余弦夹角（衡量观测正对程度）与可见性掩码的乘积，$w_k$ 为预设视角先验权重（赋予正背面等主视角更高优先级），$\alpha$ 则用于调节入射角权重的锐度。
 
-- $A_k$ 是第 $k$ 个视角回投得到的 partial atlas。
-- $I_k$ 是该 texel 在第 $k$ 个视角下的 incidence / visibility。
-- $w_k$ 是 view prior，给正面、背面等更重要视角更高权重。
-- $\alpha$ 控制 incidence 权重的 sharpness。
+最后，针对任何相机视角均未覆盖或被自身结构遮挡的死角纹素，若仅在二维 UV 平面做邻域插值，极易因 UV 岛切分边界不连续而产生色彩错位。AssetGen 转而采用 **基于三维 KD-Tree 的三维感知纹理修补（3D-Aware Inpainting）**：在三维空间中检索与待修补纹素空间距离最近且表面法线朝向一致的已着色纹素进行颜色传播，确保复杂凹陷区域的纹理过渡自然连贯。
 
-最后，对没有可靠观测的 texels，论文使用 3D-aware inpainting：基于 texel 的 3D position 和 normal，在已知 texel 中找几何邻近且法线相近的颜色进行传播。这比单纯在 2D UV 空间做邻近填补更合理，因为 UV 空间相邻不一定代表 3D 表面相邻。
-
-## 22. Geometric condition rendering：从 Blender 到 DRTK
-
-TextureGen 推理时需要渲染 10 个视角的 normal/position maps。论文训练时用 Blender，但推理时替换为 DRTK GPU rasterizer。
-
-论文报告 Blender 渲染 10 views 约 5 秒，DRTK 约 500ms。在 30 秒 pipeline 中，这 4.5 秒差距很大。更关键的是，DRTK 输出 GPU-resident tensors，避免频繁 CPU/GPU 或磁盘 I/O。
-
-这再次体现 AssetGen 的系统性：只优化 diffusion steps 不够，condition rendering、UV backprojection、normal baking、mesh simplification 都要纳入 latency budget。
-
-## 23. Latency optimization：不是把表格相加
-
-AssetGen 的 latency 部分非常值得细读。论文反复强调：表格里的 stage runtimes 不能简单相加，因为很多操作是并行或重叠执行的；报告的 total 是 measured critical-path latency。
-
-两类优化最关键：
-
-| 层次 | 方法 |
-| --- | --- |
-| Kernel / precision | FlashAttention-3、non-blocking transfer、torch compile、FP8/INT8 selective quantization |
-| Pipeline scheduling | independent work overlap、worker process、MeshGen/TextureGen service split、precomputed geometry-dependent data |
-
-论文还说 MeshGen 和 TextureGen 是 separate services。MeshGen 在一张 H100 上运行，并把 simplified mesh、UV、baked normal map 和 metadata 写到 shared storage；TextureGen 读取后生成 texture。默认 AssetGen 的 TextureGen 使用两张 H100 分 split CFG branches；Flash 由于 CFG distilled，只用一张。
-
-这意味着论文报告的 30 秒/14 秒是一个系统部署结果，不是单模型 kernel benchmark。
-
-## 24. Table 5：MeshGen + geometry critical path
+## 6. 全链路延迟剖析与系统级优化阶梯
 
 ![MeshGen latency breakdown](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table05-meshgen-latency.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 5, arXiv perpetual non-exclusive license.*
 
-Table 5 把 MeshGen 和 geometry processing 拆成多个 stage。默认 AssetGen 包含 coarse 和 refine；Flash 跳过 refinement。表里的 total 是 MeshGen + geometry 的 measured critical path，不是所有行相加。
-
-几个观察：
-
-1. Coarse diffusion 和 mesh decoding 仍然是主要成本。
-2. Refinement 带来额外质量，但也增加延迟。
-3. Geometry processing 中 UV unwrapping、normal baking 等步骤已经被压到秒级或亚秒级。
-4. Flash 的大幅提速来自跳过 refinement，同时 texture 端也降规格。
-
-对工程读者来说，这张表比单个 FPS 数字更有价值，因为它告诉你瓶颈在哪里。
-
-## 25. Table 6：TextureGen critical path
-
 ![TextureGen latency breakdown](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table06-texturegen-latency.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 6, arXiv perpetual non-exclusive license.*
 
-Table 6 展示 TextureGen 的耗时。默认 AssetGen 使用 1024px diffusion、inference-time CFG、per-view super-resolution 和 2K atlas；Flash 使用 768px、guidance-distilled conditional-only model、省略 super-resolution 和 1K atlas。
-
-需要注意，TextureGen 不是只跑一个 diffusion model。它还包括：
-
-- pre-processing。
-- condition rendering。
-- diffusion。
-- precompute backproject data。
-- build KD tree。
-- per-view super-resolution。
-- backprojection and inpainting。
-- export textured mesh。
-
-这说明 TextureGen 是一个完整 texture synthesis and fusion pipeline。
-
-## 26. Table 7：端到端延迟对比
+AssetGen 极具工程参考价值的一点，在于其详尽拆解了服务端的 **关键路径实测延迟（Measured Critical-Path Latency）**。论文强调，Table 5（MeshGen 与几何处理耗时分解）和 Table 6（TextureGen 耗时分解）中的各子阶段耗时不可简单算术相加，因为系统通过异步工作进程与流水线调度将无依赖关系的 CPU/GPU 任务做了深度重叠（overlap）。在服务部署架构上，MeshGen 与 TextureGen 被拆分为两个独立微服务：MeshGen 独占 1 张 H100 完成几何生成与 GPU 几何后处理，将简化网格、UV、烘焙法线与元数据写入共享存储；TextureGen 随即读取数据启动纹理合成（默认模式分配 2 张 H100 并行执行 CFG 正负分支，Flash 模式因已完成 CFG 蒸馏仅需 1 张 H100），并在扩散去噪的同时异步预计算反投影映射表与三维 KD-Tree。
 
 ![End-to-end latency](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table07-end-to-end-latency.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 7, arXiv perpetual non-exclusive license.*
 
-Table 7 报告端到端 wall-clock latency：AssetGen 约 30 秒，AssetGen Flash 约 14 秒。商业模型 A-D 则在近一分钟到两分钟区间。
-
-这张表必须谨慎解读。论文自己也说明：
-
-- AssetGen 延迟包括 input image 到 exported textured mesh 的完整 pipeline，并包含 0.65s image segmentation。
-- 商业 baselines 的延迟是 website submission 到 result availability，平均五次。
-- 商业系统的硬件、队列、服务端负载、导出逻辑都不可控。
-
-因此 Table 7 不是硬件公平 benchmark，更像用户可感知延迟对比。它支持的结论是：AssetGen 在论文部署和评估协议下，把 image-to-asset 时间拉到了更适合交互式创作的范围。
-
-## 27. Table 8：优化 ladder
-
 ![Latency ablation](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table08-latency-ablation.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 8, arXiv perpetual non-exclusive license.*
 
-Table 8 是系统工程价值最高的表之一。它用一个代表性 test asset 做 cumulative optimization ladder。
+Table 7 对比了包含 0.65 秒背景分割在内的端到端挂钟延迟（wall-clock latency）：默认 AssetGen 为 `30.10s`，AssetGen Flash 仅需 `13.95s`，显著快于耗时约 55 秒至 110 秒的四个匿名商业基线（Commercial Models A–D，注：商业模型系通过网页端提交测得的平均用户感知耗时，受其后台队列与硬件配置影响，不宜视为同硬件算力对比）。
 
-MeshGen + Geometry 从 baseline 103.15s 逐步降到 12.25s，关键步骤包括：
+Table 8 则通过累进优化阶梯（Cumulative Optimization Ladder）揭示了系统如何将总耗时从最初的 220 秒以上一步步压缩至 30 秒：
+- **MeshGen + 几何管线（从 `103.15s` $\rightarrow$ `12.25s`）**：引入 CuMesh 替代 CPU 几何处理（降至 `86.10s`）$\rightarrow$ 渐进蒸馏与 CFG 折叠（骤降至 `24.85s`）$\rightarrow$ FlashAttention-3、异步传输与 `torch.compile`（降至 `17.30s`）$\rightarrow$ 共享存储 I/O 优化（`15.20s`）$\rightarrow$ 并行 UV 分割（`13.10s`）$\rightarrow$ DRTK GPU 法线烘焙与流水线重叠（最终定格于 `12.25s`）。
+- **TextureGen 管线（从 `117.68s` $\rightarrow$ `17.85s`）**：渐进蒸馏（骤降至 `37.45s`）$\rightarrow$ FA3、`torch.compile` 与 FP8/INT8 混合精度量化（`25.60s`）$\rightarrow$ 异步预计算反投影数据与 KD-Tree（`22.15s`）$\rightarrow$ DRTK 条件渲染与 GPU 反投影优化（`19.90s`）$\rightarrow$ 双卡 CFG 分支并行切分（最终定格于 `17.85s`）。
 
-- CuMesh 替换 CPU-bound geometry processing。
-- progressive distillation。
-- FlashAttention-3 + compile。
-- I/O optimization。
-- parallel UV segmentation。
-- DRTK normal baking。
+这一优化阶梯清晰表明，当扩散主干经过蒸馏与算子融合加速后，原本不起眼的 CPU 减面、UV 展开、法线烘焙与文件 I/O 就会浮出水面成为主导瓶颈，唯有全栈 GPU 化与流水线重叠才能真正兑现交互级体验。
 
-TextureGen 从 117.68s 降到 17.85s，最大收益来自 progressive distillation，然后是 FA3/compile、precompute backproject data、rendering optimization、CFG branch split。
+## 7. 实验评估与定性画廊分析
 
-这张表说明 AssetGen 的速度不是某个 trick，而是系统性剥离瓶颈。对很多生成系统来说，真正上线慢的地方往往不是主模型 forward，而是数据准备、渲染、后处理、传输和导出。
-
-## 28. AssetBench：普通物体生成评估
-
-论文提出 AssetBench：101 个由 technical artists 手工挑选和审核的高质量 3D assets，覆盖 vehicles、daily-use objects、animals 和部分 characters。评估时渲染 isometric/frontal reference view 作为 image prompt。
+### 7.1 AssetBench 与 CharacterBench 定量及主观评测（Table 9–11 & Fig. 6–7）
 
 ![AssetBench quantitative results](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table09-assetbench.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 9, arXiv perpetual non-exclusive license.*
 
-Table 9 指标包括：
-
-| 类别 | 指标 | 含义 |
-| --- | --- | --- |
-| Shape Quality | IoU、Chamfer Distance | 与 ground-truth 3D 的几何接近程度 |
-| Fidelity | VLM、CLIP | 与参考图/语义的一致性 |
-
-论文指出，Commercial Model B 在 volumetric geometry metrics 上领先，AssetGen 在 VLM verification 和 GT-CLIP reference fidelity 上最好。这是一个很平衡的结论：AssetGen 不一定在所有几何指标上第一，但它的强项是 asset pipeline 和 reference fidelity。
-
-这也提醒我们不要只看单一指标。对于 asset creation，几何 IoU、视觉一致性、纹理质量、可部署性和延迟是共同目标。
-
-## 29. Fig. 6：商业 baseline 定性对比
-
 ![Commercial baseline comparison](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig06-commercial-comparison.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 6, arXiv perpetual non-exclusive license.*
 
-Fig. 6 展示 AssetGen 与 Commercial Model A-D 的定性对比。论文匿名商业模型，这是合理但也限制了解读强度。我们不能把图写成“AssetGen 全面超过某具体产品”，只能说在论文选择的 matched input/rendering 条件下，AssetGen 在 texture richness、reference fidelity 和几何可用性之间表现有竞争力。
-
-这张图支撑的是产品视角：用户关心最终资产是否像输入图、是否干净、是否能导出和使用，而不只是算法指标。
-
-## 30. CharacterBench：角色比普通物体更难
-
-角色生成比普通物体难，因为它同时考验：
-
-- 正脸和侧脸质量。
-- 身体比例、服饰、配件。
-- 手指和局部细节。
-- 身份和 reference fidelity。
-- 是否适合后续 rigging 或动画。
+在定量基准测试中，论文首先构建了包含 101 个由技术美术（Technical Artists）精选审核的 **AssetBench**（涵盖载具、日用品、动物与部分角色，见 Table 9 与 Fig. 6）。评估指标分为两类：一是与真值三维模型对比的体素 IoU 与 Chamfer 距离（Shape Quality），二是基于多模态大模型（VLM）与 CLIP 的参考图外观保真度（Fidelity）。结果显示，Commercial Model B 在纯体素几何重叠度指标上略占优势，而 AssetGen 在 VLM 语义一致性验证与 GT-CLIP 外观保真度上均位列第一。
 
 ![CharacterBench results](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table10-characterbench.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 10, arXiv perpetual non-exclusive license.*
 
-Table 10 显示 AssetGen 在 frontal face quality、face CLIP、face ref、finger ref、overall fidelity 等指标上表现强。AssetGen Flash 在若干 reference fidelity 指标上接近默认版本，但 face quality 明显弱于默认版本。这符合 Flash 的定位：更快、更适合 preview 和快速迭代，但不是最佳质量配置。
-
-需要注意，论文 limitation 明确说静态 textured mesh 只是交互角色的第一步。rigging、skin weight、blend shapes、motion synthesis 都不在 AssetGen 当前系统内。
-
-## 31. Human evaluation：低延迟下达到可比质量
+针对难度更高的角色生成任务，论文专门设立了 **CharacterBench**（Table 10），重点考察正侧面部质量（Frontal/Side Face Quality）、面部身份对齐（Face CLIP / Face Ref）、手指等精细部位还原度（Finger Ref）以及整体保真度。默认 AssetGen 在面部质量、手指还原与整体参考图一致性上全面领先；而跳过几何精炼与超分的 AssetGen Flash 虽然在整体外观对齐度上接近默认版，但面部精细几何得分有所回落，精准印证了其“快速预览与迭代”的档位设计。
 
 ![Human evaluation](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-table11-human-eval.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Table 11, arXiv perpetual non-exclusive license.*
 
-Table 11 是 195 assets 的 blind human evaluation，评分维度包括 general、geometry 和 texture，采用 1-5 绝对分。
-
-论文的解释很克制：AssetGen 在三个类别都最高，但 margin 并非压倒性。正确读法是：在强商业 baseline 面前，AssetGen 的默认路径以明显更低的 end-to-end latency 达到 comparable-to-better inspected asset quality。Flash 接近 Commercial Model A，但整体略低于 full AssetGen。
-
-这比“所有指标第一”更有工程意义。真实产品里，低延迟和可接受质量的 Pareto 前沿往往比单点最优质量更重要。
-
-## 32. 与 Trellis 2 的对比
-
 ![Trellis 2 comparison](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig07-trellis2-comparison.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 7, arXiv perpetual non-exclusive license.*
 
-Fig. 7 对比 AssetGen 和 Trellis 2。论文指出 Trellis 2 输出按推荐方式保留到约一百万 polygons；而 AssetGen 输出简化到约 23K polygons。Trellis 2 在高分辨率资产表示方面很强，但它的输出要进入 UV unwrap 和移动端实时渲染，还要面对高面数和后处理成本。
+Table 11 汇总了在 195 个资产上开展的双盲人工评测（按 General、Geometry、Texture 三个维度进行 1–5 分绝对打分）：默认 AssetGen 在三个维度上均取得最高均分，表明其在显著缩短端到端生成延迟的同时，达到了与顶尖商业模型持平乃至更优的检验质量；AssetGen Flash 则以 14 秒的速度取得了与 Commercial Model A 相当的主观评分。此外，Fig. 7 将 AssetGen 与高分辨率生成代表作 **TRELLIS.2** 进行了直观对比：TRELLIS.2 推荐配置导出的网格包含约 100 万个多边形，虽细节细腻但难以直接载入移动端并展开干净的实时引擎 UV；而 AssetGen 将网格精简至约 23K 多边形，依靠烘焙法线贴图与纹理图集在极低面数预算下保留了同等级别的视觉锐度。
 
-这组对比不能简化成“谁视觉更好”。两者优化目标不同：
-
-| 方法 | 优先目标 |
-| --- | --- |
-| Trellis 2 | 高质量 3D 生成、structured latent、高分辨率资产 |
-| AssetGen | image-to-deployable-asset，低面数、UV、normal baked、低延迟 |
-
-如果你要做可交互资产管线，AssetGen 的 contract 更贴近最终使用；如果你要研究 3D latent 和高质量重建，Trellis 2 的侧重点不同。
-
-## 33. AssetGen galleries
+### 7.2 主题资产画廊与真实世界照片泛化（Fig. 8–11）
 
 ![AssetGen sand gallery](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig08-gallery-sand.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 8, arXiv perpetual non-exclusive license.*
 
-Fig. 8 是默认 AssetGen 的 sand-themed gallery。它展示的是质量优先配置：two-stage MeshGen + high-fidelity TextureGen，约 30 秒输出。
-
 ![AssetGen ice gallery](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig09-gallery-ice.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 9, arXiv perpetual non-exclusive license.*
-
-Fig. 9 展示 ice-themed assets。可以看到几何和材质风格的一致性，但也要记住这些是论文 gallery，不能替代大规模失败案例分析。
 
 ![AssetGen Flash gallery](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig10-flash-gallery.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 10, arXiv perpetual non-exclusive license.*
 
-Fig. 10 是 AssetGen Flash 的 magic forest gallery。Flash 的价值是快速 preview 和 agent loop，而不是最终质量超过默认配置。
-
-## 34. Real-world inputs
-
 ![Real-world input results](/images/blog/assetgen-deployable-3d-asset-generation/assetgen-fig11-real-world-inputs.webp)
 
 *Source: Wang et al., arXiv:2605.26137v1, Fig. 11, arXiv perpetual non-exclusive license.*
 
-Fig. 11 展示真实世界照片输入。论文指出模型主要在 synthetic 3D data 上训练，但对自然光照、背景杂乱、部分遮挡也有一定鲁棒性。例如某些被遮挡对象可以通过 shape prior 补全。
+Fig. 8 至 Fig. 10 依次展示了默认 AssetGen 生成的沙雕主题（Sand-themed）、冰雪主题（Ice-themed）资产画廊，以及 AssetGen Flash 生成的魔法森林主题（Magic forest）画廊，直观呈现了两种运行模式在统一艺术风格下的几何轮廓与纹理贴图一致性。Fig. 11 则测试了真实世界自然拍摄照片（Real-world inputs）的泛化表现：尽管模型完全基于合成三维渲染数据训练，但得益于训练期的多 HDRI 光照增强与三维形状先验，系统面对自然光照、杂乱背景分割残余乃至局部遮挡（如被遮挡的玩偶肢体）时，依然能够合理补全三维结构并生成完整贴图。
 
-这里也正好对应 limitation：single-image 3D inherently underconstrained。输入只有一个视角时，背面、遮挡区域、不对称结构和复杂机械细节都需要模型猜。模型能猜得像，不等于它知道真实几何。
+## 8. 技术谱系定位、复现清单与生产局限性
 
-## 35. 与 Meta 3D AssetGen 2024 的关系
+### 8.1 与相关工作及本站 3D 论文的坐标对比
 
-AssetGen 这个名字容易和 2024 年的 Meta 3D AssetGen 混淆。两者相关，但侧重点不同。
+将 AssetGen 放入三维资产生成与场景建模的全局坐标系中，可以清晰辨析其与相近工作的分工差异：
 
-| 工作 | 重点 |
-| --- | --- |
-| Meta 3D AssetGen 2024 | text-to-mesh，geometry、texture、PBR materials，强调 albedo/metalness/roughness 和 relighting |
-| AssetGen 2026 | image-to-deployable-asset，强调 30s/14s latency、mesh simplification、UV、normal baking、texture atlas、pipeline optimization |
-
-2026 论文明确说 TextureGen 生成 color texture，而不是 PBR materials，因为这对 runtime rendering on mobile 更友好。这是一个取舍：PBR 分解对专业渲染和 relighting 很重要，但 color texture + normal map 更轻、更容易进入移动端实时管线。
-
-## 36. 与本站 3D 文章的技术对照
-
-本站已经有多篇 3D scene / asset / NeRF 相关精读，可以用下面的方式定位 AssetGen。
-
-| 文章 | 主要问题 | 与 AssetGen 的差异 |
+| 对比工作 | 核心问题定义 | 与 AssetGen (2026) 的关键差异 |
 | --- | --- | --- |
-| TRELLIS.2 | O-Voxel、SC-VAE、structured latent、大规模 3D asset generation | 更关注原生 3D latent 与生成模型；AssetGen 更关注 deployable asset pipeline 和低延迟 |
-| Layout2Scene | 3D semantic layout-guided scene generation | 关注场景布局和几何/外观扩散先验；AssetGen 是单物体 image-to-asset |
-| Blended-NeRF | 现有 NeRF 中 ROI 对象编辑 | 关注局部 NeRF 编辑和融合；AssetGen 输出显式 mesh asset |
-| CompoNeRF | 多物体组合 NeRF 与布局编辑 | 关注 text-guided multi-object NeRF composition；AssetGen 关注 runtime asset contract |
-| Imaginarium | 图像引导资产检索、姿态估计、Blender 物理优化 | 偏场景布局和资产库系统；AssetGen 是资产生成系统 |
-| CasLayout | 3D layout diffusion 与关系建模 | 生成家具布局，不生成具体 deployable mesh asset |
+| **Meta 3D AssetGen (2024)** | 文本到网格生成（Text-to-Mesh）与 PBR 材质分解 | 2024 版主打 albedo/metalness/roughness 解耦与重光照；2026 版转向单图驱动、30s/14s 极低延迟、低模法线烘焙与移动端色彩贴图交付 |
+| **TRELLIS.2 / TripoSG** | 原生稀疏结构化潜空间 / 大规模 Rectified Flow 高保真形状合成 | 二者聚焦提升三维表示保真度与几何生成上限；AssetGen 聚焦将高模转化为带 UV 和烘焙法线的低面数运行时资产并压低全链路延迟 |
+| **SF3D** | 0.5 秒单图前馈重建、快速箱体投影 UV 与光照解耦 | SF3D 采用单次前向 Triplane+DMTet 重建；AssetGen 采用 2.3B 多阶段扩散/流匹配生成，上限更高但依赖服务端 H100 集群加速 |
+| **CompoNeRF / Blended-NeRF / Layout2Scene / CasLayout / Imaginarium** | 多物体 NeRF 组合编辑、三维语义布局生成与资产检索摆放 | 这些工作聚焦多对象空间关系与场景合成，而 AssetGen 专为下游场景系统或游戏引擎提供标准化的单体三维资产 |
 
-AssetGen 的独特位置是：它不是场景生成，也不是 NeRF 编辑，而是把单个 3D asset 生成推进到工程可用性问题。
+### 8.2 工程复现核对清单与生产局限性
 
-## 37. 与相关工作的关系
+尽管 AssetGen 暂未开源，但若工程团队希望参照其架构搭建工业级单图转 3D 资产服务，可按以下 14 个核心模块逐一对齐：
 
-论文相关工作可以分成几条线：
+| 管线阶段 | 模块名称 | 核心实现要素 |
+| --- | --- | --- |
+| **数据准备** | 1. 多级数据清洗 | 去重、顶点数过滤、VLM 语义筛查（剔除底座/背景/残缺扫描件）与朝向对齐 |
+| **数据准备** | 2. 泛洪符号估计 | 表面窄带提取、形态学膨胀封堵微孔、边界 Flood-Fill 标定内外符号以构造干净 SDF |
+| **MeshGen** | 3. VecSet VAE | 点云编码为 $N \times D$ 潜向量，解码器支持连续空间 SDF 查询与 Marching Cubes 提取 |
+| **MeshGen** | 4. Coarse DiT | 2.3B 参数（24 层），$N=4096, D=64$，518px DINOv2 ViT-G/14 交叉注意力与 $v$-prediction |
+| **MeshGen** | 5. Refine DiT | 粗网格表面采样锚点 $N_{\text{refine}}=16384$，提升至 1022px DINOv2 条件输入 |
+| **MeshGen** | 6. 渐进蒸馏 | DDIM 多步教师轨迹蒸馏（100+20 步 $\rightarrow$ 25+5 步）并将双分支 CFG 折叠进单分支学生模型 |
+| **几何后处理** | 7. 消隐与减面 | 剔除不可见内腔面，基于 CuMesh GPU 并行边坍缩与 QEM 将面数压至目标预算 |
+| **几何后处理** | 8. 并行 UV 展开 | 基于 `xatlas` 的并行图块分割（parallel chart segmentation）与接缝间距控制 |
+| **几何后处理** | 9. GPU 法线烘焙 | 基于 DRTK 光栅化将高模表面法线烘焙至低模切线空间法线贴图，配合接缝膨胀填充 |
+| **TextureGen** | 10. 多视图流匹配 | 1 个固定参考图槽 + 10 个正交目标视图槽，DRTK 渲染法线/位置条件，OT-CFM 训练 |
+| **TextureGen** | 11. 结构化注意力 | 按正交/斜角/顶底相机拓扑定制稀疏自注意力掩码，降低约 4 倍上下文开销 |
+| **贴图后处理** | 12. 反投影加权融合 | 深度边缘掩码、各向异性过滤与入射角余弦加权融合公式 $T$ |
+| **贴图后处理** | 13. 三维感知修补 | 基于三维空间坐标与表面法线构建 KD-Tree，向未观测纹素传播颜色 |
+| **系统服务** | 14. 算子与流水线调度 | FA3、`torch.compile`、FP8/INT8 量化，MeshGen/TextureGen 双服务拆分与异步任务重叠 |
 
-1. **3D shape generation**：TripoSR、InstantMesh、CRM、Spar3D、Trellis、Hunyuan3D、Direct3D 等。
-2. **3D latent / representation**：triplanes、wavelets、primitives、VecSet、structured coordinates、O-Voxel。
-3. **Texture synthesis**：Text2Tex、Paint3D、SyncDreamer、MVDream、Wonder3D、Era3D、MVPaint。
-4. **Mesh processing**：QEM simplification、xatlas UV unwrapping、normal baking、DRTK rasterization。
-5. **Inference acceleration**：progressive distillation、CFG distillation、FlashAttention、torch compile、low precision、pipeline parallelism。
+在评估其实际生产边界时，还需注意四个客观限制：首先，单视角输入天然存在三维欠约束性（inherently underconstrained），物体背面、底部及严重遮挡区域仍依赖生成先验猜想，无法保证与真实物理对象完全一致；其次，Marching Cubes 提取加 QEM 减面生成的是任意三角网格，虽能满足静态渲染面数要求，但缺乏美术规范的环状拓扑流（edge flow），尚无法直接用于骨骼绑定（rigging）、蒙皮权重分配与角色动画变形；再者，为迁就移动端开销而省略完整 PBR 材质分解（仅输出色彩贴图与法线贴图），使其在专业影视级动态重光照场景下需额外挂载材质预测模块；最后，论文关键模块的源码与权重尚未公开，30 秒/14 秒的极速表现高度依赖 H100 多卡配置与底层 CUDA 工程调优。
 
-AssetGen 的贡献不是在某一条线上提出全新数学理论，而是把这些线合成了一个面向交付的系统。论文最像一篇“3D generative system paper”，而不是单纯的 model paper。
+## 9. 结论与参考资料
 
-## 38. 工程复现清单
+AssetGen 的核心贡献在于跳出了单一扩散模型刷榜的范式，将单图 3D 生成重构为一条 **以可部署资产契约为终点、以交互级低延迟为约束的全栈系统工程**。通过将两阶段 VecSet 几何生成、GPU 并行几何后处理（减面、UV、法线烘焙）、结构化多视角纹理流匹配以及渐进蒸馏与流水线重叠有机结合，它清晰展示了三维生成模型从“视觉渲染好看”迈向“工业引擎可用”的必经之路。阅读原论文时，建议先通读第 1–2 节（Fig. 1–2）把握整体资产契约，随后依次精读第 5–7 节（MeshGen、几何管线与 TextureGen）及第 8 节（Table 5–8 延迟优化阶梯）。
 
-如果未来 AssetGen 代码开放，复现时至少要检查这些模块：
+### References
 
-| 模块 | 需要核对的内容 |
-| --- | --- |
-| Data filtering | duplicate removal、orientation filtering、background/scan/low-quality filtering |
-| Sign estimation | flood-fill、surface band、dilation、inside/outside label |
-| VecSet VAE | latent token count、decoder SDF query、marching cubes |
-| MeshGen DiT | DINOv2 conditioning、AdaLN、cross-attention、SwiGLU、4096 tokens |
-| Refinement | 16384 tokens、spatial anchors、1022px conditioning |
-| Distillation | teacher steps、student steps、CFG folding、DDIM target inversion |
-| Simplification | CuMesh/QEM、target faces、normal preservation |
-| UV | xatlas、parallel segmentation、seam handling |
-| Normal baking | DRTK rasterization、tangent frame、UV seam dilation |
-| TextureGen | 10 views、normal/position conditioning、structured attention、flow matching |
-| Backprojection | visibility test、incidence weighting、anisotropic filtering |
-| Inpainting | geometry-aware KD-tree propagation |
-| Serving | H100 allocation、shared storage、two-service handoff、pipeline overlap |
-| Export | final mesh, UVs, normal map, texture atlas, metadata |
-
-没有这些模块，只复现 MeshGen 或 TextureGen 都不能叫完整 AssetGen。
-
-## 39. 生产可用性批判
-
-AssetGen 把可部署资产问题讲得很清楚，但仍有边界。
-
-第一，**硬件依赖强**。30 秒和 14 秒是在 H100 部署上报告的。普通消费级 GPU、单卡环境或 CPU 后处理流程不应期待同等延迟。
-
-第二，**官方实现未公开**。论文没有 AssetGen GitHub、模型权重或服务 demo。读者无法验证完整 pipeline，也无法确认许多工程优化的实现细节。
-
-第三，**商业 baseline 匿名**。匿名商业模型 A-D 保护了公平呈现，但限制了可复查性。网页延迟也受排队、区域、负载、导出策略影响。
-
-第四，**拓扑不等于动画可用**。论文自己承认 marching cubes 输出任意三角网格，简化后仍不保证 artist-friendly edge flow、rigging 或 animation-ready deformation。
-
-第五，**单图歧义无法消除**。背面、遮挡、非对称结构和罕见类别只能靠 prior 猜，失败是基本限制。
-
-第六，**PBR 材质不是主目标**。论文输出 color texture 和 normal map，对移动端友好，但如果生产需要 albedo/roughness/metalness 和 relighting，还需要额外模块。
-
-第七，**资产 QA 仍不可省**。真实游戏和 AR/VR 资产还要检查碰撞、LOD、材质规范、贴图压缩、法线方向、UV seam、引擎导入、物理尺寸和版权风险。
-
-## 40. 推荐阅读路径
-
-如果只读论文，不建议按页顺序从头到尾啃。更高效的顺序是：
-
-1. Abstract、Fig. 1、Fig. 2，先理解 asset contract。
-2. Sec. 5 MeshGen，看 VecSet diffusion、coarse-to-refine 和 distillation。
-3. Sec. 6 Geometry Post-Processing，看 simplification、UV、normal baking。
-4. Sec. 7 TextureGen，看 multi-view conditioning、structured attention、backprojection。
-5. Sec. 8 Latency Optimization，看 Table 5-8。
-6. Sec. 9 Evaluation，看 AssetBench、CharacterBench、人评。
-7. Sec. 11 Limitation，理解 single-image ambiguity、topology、rigging 边界。
-8. 之后补 Meta 3D AssetGen 2024、TRELLIS.2、Hunyuan3D、MVPaint、CuMesh、xatlas、DRTK。
-
-## 41. 结论
-
-AssetGen 的长期价值，不在于它又把某个 image-to-3D 指标提高了一点，而在于它把研究问题改写成了一个更接近生产的交付标准：
-
-> 给定一张参考图，在几十秒内交付一个可导出、可实时渲染、有可控面数、有 UV、有 baked normals、有 texture atlas 的 3D asset。
-
-为了做到这一点，论文没有只优化生成模型，而是把 MeshGen、geometry processing、TextureGen、distillation、GPU kernels、UV、normal baking、backprojection、inpainting 和 serving pipeline 一起设计。
-
-这也是它对 3D 生成领域最有价值的提醒：未来的 3D asset generation 不会只由更大的 diffusion model 决定，还会由整个资产化管线决定。模型负责想象和重建，图形学流程负责把它变成可用资产，系统工程负责让它足够快，产品 QA 负责让它真的能进入创作工作流。
-
-## References
-
-- [AssetGen arXiv abs](https://arxiv.org/abs/2605.26137)
+- [AssetGen arXiv abs: 2605.26137](https://arxiv.org/abs/2605.26137)
 - [AssetGen arXiv PDF](https://arxiv.org/pdf/2605.26137)
 - [AssetGen arXiv HTML](https://arxiv.org/html/2605.26137v1)
 - [Meta 3D AssetGen 2024](https://arxiv.org/abs/2407.02445)
-- [TRELLIS.2 project page](https://microsoft.github.io/TRELLIS.2/)
+- [TRELLIS.2 Project Page](https://microsoft.github.io/TRELLIS.2/)
 - [CuMesh](https://github.com/visualbruno/CuMesh)
 - [xatlas](https://github.com/jpcy/xatlas)
 - [DRTK](https://github.com/facebookresearch/DRTK)

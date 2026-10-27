@@ -14,27 +14,17 @@ tags:
 draft: false
 ---
 
-Xin Cheng、Xingkai Yu、Chenze Shao、Jiashi Li、Yunfan Xiong 等来自 Peking University 与 DeepSeek-AI 的作者在 2026 年发布的 **DSpark: Confidence-Scheduled Speculative Decoding with Semi-Autoregressive Generation**，是一篇非常系统工程取向的大模型推理加速报告。
+Xin Cheng、Xingkai Yu、Chenze Shao、Jiashi Li、Yunfan Xiong 等来自北京大学与 DeepSeek-AI 的研究者在 2026 年发布的 **DSpark: Confidence-Scheduled Speculative Decoding with Semi-Autoregressive Generation**，是一篇面向大规模在线推理服务（LLM Serving）的系统级技术报告。它直面了推测解码（speculative decoding）在工业界高并发部署中的一个核心矛盾：
 
-它讨论的问题不是“怎样让小模型预测下一个 token 更准”这么窄，而是一个更接近真实线上 serving 的问题：
+> 当大模型服务处在严苛的交互延迟约束（TPS SLA）与有限的目标模型批处理容量（target batch capacity）下，推测解码应当生成怎样的候选序列，并把多少候选 token 送交目标模型验证？
 
-> 当大模型服务处在高并发、严格交互延迟和有限 batch capacity 下，speculative decoding 应该把多少 draft token 送给 target model 验证？
+传统推测解码往往默认“草稿模型（drafter）单次生成的候选块越长、每轮验证接受的 token 越多，推理就越快”。然而在真实的高并发服务中，**目标模型的验证批容量（verification batch capacity）是高度稀缺的共享资源**。如果一批并发请求中掺杂了大量低置信度的草稿后缀（draft suffix），盲目将它们送入目标模型验证会严重挤占有效算力，导致系统聚合吞吐下滑，甚至无法满足单用户的生成速率 SLA。
 
-传统 speculative decoding 的直觉是：draft model 越快、一次 draft 越长，target model 每轮验证接受的 token 越多，整体速度越快。但 DSpark 指出，真实系统里还存在另一个约束：**target verification 的 batch 不是免费的**。如果一批请求中有很多低置信度 draft suffix，盲目把它们送去验证会消耗宝贵的 target batch capacity，导致吞吐下降，甚至让服务无法满足严格 TPS SLA。
+针对这一痛点，DSpark 从生成与验证两端协同破局：在草稿生成端采用**半自回归生成（semi-autoregressive generation）**，以高容量的并行主干网络保证 $O(1)$ 步生成长候选块的吞吐优势，再叠加极轻量的顺序头（sequential head）注入块内采样依赖，有效抑制并行草稿模型的后缀接受率衰减（suffix decay）；在目标验证端提出**置信度调度验证（confidence-scheduled verification）**，精准预估每个草稿位置被目标模型接受的概率，并结合推理引擎的硬件吞吐曲线 $\mathrm{SPS}(B)$，在批级别动态截断各请求的验证前缀长度。
 
-DSpark 的核心答案可以压缩成两句话。
+本文结合论文与官方开源代码库 `deepseek-ai/DeepSpec` 展开精读，依次剖析半自回归草稿架构、硬件感知前缀调度算法、训练与评测代码实现，以及离线基准与 DeepSeek-V4 线上服务的实验表现。文中图表截取自官方技术报告 PDF。
 
-第一，draft 侧用 **semi-autoregressive generation**：用重一点的 parallel backbone 保持 $O(1)$ 生成长块的吞吐优势，再用轻量 sequential head 在块内引入依赖，缓解 parallel drafter 的 suffix decay。
-
-第二，verification 侧用 **confidence-scheduled verification**：为每个 draft 位置预测被 target 接受的概率，再结合当前 serving engine 的吞吐曲线，动态选择每个请求要验证的 prefix 长度。
-
-这篇报告最值得读的地方，是它把“模型结构”“接受率校准”“硬件吞吐曲线”“线上 SLA”放在同一个框架里讨论。本文会按论文和官方 DeepSpec 代码两条线精读：先拆 DSpark 的算法，再对照 `deepseek-ai/DeepSpec` 中的训练、评估、配置和核心实现。本文不声称复现 DSpark 训练，不构建默认约 38TB 的 Qwen3-4B target cache，也不复现 DeepSeek-V4 的生产 serving 结果。
-
-本文插入的图表来自用户提供的本地 PDF 和官方 DeepSpec 仓库中的 `DSpark_paper.pdf`，仅做等比例裁切展示，并在图注标注来源。
-
-## 1. 论文信息与一句话贡献
-
-论文基本信息如下。
+## 1. 论文概览与推测解码的系统瓶颈
 
 | 项目 | 内容 |
 | --- | --- |
@@ -43,781 +33,335 @@ DSpark 的核心答案可以压缩成两句话。
 | 机构 | Peking University, DeepSeek-AI |
 | PDF | 33 页技术报告 |
 | 官方代码 | `deepseek-ai/DeepSpec` |
-| 开源内容 | DeepSpec 训练/评估代码、DSpark/DFlash/Eagle3 configs、公开 benchmark 数据、released checkpoints |
-| 未开源或不可复现部分 | DeepSeek-V4 production traffic、线上 serving engine、完整硬件感知 scheduler 生产实现、SPS profiling 环境 |
+| 开源内容 | DeepSpec 训练/评估代码、DSpark/DFlash/Eagle3 配置、公开基准评测脚本、Hugging Face 预训练权重 |
 
-一句话概括 DSpark：
+DSpark 的核心贡献可以凝练为：**将推测解码的优化目标从单纯拉长草稿生成长度，升级为提升候选前缀（prefix）的块内一致性，并依据校准后的存活概率与硬件吞吐曲线，将有限的目标模型验证预算精准分配给期望收益最高的候选 token**。
 
-> DSpark 把 speculative decoding 的优化目标从“让 drafter 一次吐出更多 token”推进到“让 drafter 生成更可接受的 prefix，并把 target verification 预算分配给最可能存活的 token”。
+围绕这一目标，全文贯穿着三个紧密咬合的核心概念：**连续前缀存活（prefix survival）**——由于目标模型验证只接受从头开始的连续匹配前缀，一旦首个位置被拒，后续位置的草稿无论质量高低都会在本轮作废，因此越靠前的位置权重越高；**分布对齐置信度（confidence）**——置信度头预测的目标是草稿分布与目标模型分布的重叠率（即真实接受概率），而非草稿模型自身的词元最大概率；**硬件感知调度（hardware-aware scheduling）**——验证低置信度词元的机会成本随系统并发动态变化，调度器必须将推理引擎的每秒步数曲线 $\mathrm{SPS}(B)$ 纳入全局吞吐目标函数。
 
-这句话里有三个关键词。
+### 1.1 自回归解码延迟矛盾与推测解码基础
 
-第一是 **prefix**。Speculative decoding 的 target verification 接受的是连续前缀。如果第一个 draft token 被拒绝，后面 token 再好也无法在这一轮直接贡献速度。因此 draft block 的位置越靠前，价值越高；越靠后的 token 越容易被前面 rejection 拖累。
+标准大语言模型遵循自回归解码（autoregressive generation）：给定上下文 $x_{1:t}$，模型计算条件分布 $p_\theta(x_{t+1}\mid x_{\le t})$ 并采样出 $x_{t+1}$，随后将其拼回序列继续计算 $p_\theta(x_{t+2}\mid x_{\le t+1})$。尽管 KV Cache 避免了历史上下文的重复编码，但每生成一个新 token 依然需要串行读取一遍目标模型的全部权重。在线上服务中，这一访存密集型特性引发了四个维度的指标博弈：
 
-第二是 **confidence**。DSpark 的 confidence head 不是预测 token probability 本身，而是估计“这个 draft token 会不会被 target 接受”。它关心 draft distribution 与 target distribution 的接近程度，也关心 prefix survival 的累积效果。
-
-第三是 **hardware-aware**。如果系统空闲，验证稍低置信度 token 的机会成本不高；如果系统已经高并发，低置信度 token 会挤占 target batch capacity。DSpark 的 scheduler 把 serving engine 的 step-per-second 曲线 $\mathrm{SPS}(B)$ 放进目标函数，而不是只看模型侧接受率。
-
-## 2. 论文与代码状态
-
-DSpark 的官方代码位于 [DeepSeek-AI/DeepSpec](https://github.com/deepseek-ai/DeepSpec)。README 把 DeepSpec 定义为一个 speculative decoding draft model 的 full-stack codebase，覆盖数据准备、draft model 实现、训练代码和评估脚本。
-
-DeepSpec 当前支持三类 draft model：
-
-| Algorithm | 论文/来源 | DeepSpec 中的作用 |
+| 服务维度 | 核心诉求 | 系统代价与冲突 |
 | --- | --- | --- |
-| DSpark | 本文主角 | 半自回归 drafter + confidence head |
-| DFlash | parallel drafter baseline | DSpark 的 parallel backbone 设计来源之一 |
-| Eagle3 | autoregressive drafter baseline | 用于对比 $O(\gamma)$ sequential drafting |
+| 单请求低延迟 | 尽快返回每个生成的 token | 被迫限制批大小（batch size），GPU 算力利用率低 |
+| 系统高吞吐 | 大规模多请求合批以摊销权重访存 | 单步推理耗时增加，请求排队与交互等待拉长 |
+| 模型高质量 | 部署参数量更大的目标模型（Target Model） | 单步前向传播的访存与计算开销成倍上升 |
+| 强交互 SLA | 保障高的单用户生成速率（tok/s/user） | 单机可承载的并发连接数大幅萎缩 |
 
-README 还发布了 Table 1 对应的 Hugging Face checkpoints，包括 Qwen3-4B、Qwen3-8B、Qwen3-14B 与 Gemma4-12B 目标模型下的 Eagle3、DFlash 和 DSpark checkpoints。以 DSpark/Qwen3-4B 为例，对应仓库是 [deepseek-ai/dspark_qwen3_4b_block7](https://huggingface.co/deepseek-ai/dspark_qwen3_4b_block7)。
+推测解码（Speculative Decoding）通过引入一个轻量的草稿模型（Draft Model，分布记为 $q$）来打破串行瓶颈：在每一轮解码中，先由草稿模型快速提议 $\gamma$ 个候选词元 $\hat{x}_{t+1:t+\gamma}$，再交由目标模型（分布记为 $p$）在单次前向传播中并行计算这 $\gamma$ 个位置的真实分布，并通过修正拒绝采样（rejection sampling）验证最长可接受前缀。这一机制在严格保证最终输出分布与目标模型 $p$ 完全一致（无损加速）的前提下，用每轮平均接受长度（accepted length，记作 $\tau$）成倍放大了单次目标模型前向传播的有效产出。
 
-这点很重要：本文不是只读 PDF。DeepSpec 让我们能看到论文里若干概念如何落到代码：
+### 1.2 自回归与并行 Drafter 的两难：延迟与后缀衰减（Suffix Decay）
 
-| 论文概念 | 代码位置 | 说明 |
+在设计草稿模型时，现有主流方案分化为自回归（Autoregressive）与并行（Parallel）两条路线，各自面临明显的结构瓶颈：
+
+- **自回归草稿模型（如 Eagle3）**：按顺序逐个生成候选词元，联合分布严格拆解为条件连乘：
+  $$
+  q(\hat{x}_{t+1:t+\gamma}\mid x_{\le t}) = \prod_{j=1}^{\gamma} q(\hat{x}_{t+j}\mid x_{\le t},\hat{x}_{t+1:t+j-1})
+  $$
+  由于后序位置能够观测到前序实际采样出的词元，块内语义连贯性好。但代价是草稿阶段本身必须串行执行 $\gamma$ 次前向计算，草稿延迟呈 $O(\gamma)$ 线性增长；为了压低这部分开销，自回归草稿网络通常只能设计得很浅（例如单层），限制了首词元的预测容量。
+- **并行草稿模型（如 DFlash）**：单次前向传播同时输出全部 $\gamma$ 个位置的条件独立分布：
+  $$
+  q(\hat{x}_{t+1:t+\gamma}\mid x_{\le t}) \approx \prod_{j=1}^{\gamma} q_j(\hat{x}_{t+j}\mid x_{\le t})
+  $$
+  并行生成的草稿延迟近似为 $O(1)$，允许使用更深的主干网络（如 5 层）来提升首词元预测质量。但由于位置 $j$ 无法感知位置 $1,\ldots,j-1$ 的具体采样结果，一旦上下文存在多种合理的后续分支（多模态分布），不同位置极易各自挑选互不兼容的分支词元，拼凑出语法或逻辑断裂的后缀，导致条件接受率随位置后移急剧滑坡——即论文重点指出的**后缀衰减（suffix decay）**。
+
+DSpark 的出发点正是融合两者的优势：保留并行主干的高容量与 $O(1)$ 块生成效率，同时在输出端嵌入极轻量的半自回归顺序修正头来消除后缀冲突，并配合置信度调度器裁除低价值后缀。
+
+### 1.3 DeepSpec 开源生态与复现边界
+
+论文配套开源的 [DeepSeek-AI/DeepSpec](https://github.com/deepseek-ai/DeepSpec) 仓库提供了完整的数据准备、模型定义、训练器与基准评估框架，并在 Hugging Face 上发布了基于 Qwen3-4B、Qwen3-8B、Qwen3-14B 与 Gemma4-12B 的 Eagle3、DFlash 及 DSpark 预训练权重（例如 [deepseek-ai/dspark_qwen3_4b_block7](https://huggingface.co/deepseek-ai/dspark_qwen3_4b_block7)）。论文核心组件与开源代码模块的对应关系如下：
+
+| 论文核心模块 | DeepSpec 源码路径 | 功能说明 |
 | --- | --- | --- |
-| DSpark training config | `config/dspark/dspark_qwen3_4b.py` 等 | block size、draft layers、target layer ids、Markov head、confidence loss 权重 |
-| Semi-autoregressive head | `deepspec/modeling/dspark/markov_head.py` | `VanillaMarkov`、`GatedMarkovHead`、`RNNHead` |
-| DSpark model | `deepspec/modeling/dspark/qwen3/modeling.py`、`gemma4/modeling.py` | parallel backbone、logits、confidence head、target hidden states |
-| Training loss | `deepspec/modeling/dspark/loss.py` | CE、L1 distribution matching、confidence BCE、accept-rate metrics |
-| Trainer | `deepspec/trainer/dspark_trainer.py` | 构建 DSpark draft model 并调用 loss |
-| Eval proposal | `deepspec/eval/dspark/draft_ops.py` | 生成 draft block、采样 token、按 confidence threshold 截断 |
-| Eval loop | `deepspec/eval/dspark/evaluator.py` | target/draft 模型加载、verification loop、confidence recorder |
-| Confidence metrics | `deepspec/eval/dspark/confidence_head.py` | ECE、AUROC、Brier、reliability diagram |
+| 训练超参数配置 | `config/dspark/dspark_qwen3_4b.py` 等 | 定义块大小、草稿层数、目标层索引、Markov 头与损失权重 |
+| 半自回归顺序头 | `deepspec/modeling/dspark/markov_head.py` | 实现 `VanillaMarkov`、`GatedMarkovHead` 与 `RNNHead` |
+| DSpark 主模型 | `deepspec/modeling/dspark/{qwen3,gemma4}/modeling.py` | 封装并行主干、基础 logits、置信度头与目标隐藏层融合 |
+| 联合训练损失 | `deepspec/modeling/dspark/loss.py` | 实现交叉熵、分布 L1 距离、置信度 BCE 与位置衰减加权 |
+| 分布式训练器 | `deepspec/trainer/dspark_trainer.py` | 管理训练循环、模型前向与损失回传 |
+| 离线提议与截断 | `deepspec/eval/dspark/draft_ops.py` | 执行并行主干前向、顺序头逐步采样与静态置信度阈值截断 |
+| 评估与校准统计 | `deepspec/eval/dspark/{evaluator.py,confidence_head.py}` | 运行验证闭环，统计接受长度 $\tau$、ECE、AUROC、Brier 及可靠性图 |
 
-但代码边界也必须讲清。论文 Algorithm 1 描述的是高并发 production serving 中的硬件感知全局 prefix scheduler；DeepSpec 开源评估代码主要暴露的是单请求 speculative decoding、静态 `confidence_threshold` 和 confidence metrics。也就是说，开源代码能帮助理解 DSpark 的模型和离线评估，但不等于完整复现 DeepSeek-V4 serving controller。
+关于代码与实验的边界在此统一说明：首先，完整复现从零训练需要预计算并存储目标模型的隐藏状态缓存（默认 `Qwen/Qwen3-4B` 配置下 target cache 约需 **38TB** 磁盘空间），普通研究环境更适合直接加载官方发布的预训练权重运行评估；其次，开源仓库的 `eval` 模块针对离线单样本评测设计，使用的是静态置信度阈值（`confidence_threshold`），而论文 Algorithm 1 所述的硬件感知批级全局调度器以及 Fig. 7/8 中基于 DeepSeek-V4 生产引擎与线上真实流量的服务曲线，属于内部生产推理系统范畴，未包含在公开评估脚本中。
 
-## 3. 背景：为什么自回归解码慢
+## 2. DSpark 整体架构与半自回归生成机制
 
-大语言模型的标准解码是 autoregressive generation。给定上下文 $x_{1:t}$，模型计算：
+### 2.1 Draft Better + Verify Smarter 解码周期（Fig. 1）
 
-$$
-p_\theta(x_{t+1}\mid x_{\le t})
-$$
-
-采样或贪心选择 $x_{t+1}$ 之后，再把它拼回上下文，继续计算：
-
-$$
-p_\theta(x_{t+2}\mid x_{\le t+1})
-$$
-
-这个过程的核心瓶颈是 **每个输出 token 至少需要一次 target model forward**。即使 KV cache 已经复用了历史 key/value，新的 token 仍然要经过模型的每一层。对用户来说，体感速度近似由 token/s/user 决定；对服务商来说，成本还取决于 token/s/GPU、batching、并发、显存、调度和 SLA。
-
-大模型线上服务里的矛盾通常是：
-
-| 目标 | 需求 | 代价 |
-| --- | --- | --- |
-| 低延迟 | 单请求尽快返回 token | batch 变小，GPU 利用率下降 |
-| 高吞吐 | 多请求合批，提高 GPU 利用率 | 单请求排队和等待增加 |
-| 高质量 | 用更大的 target model | 每步 forward 更贵 |
-| 强交互 | 提高 tok/s/user | 并发承载能力下降 |
-
-Speculative decoding 试图绕开其中一部分矛盾：用便宜 draft model 先猜多个 token，再让 expensive target model 一次并行验证这些 token。如果多个 draft token 被接受，target model 每次 forward 就能推进多个输出 token。
-
-## 4. Speculative Decoding 基础
-
-经典 speculative decoding 有两个模型：
-
-- **Target model**：用户真正想要的模型，分布记为 $p$。
-- **Draft model**：便宜、快速的模型，分布记为 $q$。
-
-在一轮 decoding 中，draft model 先生成 $\gamma$ 个候选 token：
-
-$$
-\hat{x}_{t+1:t+\gamma}
-$$
-
-随后 target model 对这段候选进行并行验证。直觉上，如果 draft model 和 target model 在这些 token 上的分布足够接近，就可以接受多个 token；一旦某个位置拒绝，后续 token 也不能继续作为本轮 accepted prefix 使用。
-
-因此一个关键指标是 **accepted length**，常记为 $\tau$。如果每轮平均接受更多 token，那么 target model forward 次数减少，生成速度提高。
-
-但 speculative decoding 不是随便让 draft model 猜，也不是用 draft 结果替代 target 结果。正确算法必须保持 target distribution 的一致性。也就是说，用户最终看到的采样分布仍然应该等价于 target model，而 draft model 只承担“提出候选、帮助加速”的角色。
-
-这也解释了为什么 DSpark 关注的是 prefix survival，而不是普通 next-token accuracy。位置 $j$ 的 token 只有在 $1,\ldots,j-1$ 全部接受之后才有机会被验证成功。第一个 token 的错误会让整个 block 的后缀收益直接归零。
-
-## 5. 现有 drafter 的两难
-
-论文把现有 draft model 的设计困境讲得很清楚：autoregressive drafter 和 parallel drafter 各有问题。
-
-### Autoregressive Drafter
-
-Eagle3 这类 autoregressive drafter 按 token 顺序生成 draft：
-
-$$
-q(\hat{x}_{t+1:t+\gamma}\mid x_{\le t})
-=\prod_{j=1}^{\gamma} q(\hat{x}_{t+j}\mid x_{\le t},\hat{x}_{t+1:t+j-1})
-$$
-
-优点是自然建模块内依赖，后面 token 可以条件于前面已经采样出来的 draft token。缺点是 draft latency 随 $\gamma$ 增长，近似是 $O(\gamma)$。如果 draft model 自身也要跑多次 forward，长 draft block 的收益会被 draft 开销吃掉。
-
-### Parallel Drafter
-
-DFlash 这类 parallel drafter 一次 forward 生成整个 block：
-
-$$
-q(\hat{x}_{t+1:t+\gamma}\mid x_{\le t})
-\approx \prod_{j=1}^{\gamma} q_j(\hat{x}_{t+j}\mid x_{\le t})
-$$
-
-优点是吞吐高，block 生成近似 $O(1)$。缺点是每个位置的预测缺少对前面 sampled token 的条件依赖。遇到多模态上下文时，parallel drafter 可能在不同位置选择不兼容的 continuation。论文举的直觉是，前缀有多种合理补全时，独立位置可能混合不同路径，形成 incoherent suffix。
-
-这种现象会表现为 **suffix decay**：第一个 token 的条件接受率可能很高，但越往后越容易下降。
-
-### DSpark 的折中
-
-DSpark 的设计目标是：
-
-- 保留 parallel backbone 的高 capacity 和 $O(1)$ 长块生成优势。
-- 用轻量 sequential head 补上块内依赖。
-- 用 confidence head 估计每个位置的接受风险。
-- 用 scheduler 避免低置信度 suffix 浪费 target verification。
-
-这就是“draft better, verify smarter”的含义。
-
-## 6. DSpark 总览：Draft Better + Verify Smarter
+Fig. 1 完整描绘了 DSpark 在单轮推测解码中的工作流：
 
 ![DSpark architecture and decoding cycle](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig1-architecture-cycle.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Fig. 1.*
 
-Fig. 1 展示了 DSpark 一轮 decoding 的主要流程。为了便于理解，可以把它拆成三步。
+整个解码周期由三个阶段串联而成：
+1. **目标锚点生成（Anchor Generation）**：给定提示词序列 `A B C`，目标模型在上一轮验证结束时真实推进并产出一个锚点词元 `D`（连同其多层隐藏状态），作为当前轮草稿生成的可靠起点。
+2. **半自回归草稿提议（Drafting Phase — Draft Better）**：锚点 `D` 与掩码占位符送入 DSpark 的并行 Transformer 主干（Parallel Block），一次性并行算出全部 $\gamma$ 个候选位置的隐藏表征与基础 logits；随后轻量顺序块（Sequential Block）依次在块内做局部条件采样，产出候选序列 `E F G H` 及对应的逐位置置信度分数 $c_1, c_2, c_3, c_4$。
+3. **硬件感知前缀调度与验证（Verification Phase — Verify Smarter）**：调度器结合当前并发批次内所有请求的置信度序列与硬件吞吐曲线 $\mathrm{SPS}(B)$，判定末尾词元 `H` 的预期收益不足以抵消其占用的批处理容量，当即裁掉 `H` 并仅将高置信度前缀 `E F G` 送入目标模型并行验证；最终目标模型接受 `E` 和 `F`，在第三位拒绝 `G` 并重采样产出修正词元 `G*`，开启下一轮循环。
 
-第一步，target model 先运行一步，得到 anchor token。图中 prompt tokens 是 `A B C`，target model 先生成 `D`。这个 `D` 不是 draft model 猜出来的，而是 target model 真实推进出来的 token，因此它可以作为后续 drafting 的可靠锚点。
+### 2.2 半自回归生成：并行主干与轻量顺序修正
 
-第二步，DSpark 用 `D` 作为输入进入 drafting phase。Parallel block 先生成多个位置的 hidden states 和 base logits，Sequential block 再引入块内依赖，生成 `E F G H` 这类 draft tokens，并输出对应 confidence scores $c_1,\ldots,c_4$。
-
-第三步，Hardware-Aware Prefix Scheduler 根据 confidence scores 和系统吞吐曲线，决定只验证 prefix `E F G`，丢弃低置信度 token `H`。target model 并行验证该 prefix，接受 `E` 和 `F`，拒绝 `G`，并生成纠正 token `G^\ast`。
-
-这个流程背后的关键是：DSpark 不把“最长 draft block”当作目标，而是把 **target verification 的有效产出** 当作目标。低置信度 token 如果大概率会被拒绝，它不只是“没贡献”，还会挤占 batch capacity。
-
-## 7. 半自回归生成：为什么一点点顺序依赖很值钱
-
-论文的 semi-autoregressive generation 可以理解为“parallel backbone + lightweight sequential correction”。
-
-Parallel stage 产生每个位置的 hidden state：
+从数学形式上看，DSpark 的半自回归生成将草稿预测解耦为“全局并行特征提取”与“局部低秩顺序修正”两步。首先，并行主干网络（例如 5 层非因果注意力层）在单次前向传播中并行产出 $\gamma$ 个候选位置的隐藏状态与基础词表对数几率（base logits）：
 
 $$
-h_1,\ldots,h_\gamma
+h_1,\ldots,h_\gamma = \mathrm{ParallelBackbone}(x_{\le t}), \qquad U_1,\ldots,U_\gamma = W_{\mathrm{lm}}[h_1,\ldots,h_\gamma]
 $$
 
-并得到 base logits：
+若直接对每个 $U_j$ 独立采样，模型即退化为 DFlash。为了在不牺牲 $O(1)$ 主干吞吐的前提下恢复块内条件依赖，DSpark 引入了一个轻量偏置函数 $b(\hat{x}_{j-1}, h_j)$，利用前一个位置刚刚采样出的词元 $\hat{x}_{j-1}$ 动态修正当前位置的 logits：
 
 $$
-U_1,\ldots,U_\gamma
+\tilde{U}_j = U_j + b(\hat{x}_{j-1}, h_j), \qquad \hat{x}_j \sim \mathrm{Softmax}(\tilde{U}_j)
 $$
 
-如果直接从 $U_j$ 采样每个位置，就回到了普通 parallel drafter。DSpark 进一步加入 sequential head，让第 $j$ 个位置的 logits 可以依赖前一个 sampled token：
+由于偏置函数 $b(\cdot)$ 仅涉及低秩矩阵向量乘或极小的循环单元，无需重新执行跨全序列的自注意力计算，因此顺序采样的额外延迟开销极低（实测仅占 0.6%～1.3%），却能有效锚定块内的局部语法与多词元搭配一致性。
 
-$$
-\tilde{U}_j = U_j + b(\hat{x}_{j-1}, h_j)
-$$
+### 2.3 Markov / RNN Head 的三种建模形态（markov_head.py）
 
-其中 $b(\cdot)$ 是一个轻量 bias function。它不需要像完整 transformer layer 那样重新计算整个上下文，只需要在 draft block 内提供一个局部条件信号。
+在 `deepspec/modeling/dspark/markov_head.py` 中，官方代码实现了三种复杂度递增的顺序修正头：
 
-这个设计的价值在于，speculative decoding 的收益对 prefix 非常敏感。只要 sequential head 能减少后缀不一致，哪怕它很轻，也可能显著提高 accepted length。论文 Fig. 3/4 的消融正是在证明这一点。
-
-## 8. Markov / RNN Head 代码精读
-
-DeepSpec 中 semi-autoregressive head 的核心文件是 `deepspec/modeling/dspark/markov_head.py`。它提供三类实现。
-
-| 类 | 直觉 | 代码行为 |
+| 源码类名 | 依赖范围与建模机制 | 核心数学形式 |
 | --- | --- | --- |
-| `VanillaMarkov` | 用上一个 token 查 embedding，再投影成 vocabulary bias | `markov_w1` 把 token 映射到低秩 latent，`markov_w2` 投到 vocab |
-| `GatedMarkovHead` | 根据当前位置 hidden state 调节 token bias | 拼接 hidden state 和 prev token embedding，生成 gate |
-| `RNNHead` | 在 block 内维护 recurrent state | 用 GRU-like step 让后续位置访问更长的 sampled prefix |
+| `VanillaMarkov` | 一阶马尔可夫转移：仅依赖前一个采样词元 $\hat{x}_{j-1}$ 的低秩词表偏置 | $b_j = W_2 W_1[\hat{x}_{j-1}], \quad \tilde{U}_j = U_j + b_j$ |
+| `GatedMarkovHead` | 上下文门控一阶转移：结合当前位置隐藏状态 $h_j$ 动态门控转移特征 | $g_j=\sigma(W_g[h_j;W_1[\hat{x}_{j-1}]]), \quad b_j=W_2(g_j\odot W_1[\hat{x}_{j-1}])$ |
+| `RNNHead` | 块内循环状态传递：维护隐状态 $s_j$，聚合整个已采样前缀 $\hat{x}_{1:j-1}$ 的信息 | $s_j, o_j = \mathrm{RNN}(s_{j-1}, W_1[\hat{x}_{j-1}], h_j), \quad b_j = W_2(o_j)$ |
 
-`VanillaMarkov` 的基本形式可以写成：
+在训练阶段，源码调用 `apply_block_logits()`，直接利用真实目标序列（teacher forcing）并行计算所有位置的修正后 logits $\tilde{U}_{1:\gamma}$；在推理阶段，源码调用 `sample_block_tokens()`，在一个长度为 $\gamma$ 的轻量循环中逐位置完成“查表计算偏置 $b_j \rightarrow$ 叠加 $U_j \rightarrow$ 采样 $\hat{x}_j$”，从而以极小代价实现了半自回归块生成。
 
-$$
-b_j = W_2 W_1[\hat{x}_{j-1}]
-$$
+## 3. 置信度预测与硬件感知前缀调度器
 
-然后修正 base logits：
+### 3.1 面向分布重叠度的 Confidence Head 与前缀存活率
 
-$$
-\tilde{U}_j = U_j + b_j
-$$
-
-`GatedMarkovHead` 多了一个 gate：
+在推测解码中，草稿模型自身输出的词元概率 $\max_v q(v)$ 往往存在严重的过度自信，并不能准确反映目标模型是否会接受该词元。从拒绝采样的理论性质出发，给定草稿分布 $q$ 与目标分布 $p$，该位置词元被目标模型接受的真实期望概率（accept rate）严格等于两个离散分布的总变差距离补集（即分布重叠面积）：
 
 $$
-g_j=\sigma(W_g[h_j;W_1[\hat{x}_{j-1}]])
+\alpha = 1 - \frac{1}{2}\lVert p - q \rVert_1 = 1 - \frac{1}{2}\sum_{v \in \mathcal{V}} |p(v) - q(v)|
 $$
 
-$$
-b_j=W_2(g_j\odot W_1[\hat{x}_{j-1}])
-$$
-
-`RNNHead` 则维护状态 $s_j$：
+在 `deepspec/modeling/dspark/loss.py` 的 `_compute_accept_rate_3d()` 函数中，代码正是通过对草稿 logits 与目标 logits 分别执行 Softmax 后按上式计算软标签 $\alpha \in [0, 1]$，并使用二元交叉熵（BCE）训练置信度预测头 $\hat{c}_j = \sigma(\text{ConfidenceHead}(h_j, \hat{x}_{j-1}, \hat{x}_j))$：
 
 $$
-s_j = \mathrm{RNN}(s_{j-1}, W_1[\hat{x}_{j-1}], h_j)
+\mathcal{L}_{\mathrm{conf}} = \mathrm{BCEWithLogits}(\text{logit}(\hat{c}_j),\, \alpha_j)
 $$
 
-$$
-b_j = W_2(o_j)
-$$
-
-代码里的 `sample_block_tokens()` 体现了 DSpark 的核心行为：它不是一次性独立采样所有位置，而是在一个 Python loop 里逐位置采样，下一位置把上一位置 sampled token 当作条件信号。不过这个 loop 只运行轻量 head，而不是每个位置都跑完整 draft transformer，因此 overhead 很小。
-
-这一点也解释了论文标题里的 semi-autoregressive：它不是完全自回归 draft model，而是在 parallel backbone 之后加一个低成本顺序依赖层。
-
-## 9. Confidence Head：预测的不是 token probability
-
-DSpark 的 confidence head 目标容易被误解。它不是简单输出“这个 token 的 softmax probability 很高，所以值得验证”。真正要预测的是 **target model 是否会接受这个 draft token**。
-
-在训练时，如果有 draft distribution $q$ 和 target distribution $p$，论文和代码使用的接受率近似可以写为：
+考虑到推理调度器真正关心的是从块首到第 $j$ 个位置的**连续前缀存活概率（prefix survival probability）**：
 
 $$
-\alpha = 1-\frac{1}{2}\lVert p-q\rVert_1
+a_{r,j} = \prod_{i=1}^{j} c_{r,i}
 $$
 
-DeepSpec 的 `loss.py` 中，`_compute_accept_rate_3d()` 正是对 draft logits 和 target logits 做 softmax 后计算：
+单步置信度的微小系统性高估会在连乘中呈指数级放大。为此，源码不仅统计单步绝对误差 `confidence_abs_error` 与均值偏差 `confidence_bias`，还专门监控累积乘积偏差 `confidence_cumprod_bias`，并在部署前通过温度缩放等后验校准（post-hoc calibration）手段消除连乘偏差。
 
-$$
-\alpha = 1.0 - 0.5\sum_v |p(v)-q(v)|
-$$
+### 3.2 硬件感知前缀调度算法（Algorithm 1）
 
-并 clamp 到 $[0,1]$。
-
-confidence head 的训练目标是 BCE：
-
-$$
-\mathcal{L}_{conf}
-=\mathrm{BCEWithLogits}(\hat{c}, \alpha)
-$$
-
-代码里 `outputs.confidence_pred` 对齐 `accept_rate_3d.detach()`，并记录三类诊断：
-
-- `confidence_abs_error`：置信度绝对误差。
-- `confidence_bias`：整体偏高还是偏低。
-- `confidence_cumprod_bias`：prefix survival 累积概率的偏差。
-
-这第三项尤其重要。单点 confidence 稍微偏高，累积到 prefix survival 后可能会被放大：
-
-$$
-a_{r,j}=\prod_{i\le j}c_{r,i}
-$$
-
-如果每个 $c_i$ 都过度自信，scheduler 会错误地把低质量 suffix 放进 verification batch。
-
-## 10. Hardware-Aware Prefix Scheduler
+拿到批内各请求经过校准的逐位置置信度后，Algorithm 1 给出了将验证预算分配问题与底层推理引擎硬件特性解耦结合的全局贪心调度器：
 
 ![Hardware-Aware Prefix Scheduler](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-algorithm1-hardware-aware-prefix-scheduler.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Algorithm 1.*
 
-Algorithm 1 是 DSpark 从“离线接受率提升”走向“线上 serving 可用”的关键。
-
-设当前 batch 中有 $R$ 个 active requests。第 $r$ 个请求的 draft block 有 $\gamma$ 个位置，confidence sequence 是：
+设当前并发批次共有 $R$ 个活跃请求，第 $r$ 个请求生成的草稿块长度为 $\gamma$，其第 $j$ 个位置的前缀存活概率为 $a_{r,j} = \prod_{i \le j} c_{r,i}$。若调度器为请求 $r$ 分配的验证前缀长度为 $\ell_r \in \{0, 1, \ldots, \gamma\}$，则目标模型在本轮前向验证中需要处理的**总词元批大小**（Total Verification Batch Size）为：
 
 $$
-c_{r,1},c_{r,2},\ldots,c_{r,\gamma}
+B(\ell_1,\ldots,\ell_R) = \sum_{r=1}^{R}(1 + \ell_r)
 $$
 
-由于 speculative decoding 只能接受连续 prefix，第 $j$ 个 token 的 survival probability 是：
+其中常数 $1$ 代表每个请求必定推进或验证的基础锚点位。与此同时，整个批次在本轮验证后预期产出的总有效词元数为：
 
 $$
-a_{r,j}=\prod_{i\le j} c_{r,i}
+\tau(\ell_1,\ldots,\ell_R) = \sum_{r=1}^{R}\left(1 + \sum_{j=1}^{\ell_r} a_{r,j}\right)
 $$
 
-如果给请求 $r$ 分配 verification length $\ell_r$，那么 target model 这一轮看到的 token batch size 是：
+记推理引擎在批大小为 $B$ 时的每秒执行步数（Step-Per-Second，由引擎初始化时离线压测建表获得）为 $\mathrm{SPS}(B)$，则系统的**期望聚合输出吞吐**（Expected Aggregate Throughput）定义为：
 
 $$
-B=\sum_{r=1}^{R}(1+\ell_r)
+\Theta(\ell_1,\ldots,\ell_R) = \tau(\ell_1,\ldots,\ell_R) \cdot \mathrm{SPS}\!\left(B(\ell_1,\ldots,\ell_R)\right)
 $$
 
-这里的 $1$ 对应每个请求至少要 target model 继续生成或验证的 anchor/next token，$\ell_r$ 是额外 draft prefix。
+调度器的目标是求解组合优化问题 $\max_{\ell_1,\ldots,\ell_R} \Theta$。由于对任意请求 $r$，前缀存活率 $a_{r,j} = \prod_{i \le j} c_{r,i}$ 随位置 $j$ 自然单调递减（$a_{r,1} \ge a_{r,2} \ge \cdots \ge a_{r,\gamma}$），这意味着在任意请求内部，靠前的位置永远比靠后的位置具备更高的边际收益。利用这一单调性质，Algorithm 1 无需做指数级搜索，直接将所有请求的全部候选位置 $(r, j)$ 按 $a_{r,j}$ 从大到小全局排序，每次贪心接纳当前存活率最高的一个词元（令 $B \leftarrow B+1,\ \tau \leftarrow \tau + a_{r,j}$），并在吸纳过程上精确评估 $\Theta = \tau \cdot \mathrm{SPS}(B)$ 的全局最大值点，从而在 $O(R\gamma \log(R\gamma))$ 时间内求得最优验证长度分配 $(\ell_1^\ast,\ldots,\ell_R^\ast)$。
 
-期望接受 token 数是：
+### 3.3 动态负载调度对静态阈值的优势
+
+对比常见的固定阈值截断策略（例如无视系统负载统一保留 $c_j > 0.7$ 的前缀），Algorithm 1 的核心突破在于实现了**负载自适应（Load-Adaptivity）**：
+
+| 系统运行负载状态 | $\mathrm{SPS}(B)$ 局部斜率特征 | 验证低置信词元的机会成本 | Algorithm 1 的自适应调度行为 |
+| --- | --- | --- | --- |
+| 低并发（访存受限区） | 增大 $B$ 几乎不降低 $\mathrm{SPS}(B)$ | 极低（空闲算力近乎免费） | 放宽准入，分配长验证前缀以最大化单步接受长度 $\tau$ |
+| 中等并发（过渡区） | $\mathrm{SPS}(B)$ 开始随 $B$ 缓步下滑 | 中等 | 优先保障高确定性前缀（如数学/代码请求），裁剪发散的闲聊后缀 |
+| 高并发（算力饱和区） | 继续增大 $B$ 导致 $\mathrm{SPS}(B)$ 陡降 | 极高（直接拖慢全批所有请求） | 激进收缩验证预算，仅保留首尾极高把握词元，力保系统总吞吐与 SLA |
+
+更重要的是，该调度器打破了请求间的隔离：在同一个并发批次内，来自结构化代码生成请求的第 5 个草稿词元（可能 $a_{r,5} = 0.85$）完全可以优先于另一个开放式创意写作请求的第 2 个草稿词元（可能 $a_{r',2} = 0.30$）获得目标模型的验证配额。
+
+## 4. 训练目标设计与 DeepSpec 工程管线
+
+### 4.1 联合损失函数：CE、分布 L1 对齐与位置衰减（loss.py）
+
+在 `deepspec/modeling/dspark/loss.py` 的 `compute_dspark_loss()` 中，DSpark 的训练目标由词元级交叉熵 $\mathcal{L}_{\mathrm{CE}}$、草稿与目标分布的 $L_1$ 距离对齐损失 $\mathcal{L}_{L1}$ 以及置信度预测损失 $\mathcal{L}_{\mathrm{conf}}$ 三项加权构成，并引入了块内位置指数衰减权重 $w_j$：
 
 $$
-\tau=\sum_{r=1}^{R}\left(1+\sum_{j=1}^{\ell_r}a_{r,j}\right)
+w_j = \exp\!\left(-\frac{j}{\gamma_{\mathrm{decay}}}\right), \qquad
+\mathcal{L} = \sum_{j=1}^{\gamma} w_j \left( \lambda_{\mathrm{CE}} \mathcal{L}_{\mathrm{CE},j} + \lambda_{L1} \mathcal{L}_{L1,j} \right) + \lambda_{\mathrm{conf}} \mathcal{L}_{\mathrm{conf}}
 $$
 
-如果 serving engine 在 batch size $B$ 下的 step throughput 是 $\mathrm{SPS}(B)$，系统级期望输出吞吐就是：
+对照 `config/dspark/dspark_qwen3_4b.py` 中的默认超参数设定，各项权重的具体取值与物理意义如下：
 
-$$
-\Theta = \tau \cdot \mathrm{SPS}(B)
-$$
+| 配置参数 | 默认值 | 训练作用解析 |
+| --- | ---: | --- |
+| `ce_loss_alpha` ($\lambda_{\mathrm{CE}}$) | `0.1` | 针对目标真实词元 $x^\ast_j$ 的负对数似然 $-\log q_\phi(x^\ast_j\mid \cdot)$，提供基础监督锚点 |
+| `l1_loss_alpha` ($\lambda_{L1}$) | `0.9` | 最小化 $\lVert q_\phi(\cdot) - p_\theta(\cdot) \rVert_1$，直接等价于最大化推测解码理论接受率 $\alpha = 1 - \frac{1}{2}\lVert p-q\rVert_1$ |
+| `confidence_head_alpha` ($\lambda_{\mathrm{conf}}$) | `1.0` | 训练置信度头拟合脱离计算图的真实分布重叠率 `accept_rate_3d.detach()` |
+| `loss_decay_gamma` ($\gamma_{\mathrm{decay}}$) | `4.0` | 赋予块首位置更高梯度权重，契合前缀存活对靠前位置极度敏感的物理特性 |
 
-DSpark 的 scheduler 要做的事是：
+将 `l1_loss_alpha` 设为主导项（`0.9`）体现了推测解码与普通知识蒸馏的差异：由于拒绝采样直接取决于 $\lVert p - q \rVert_1$，直接优化 $L_1$ 距离比单纯优化 KL 散度或硬标签 CE 更契合下游验证目标。
 
-$$
-\max_{\ell_1,\ldots,\ell_R}\Theta
-$$
+### 4.2 数据生成、Target Cache 与训练配置（dspark_qwen3_4b.py）
 
-表面上这像一个组合优化问题，但 prefix survival $a_{r,j}$ 对 $j$ 单调不增。Algorithm 1 因此把所有候选 token $(r,j)$ 按 $a_{r,j}$ 从高到低排序，沿着 greedy admission path 逐个加入 verification batch，并在 $\Theta$ 不再增加时停止。
+DeepSpec 的训练数据流（见 `scripts/data/README.md`）分为三步：首先从源数据集（默认为 [mlabonne/open-perfectblend](https://huggingface.co/datasets/mlabonne/open-perfectblend)）切分提示词；其次启动兼容 OpenAI `/v1` 接口的推理引擎（如 SGLang 或 vLLM），用目标模型自举生成全部回复文本，确保草稿模型的训练分布与目标模型线上解码分布严格对齐；最后提取目标模型在指定深浅层上的隐藏状态落盘构建 Target Cache。
 
-这个设计有两个很强的工程含义。
+在训练启动阶段，`scripts/train/train.sh` 调用 `train.py` 并根据可见 GPU 自动派生多卡进程。以 `config/dspark/dspark_qwen3_4b.py` 为例，核心模型与训练架构参数如下：
 
-第一，scheduler 的输入不只是模型 confidence，还包括 engine 的 $\mathrm{SPS}(B)$ 曲线。这个曲线可以在 engine 初始化时 profile 成轻量表。
-
-第二，scheduler 做的是 batch-level 全局分配。某个请求的第三个 draft token 可能比另一个请求的第一个 draft token 更不值得验证，反之亦然。统一排序让高价值 token 先占用 target capacity。
-
-## 11. 为什么不是固定阈值
-
-很多 speculative decoding 方法会用固定 confidence threshold，例如只验证 $c_j>0.7$ 的 prefix。DSpark 认为这在高并发生产系统里不够。
-
-原因是 threshold 的最优值依赖负载。
-
-| 系统状态 | 验证低置信 token 的机会成本 | 更合理策略 |
+| 配置字段 | 设定值 | 架构与工程说明 |
 | --- | --- | --- |
-| 低并发、target capacity 空闲 | 较低 | 可以验证更长 prefix，争取更多 accepted tokens |
-| 中等负载 | 中等 | 按 survival probability 和 SPS 曲线权衡 |
-| 高并发、batch capacity 紧张 | 很高 | 严格裁掉低置信 suffix，避免拖垮吞吐 |
+| `target_model_name_or_path` | `"Qwen/Qwen3-4B"` | 绑定的目标语言模型 |
+| `block_size` ($\gamma$) | `7` | 单次提议的草稿块最大长度 |
+| `num_draft_layers` | `5` | DSpark 并行主干包含 5 层 Transformer 块 |
+| `target_layer_ids` | `[1, 9, 17, 25, 33]` | 从目标模型均匀抽取 5 个深浅层的隐藏状态供草稿主干融合 |
+| `mask_token_id` | `151669` | 并行块内未知候选位置的掩码占位词元 ID |
+| `markov_head_type` / `markov_rank` | `"vanilla"` / `256` | 采用低秩维度为 256 的一阶 Markov 顺序头 |
+| `confidence_head_with_markov` | `True` | 置信度头同时融合主干隐藏状态与 Markov 顺序特征 |
+| `precision` / `global_batch_size` / `torch_compile` | `"bf16"` / `512` / `True` | 采用 BF16 混合精度、全局批大小 512 并开启 `torch.compile` 算子融合 |
 
-固定阈值把这些状态压成一个常数。DSpark 的 Algorithm 1 则把系统负载纳入优化目标。当并发上升时，$\mathrm{SPS}(B)$ 会改变，继续增加 verification batch size 可能让每步耗时变大，导致 $\Theta$ 下降。此时即使某些 token 的 confidence 还不错，也未必值得验证。
+在 `deepspec/trainer/dspark_trainer.py` 中，`Qwen3DSparkTrainer.run_batch()` 执行单步前向传播产出草稿 logits、对齐后的目标 logits 与置信度预测值，随后交由 `compute_dspark_loss()` 完成损失聚合与反向传播。
 
-这也是 DSpark 与“离线接受率提升论文”的重要区别。它关心的是 serving frontier：在不同 throughput 和 tok/s/user 约束下，系统能不能维持更好的 Pareto frontier。
+### 4.3 离线评测基准与验证循环（evaluator.py & draft_ops.py）
 
-## 12. Training Objective：CE + L1 + Confidence
+离线评估通过 `scripts/eval/eval.sh` 启动，覆盖数学推理（GSM8K、MATH500、AIME25）、代码生成（MBPP、HumanEval、LiveCodeBench）与开放对话（MT-Bench、Alpaca、Arena-Hard-v2）三大类共 9 个主流基准。
 
-DeepSpec 的 DSpark loss 位于 `deepspec/modeling/dspark/loss.py`。配置文件 `config/dspark/dspark_qwen3_4b.py` 中默认权重是：
+在 `deepspec/eval/dspark/evaluator.py` 与 `draft_ops.py` 中，单步推测验证的代码执行流清晰对应了第 2 节所述的模型机制：
+1. `forward_dspark_draft_block()` 接收当前锚点词元、位置编码、草稿 KV Cache 及目标模型多层隐藏状态，以 `is_causal=False` 的双向/块内并行模式运行 5 层草稿主干；
+2. `build_dspark_proposal()` 先计算基础 logits，再调用 `sample_draft_tokens()` 触发 Markov/RNN 头的逐步条件采样，随后通过 `_predict_confidence_logits()` 与 `_confident_prefix_length()` 截断产出最终提议序列；
+3. 目标模型对提议前缀执行并行验证，并由 `ConfidenceHeadRecorder`（位于 `confidence_head.py`）按候选位置分桶统计期望校准误差（ECE）、AUROC、Brier 分数以及用于绘制可靠性图（`reliability_diagram.png`）的分位点数据。
 
-| 参数 | 默认值 | 含义 |
-| --- | --- | --- |
-| `ce_loss_alpha` | `0.1` | token-level CE |
-| `l1_loss_alpha` | `0.9` | draft/target 分布 L1 对齐 |
-| `confidence_head_alpha` | `1.0` | confidence BCE |
-| `loss_decay_gamma` | `4.0` | position decay |
+## 5. 离线实验精读：接受长度、后缀衰减与校准分析
 
-CE 项让 draft logits 学习目标 token：
+### 5.1 多模型与多领域主实验对比（Table 1）
 
-$$
-\mathcal{L}_{CE}
-=-\log q_\phi(x^\ast_j\mid \cdot)
-$$
-
-L1 项让 draft distribution 靠近 target distribution：
-
-$$
-\mathcal{L}_{L1}
-=\lVert q_\phi(\cdot)-p_\theta(\cdot)\rVert_1
-$$
-
-confidence 项预测 accept rate：
-
-$$
-\mathcal{L}_{conf}
-=\mathrm{BCEWithLogits}(\hat{c}_j,\alpha_j)
-$$
-
-整体可以写成：
-
-$$
-\mathcal{L}
-=\lambda_{CE}\mathcal{L}_{CE}
-+\lambda_{L1}\mathcal{L}_{L1}
-+\lambda_{conf}\mathcal{L}_{conf}
-$$
-
-代码还对 block 内位置加入衰减：
-
-$$
-w_j=\exp(-j/\gamma_{decay})
-$$
-
-这符合 speculative decoding 的 prefix 性质：越靠前的位置越重要。第一个 token 的质量直接决定整个 block 是否有机会贡献收益。
-
-## 13. DeepSpec 数据管线
-
-DeepSpec 的数据准备文档在 `scripts/data/README.md`，默认以 `Qwen/Qwen3-4B` 为 target model。流程分三步：
-
-1. 下载并切分 prompt 数据。
-2. 用 target model 重新生成 assistant answers。
-3. 预计算 target cache，供训练读取。
-
-默认 source dataset 是 [mlabonne/open-perfectblend](https://huggingface.co/datasets/mlabonne/open-perfectblend)。第二步需要一个 OpenAI-compatible inference engine，README 示例使用 SGLang，但也说明可替换为 vLLM、TGI 等，只要暴露兼容 `/v1` endpoint。
-
-第三步是复现门槛最高的地方：target cache 会存储训练集中 token 对应的 target hidden states。README 明确提示，默认 `Qwen/Qwen3-4B` 设置下 target cache 大约需要 **38TB** 存储。
-
-这解释了为什么本文不跑训练。DSpark 不是一个“下载代码、单卡跑半小时”的教学项目。它开源了训练链路，但默认配置面向多 GPU、大存储和完整 target-cache pipeline。
-
-## 14. 训练入口与配置
-
-训练入口是 `scripts/train/train.sh`，它调用：
-
-```bash
-python train.py \
-  --config config/dspark/dspark_qwen3_4b.py \
-  --opts "data.target_cache_path=${target_cache_dir}"
-```
-
-脚本注释说明这里不是标准 `torchrun` 语义。`train.py` 会根据 visible GPUs 自己 spawn worker；`RANK/WORLD_SIZE` 表示 node rank/node count。默认 `CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7`，即单节点 8 GPU。
-
-`config/dspark/dspark_qwen3_4b.py` 的关键配置如下。
-
-| 字段 | 值 | 解释 |
-| --- | --- | --- |
-| `target_model_name_or_path` | `Qwen/Qwen3-4B` | target model |
-| `block_size` | `7` | draft block 最大长度 |
-| `num_draft_layers` | `5` | DSpark drafter transformer layers |
-| `target_layer_ids` | `[1, 9, 17, 25, 33]` | 从 target model 抽取 hidden states 的层 |
-| `mask_token_id` | `151669` | mask token |
-| `markov_rank` | `256` | Markov head latent rank |
-| `markov_head_type` | `vanilla` | 默认 Markov head |
-| `confidence_head_with_markov` | `True` | confidence head 使用 Markov features |
-| `precision` | `bf16` | 训练精度 |
-| `global_batch_size` | `512` | 全局 batch |
-| `torch_compile` | `True` | 开启 torch compile |
-
-Trainer 入口在 `deepspec/trainer/dspark_trainer.py`。`Qwen3DSparkTrainer.run_batch()` 调用模型 forward，随后把 outputs 交给 `compute_dspark_loss()`。这说明 DSpark 的训练代码非常直接：模型负责产出 draft logits、target ids、eval mask、aligned target logits、confidence pred；loss 函数负责组合 CE/L1/confidence。
-
-## 15. 评估入口与 Benchmark
-
-评估入口是 `scripts/eval/eval.sh`：
-
-```bash
-python eval.py \
-  --target_name_or_path ${target_name_or_path} \
-  --draft_name_or_path ${draft_name_or_path}
-```
-
-README 列出的 benchmark 包括：
-
-| Domain | Dataset |
-| --- | --- |
-| Math | GSM8K, MATH500, AIME25 |
-| Code | MBPP, HumanEval, LiveCodeBench |
-| Chat | MT-Bench, Alpaca, Arena-Hard-v2 |
-
-评估实现的关键在 `deepspec/eval/dspark/evaluator.py`。流程可以概括为：
-
-1. 加载 target model 和 DSpark draft model。
-2. 初始化 target hidden states，供 draft model 使用。
-3. `forward_dspark_draft_block()` 运行 DSpark backbone。
-4. `build_dspark_proposal()` 采样 draft tokens，并按 confidence threshold 截断。
-5. target model 执行 verification。
-6. 记录 accepted tokens、confidence calibration 和 reliability metrics。
-
-需要注意的是，开源 eval 的 `confidence_threshold` 是静态 threshold。它可以验证 confidence head 是否有区分度，也可以生成 reliability diagram，但不是论文 Algorithm 1 的生产全局 scheduler。
-
-## 16. Table 1 主结果精读
+为了纯粹检验草稿模型本身的生成质量，论文在 Table 1 的离线主实验中关闭了动态置信度截断，令 Eagle3、DFlash 与 DSpark 在固定提议长度下直接比拼每轮平均接受长度 $\tau$（越高越好）：
 
 ![Main speculative decoding results](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-table1-main-results.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Table 1.*
 
-Table 1 报告的是每轮 decoding 的 accepted length $\tau$，越高越好。目标模型包括 Qwen3-4B、Qwen3-8B、Qwen3-14B 和 Gemma4-12B；draft baselines 是 Eagle3、DFlash 和 DSpark。
+横向对比四个目标模型（Qwen3-4B/8B/14B、Gemma4-12B）在 9 个基准上的表现，可以得出三点明确结论：
+- **DSpark 全线刷新最高接受长度**：在所有目标模型与所有任务领域上，DSpark 均显著超越 Eagle3 与 DFlash。例如在 Qwen3-4B 的 GSM8K 上，DSpark 达到 `6.11`（DFlash 为 `5.40`，Eagle3 为 `5.14`）；在难度更高的开放对话 Alpaca 上，DSpark 达到 `3.54`（DFlash 为 `2.96`，Eagle3 为 `2.26`）。
+- **任务结构化程度决定接受长度上限**：数学（Math）与代码（Code）任务的语法约束强、局部确定性高，各模型的平均接受长度普遍在 `4.5`～`6.5` 之间；而开放式闲聊（Chat）存在广泛的同义表述与多分支走向，接受长度普遍回落至 `2.2`～`3.8` 区间。
+- **兼具高容量首词与连贯后缀的双重红利**：DSpark 对 DFlash 的稳定领先直接证明了轻量顺序头对修复后缀冲突的有效性；而它对自回归 Eagle3 的大幅领先，则得益于并行主干能够堆叠更深网络（5 层 vs 浅层自回归），从而大幅提高了决定全块命运的首个位置预测准确率。
 
-论文为了隔离 raw draft quality，在 Table 1 离线评估中禁用了 confidence scheduler，让所有方法使用固定 block proposal。这意味着 Table 1 主要证明的是 **DSpark drafter 质量**，而不是 Algorithm 1 的系统调度收益。
+### 5.2 逐位置条件接受率与后缀衰减实证（Fig. 2）
 
-几个结论很清楚。
-
-第一，DSpark 在所有目标模型和所有 domain 上都是最佳。以 Qwen3-4B 为例，DSpark 在 GSM8K 上达到 `6.11`，DFlash 是 `5.40`，Eagle3 是 `5.14`；在 Alpaca 上 DSpark 是 `3.54`，DFlash 是 `2.96`，Eagle3 是 `2.26`。
-
-第二，domain predictability 差异很大。Math 和 code 的 accepted length 普遍高于 chat。结构化任务的后续 token 更容易预测，因此 draft block 更容易被 target 接受；开放式 chat 的多模态性更强，接受长度自然更短。
-
-第三，DSpark 对 DFlash 的优势说明半自回归 head 有实际价值。DFlash 已经是高吞吐 parallel drafter；DSpark 在它之上进一步提升 accepted length，说明 suffix dependency 不是小问题。
-
-第四，DSpark 对 Eagle3 的优势也很有意思。直觉上 autoregressive drafter 应该更会建模块内依赖，但 Eagle3 为了控制 draft latency 通常不能太深。Parallel backbone 可以用更大 capacity 提高第一个位置质量，而第一个位置又对 prefix survival 极其关键。
-
-## 17. Fig. 2：条件接受率揭示 Suffix Decay
+为了把“当前位置自身预测变差”与“被前序位置拒绝所连累”区分开来，Fig. 2 统计了更为精细的**逐位置条件接受率（position-wise conditional acceptance rate）**——即仅在前 $k-1$ 个位置全部通过验证的条件下，考察第 $k$ 个位置被目标模型接受的概率：
 
 ![Position-wise conditional acceptance](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig2-position-wise-conditional-acceptance.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Fig. 2.*
 
-Fig. 2 的指标是 position-wise conditional acceptance。它不是普通 prefix survival，而是在第 $k$ 个位置只统计前 $k-1$ 个位置已经成功接受的样本，然后看第 $k$ 个 token 是否也被接受。
+Fig. 2 直观揭示了三类模型的内在动力学差异：纯并行的 DFlash 凭借 5 层深主干，在位置 1（Position 1）的起点明显高于浅层自回归的 Eagle3，但随着位置后移（从位置 2 到位置 6），由于缺乏对已采样前缀的条件感知，其条件接受率出现陡峭的**后缀衰减（suffix decay）**；相反，Eagle3 虽在位置 1 起点偏低，但随着已采样前缀逐步消除局部歧义，其后序位置的条件接受率保持平稳甚至微幅上扬；**DSpark 的曲线则成功兼具了两者之长**：在位置 1 保持了与 DFlash 相同的高起点，而在后续位置通过半自回归顺序头显著拉平了衰减斜率，在全部位置上对 DFlash 形成包络优势。
 
-这个指标隔离了“当前位置本身的预测质量”。如果直接看 prefix survival，后面位置会被前面 rejection 连带惩罚，很难看出到底是当前位置差，还是前面已经失败。
+### 5.3 Drafter 深度、提议长度与顺序头开销消融（Fig. 3 & Fig. 4）
 
-图里有三个现象。
-
-第一，DFlash 在 position 1 很强。特别是在 Math 和 Chat 上，它起点高于 Eagle3。这说明 parallel drafter 因为可以用更深网络，第一 token 的预测质量可能超过浅层 autoregressive drafter。
-
-第二，DFlash 往后出现 suffix decay。它的后续位置不能条件于实际 sampled prefix，因此越往后越容易混合不同模式。
-
-第三，Eagle3 后续位置稳定甚至上升。因为它按顺序生成，已经采样的前缀会降低后续不确定性。
-
-DSpark 的曲线介于两者优点之间：保留第一位置的高 capacity，同时用 sequential head 缓解 suffix decay。
-
-## 18. Fig. 3/4：一点点自回归的性价比
+Fig. 3 与 Fig. 4 进一步从模型深度与提议长度两个维度评估了半自回归设计的性价比：
 
 ![Effect of drafter depth](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig3-drafter-depth.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Fig. 3.*
 
-Fig. 3 比较 drafter depth。绿色是 DSpark，蓝色是 DFlash；点大小或样式表示 1L/2L/5L。
-
-关键结论是：DSpark 增加层数会提升 accepted length，而且 2-layer DSpark 就能超过 5-layer DFlash baseline。这说明顺序依赖不是只能靠堆更多 parallel layers 解决。一个轻量 sequential head 可以比单纯增加 backbone depth 更高效地修正 suffix。
-
 ![Effect of proposal length and latency overhead](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig4-proposal-length-latency.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Fig. 4.*
 
-Fig. 4 研究 proposal length 和 latency overhead。左侧三个 panel 分别是 Math、Code、Chat，右侧是 latency。
+在 Fig. 3 的深度消融中（对比 1 层、2 层与 5 层主干），仅使用 **2 层主干的 DSpark 即可在平均接受长度上超越 5 层主干的纯并行 DFlash**。这说明块内顺序依赖缺失是无法单靠盲目加深并行网络来弥补的结构性缺陷，引入显式的局部条件修正远比堆叠并行层高效。
 
-随着 draft length 从 4 增加到 16，DFlash 和 DSpark 都能获得更长 accepted length，但 DSpark 始终高于 DFlash。右侧 latency panel 表明 sequential head 的 overhead 很小，论文标出的增幅大约在 0.6% 到 1.3%。
+在 Fig. 4 的提议长度扩展实验中（将块大小从 4 逐步扩展至 16），随着候选块变长，DSpark 相对 DFlash 的接受长度优势持续扩大；同时最右侧的延迟对比面板表明，顺序修正头带来的额外推理耗时仅占 **`0.6%` 至 `1.3%`**，在硬件执行层面几乎可以忽略不计。
 
-这张图支持 DSpark 的核心工程判断：如果只需要很少的额外 latency，就能显著改善 suffix consistency，那么 semi-autoregressive head 是值得加入 production drafter 的。
+### 5.4 置信度阈值扫描与后验校准分析（Fig. 5 & Fig. 6）
 
-不过也要注意，Fig. 4 仍然是离线或受控实验。线上是否值得用更长 proposal length，还要看 target verification cost 和并发状态。这正是 Algorithm 1 要处理的问题。
-
-## 19. Fig. 5/6：置信度、阈值与校准
+在验证端，Fig. 5 与 Fig. 6 考察了置信度预测头的区分能力与概率校准质量：
 
 ![Confidence threshold sweep](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig5-confidence-threshold-sweep.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Fig. 5.*
 
-Fig. 5 是 confidence threshold sweep。横轴是 threshold，柱子分为 accepted tokens 和 rejected tokens，线表示 acceptance rate。
-
-当 threshold 为 0 时，相当于固定长度 verification：所有 draft positions 都送给 target model。随着 threshold 提高，低置信度 token 被裁掉，rejected tokens 减少，整体 acceptance rate 上升。
-
-但这不是说 threshold 越高越好。threshold 提高会减少被验证的 token 数。如果太保守，即使 acceptance rate 高，也可能每轮推进 token 太少。正确目标不是最大化 acceptance rate，而是最大化系统吞吐和用户速度。
-
 ![Reliability diagram on Alpaca](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig6-reliability-diagram-alpaca.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Fig. 6.*
 
-Fig. 6 是 Alpaca 上的 reliability diagram。它显示 raw confidence estimator 有不错的判别力，AUC 大约在 0.81 到 0.90，但存在 overconfidence。经过 post-hoc calibration 后，ECE 从约 3%-8% 降到约 1% 左右。
+观察 Fig. 5 的阈值扫描曲线可以发现，当置信度阈值从 `0`（全量送验）逐步上调时，橙色柱代表的被拒词元（rejected tokens）被大幅削减，而绿色柱代表的已接受词元（accepted tokens）仅轻微受损，使得有效验证命中率（acceptance rate 折线）单调攀升。这证明置信度头能够精准识别并剔除注定被拒的冗余后缀。
 
-为什么 calibration 对 DSpark 特别重要？因为 scheduler 使用的是 prefix survival：
+Fig. 6 则展示了 Alpaca 数据集上的可靠性校准图（Reliability Diagram）：未经校准的原始置信度头（Raw）虽具备良好的排序区分度（AUROC 达 `0.81`～`0.90`），但曲线位于对角线下方，存在一定程度的过度自信（ECE 在 `3%`～`8%` 之间）；经过简单的后验校准（Post-hoc Calibration）后，预测存活概率与真实经验接受率几乎完美贴合在对角线上，ECE 压降至 **`1%` 左右**，为 Algorithm 1 中的期望吞吐计算 $\tau = \sum (1 + \sum a_{r,j})$ 提供了可靠的数值基础。
 
-$$
-a_{r,j}=\prod_{i\le j}c_{r,i}
-$$
+## 6. DeepSeek-V4 线上服务前沿与负载自适应验证
 
-如果每个 $c_{r,i}$ 都偏高，乘积也会偏高，scheduler 会把本应裁掉的 suffix 放进 verification batch。对单请求来说这只是浪费一次验证；对高并发系统来说，它会污染整个 batch 的资源分配。
+### 6.1 吞吐与单用户 TPS 的帕累托前沿扩展（Fig. 7）
 
-DeepSpec 中 `deepspec/eval/dspark/confidence_head.py` 实现了 ECE、AUROC、Brier 和 reliability diagram 的统计。代码中 `PerPositionConfidenceMetrics` 维护 coarse/fine bins，并按位置汇总校准质量。这说明 confidence head 在 DSpark 中不是一个只用于论文画图的附属模块，而是 scheduler 的核心输入。
-
-## 20. DeepSeek-V4 线上部署结果
+为了检验 DSpark 在真实工业级大模型服务中的端到端收益，论文在 **DeepSeek-V4-Flash** 与 **DeepSeek-V4-Pro**（预览版生产推理引擎）上接入了真实线上用户流量，对比了生产环境原有的单步多词元预测基线（MTP-1）与 5 层草稿主干的 DSpark-5：
 
 ![Throughput vs TPS](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig7-throughput-vs-tps.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Fig. 7.*
 
-Fig. 7 是 DSpark 最有系统价值的一张图。横轴是单用户生成速度 TPS，纵轴是聚合输出吞吐 token/s/GPU。蓝色是 MTP baseline，绿色是 DSpark。
+为什么原有生产基线只开启了单步预测（MTP-1）而非更长的静态多步预测？作者指出，在缺乏置信度调度的传统方案中，静态拉长草稿会在高并发下急剧膨胀目标模型的验证批大小，反而拖垮单卡聚合吞吐。而接入具备硬件感知调度的 DSpark-5 后，横轴单用户生成速率（TPS，tok/s/user）与纵轴单卡聚合吞吐（Throughput，tok/s/GPU）构成的帕累托前沿（Pareto Frontier）实现了大幅外扩：
+- **在常规高交互 SLA 锚点（80 tok/s/user）下**：DSpark 将 DeepSeek-V4-Flash 的单卡聚合吞吐提升了 **`+51%`**，将 DeepSeek-V4-Pro 的聚合吞吐提升了 **`+52%`**。
+- **在极严苛交互 SLA 锚点（120 tok/s/user）下**：此时 MTP-1 已逼近其物理延迟极限，只能维持极低的并发度，因此 DSpark 展现出高达 `661%`（V4-Flash）与 `406%`（V4-Pro）的吞吐倍率，实质上解锁了基线无法企及的高速交互服务区。
+- **在匹配的实用吞吐水平下**：DSpark 为 DeepSeek-V4-Flash 带来了 **`60%`～`85%`** 的单用户生成速度提升，为 DeepSeek-V4-Pro 带来了 **`57%`～`78%`** 的单用户速度提升。
 
-论文在 DeepSeek-V4-Flash 和 DeepSeek-V4-Pro 预览版 serving engines 上对比 DSpark-5 和 MTP-1。这里的 MTP-1 是旧 production setup。论文解释说，历史上保留 single-token setup，是因为静态 multi-token drafter 在高并发下可能因为 verification overhead 反而降低 aggregate throughput。
+### 6.2 并发负载自适应的验证预算分配（Fig. 8）
 
-图中 DSpark 的 frontier 明显向外移动。对于 V4-Flash，在 80 tok/s/user SLA anchor 处，DSpark 的 aggregate throughput 提升 51%；在更严格的 120 tok/s/user 处，图中标出 661% throughput。对于 V4-Pro，也有 52% 和 406% 的对应点。
-
-但这些大百分比要谨慎解读。论文自己也提醒，高 SLA 点上 MTP-1 已经接近 operational boundary，只能维持很小并发。因此 661%/406% 更适合解读为“DSpark 扩展了可行 interactivity frontier”，而不是一般场景下稳定有 6 倍吞吐。
-
-更稳健的读法是：在 matched practical throughput levels 下，DSpark 让 V4-Flash 的 per-user generation speed 提升约 60%-85%，让 V4-Pro 提升约 57%-78%。
-
-## 21. Fig. 8：Load-Adaptive Verification Budget
+Fig. 8 进一步拆解了不同并发请求数（Concurrency）下系统吞吐与每请求平均验证预算（Verification Budget）的动态联动，揭示了 Fig. 7 帕累托前沿外推的内在机理：
 
 ![Load-adaptive throughput and verification budgets](/images/blog/dspark-confidence-scheduled-speculative-decoding/dspark-fig8-load-adaptive-throughput-budget.webp)
 
 *Source: Cheng et al., DSpark technical report, DeepSeek-AI / DeepSpec, 2026, Fig. 8.*
 
-Fig. 8 展示了 DSpark 为什么能改善 Fig. 7 的 frontier。上排是吞吐随并发变化，下排是平均 verification budget 随并发变化。
+观察下排的验证预算曲线可以看到：当系统处于低至中等并发时，目标模型算力充裕，Algorithm 1 自动为每个请求分配 `4`～`6` 个词元的宽裕验证预算，充分榨取推测解码的多词元跳进红利；而当并发请求数持续攀升、目标模型批容量趋于饱和时，调度器平滑地将平均验证预算压降收敛至 `1.5`～`2.5` 个高把握词元，避免低置信度后缀拖慢全批步进速率。正是这种“闲时激进多验、忙时保守精验”的自适应弹性，使得 DSpark 在全并发谱系上始终稳居吞吐曲线上方。
 
-低到中等并发时，DSpark 有足够 target capacity，可以给每个请求分配更长 verification budget，大约 4-6 个 token。这样每次 target forward 有机会接受更多 token，提高吞吐。
+## 7. 相关工作谱系与推理系统工程启示
 
-随着并发上升，target capacity 变紧张。DSpark 的 scheduler 会逐步降低 verification budget，避免把低置信度 suffix 送进 target batch。相比之下，MTP baseline 的 verification budget 是静态的，不能根据负载平滑调整。
+### 7.1 推测解码相关技术路线对比
 
-这张图说明 Algorithm 1 的价值不是离线 accepted length，而是 **负载自适应**。系统空闲时多验证，系统忙时少浪费。这个策略特别适合线上 LLM 服务，因为请求长度、prompt 类型、输出不确定性、并发状态都高度动态。
+将 DSpark 放入大模型推测解码的技术演进谱系中，可以清晰定位它与各流派的继承与差异关系：
 
-## 22. 论文-代码对照：公开实现与生产算法的边界
-
-这里把 DSpark 论文和 DeepSpec 代码做一次更直接的对照。
-
-### 22.1 论文 Fig. 1 与 `draft_ops.py`
-
-`deepspec/eval/dspark/draft_ops.py` 中的 `forward_dspark_draft_block()` 对应 Fig. 1 中 draft block 的 forward。它接收：
-
-- `draft_input_ids`
-- `position_ids`
-- `past_key_values_draft`
-- `target_hidden_states`
-- `start`
-- `block_size`
-
-然后调用模型的 `_forward_backbone()`，并设置 `is_causal=False`，体现 parallel block 的特点。
-
-`build_dspark_proposal()` 对应 draft token 采样和 confidence prefix 截断。它先用 `compute_logits()` 得到 base logits，再调用 `sample_draft_tokens()`，后者会进入 Markov/RNN head 的 sequential sampling。随后 `_predict_confidence_logits()` 生成每个位置的 confidence logits，`_confident_prefix_length()` 根据静态 threshold 决定 proposal token count。
-
-这部分代码对 Fig. 1 的 draft better 有很好的对应；但它没有实现 production-level Algorithm 1 的 batch-global greedy scheduler。
-
-### 22.2 论文 semi-autoregression 与 `markov_head.py`
-
-`markov_head.py` 是理解 DSpark 的核心。它清楚展示了“轻量 sequential head”如何落地：
-
-- Training 时 `apply_block_logits()` 使用 teacher-forced token ids 修正每个位置 logits。
-- Inference 时 `sample_block_tokens()` 逐步采样，每一步把上一步 sampled token 作为下一步条件。
-- RNN head 额外维护 state，使位置 $k$ 能访问更完整的 block prefix 历史。
-
-这比只看论文公式更直观：DSpark 并没有把 parallel drafter 改成昂贵 autoregressive transformer，而是在 logits correction 层加入低秩、低成本依赖。
-
-### 22.3 论文 confidence 与 `confidence_head.py`
-
-论文强调 confidence 要可校准。开源代码中 `ConfidenceHeadRecorder` 和 `PerPositionConfidenceMetrics` 做了三类统计：
-
-- 每个位置的 ECE。
-- AUROC。
-- Brier score。
-
-这对应 Fig. 6 的 reliability diagram。实现中还有 `RELIABILITY_PLOT_FILENAME = "reliability_diagram.png"`，说明评估脚本可以产出类似论文图的 artifact。
-
-### 22.4 论文训练目标与 `loss.py`
-
-`loss.py` 把 target/draft distribution 的 L1 距离、CE、confidence BCE 放在一起。值得注意的是，confidence target 不是 hard label，而是 soft accept rate：
-
-$$
-\alpha = 1-\frac{1}{2}\lVert p-q\rVert_1
-$$
-
-这使 confidence head 学到的不是“采样 token 是否刚好匹配某个 ground truth token”，而是 draft distribution 与 target distribution 的接近程度。对 speculative decoding 来说，这比普通 next-token accuracy 更贴近 verification 行为。
-
-### 22.5 论文 Algorithm 1 与开源代码差异
-
-这一点必须明确写清。
-
-论文 Algorithm 1 需要以下信息：
-
-- 当前 batch 内所有 active requests。
-- 每个 request 的 confidence sequence。
-- serving engine 在不同 batch size 下的 $\mathrm{SPS}(B)$ 曲线。
-- 全局 greedy admission path。
-
-DeepSpec 开源 eval 代码则主要服务离线 benchmark：
-
-- 单样本生成。
-- 静态 `confidence_threshold`。
-- confidence metrics 记录。
-- accepted length 统计。
-
-因此，DeepSpec 可以帮助研究者训练和评估 DSpark-style drafter，但不能直接复现 DeepSeek-V4 production scheduler。
-
-## 23. 与相关工作的关系
-
-DSpark 可以放在 speculative decoding 的几个方向中理解。
-
-| 方向 | 代表方法 | 核心思路 | DSpark 的关系 |
+| 技术流派 | 代表性工作 | 核心提议与验证机制 | DSpark 的演进定位 |
 | --- | --- | --- | --- |
-| 小模型 draft | Speculative Decoding | 小模型顺序生成 draft，大模型验证 | DSpark 仍使用 target verification 框架 |
-| 多头预测 | Medusa、MTP | target 模型内部预测多个未来 token | DSpark 对比 MTP-1 production baseline |
-| Autoregressive drafter | EAGLE / Eagle3 | draft 逐 token 条件生成 | DSpark 用它作为强 baseline |
-| Parallel drafter | DFlash | 一次 forward 生成 block | DSpark 继承 parallel backbone 优点 |
-| 树状 speculative | SpecInfer 等 | 提出多分支候选树 | DSpark 关注 prefix scheduler，不走复杂树验证主线 |
-| 查找式 draft | Prompt Lookup | 从 prompt/history 中复制候选 | 与 DSpark 训练式 drafter 路线不同 |
-| 半自回归生成 | Semi-autoregressive NMT | 在 parallel 与 autoregressive 之间折中 | DSpark 把该思想迁移到 speculative draft |
+| 独立小模型草稿 | 标准 Speculative Decoding | 部署同族小模型逐词元自回归提议，大模型并行验证 | 共享无损拒绝采样框架，但用特征层轻量草稿网络替代独立小模型 |
+| 内部多头预测 | Medusa / DeepSeek MTP | 在目标模型顶层挂载多个并行预测头 | 生产环境中以 MTP-1 作为核心线上对比基线 |
+| 自回归特征草稿 | EAGLE / Eagle3 | 融合目标模型隐藏状态与词元嵌入，自回归逐词生成草稿 | 克服其 $O(\gamma)$ 串行草稿延迟与浅层网络容量受限问题 |
+| 纯并行块草稿 | DFlash | 单次前向并行预测整个草稿块，保持 $O(1)$ 步生成开销 | 继承其并行主干高容量优势，引入半自回归头攻克后缀衰减 |
+| 树状多分支验证 | SpecInfer / Medusa Tree | 构造候选词元树并通过树注意力掩码一次验证多条路径 | 聚焦线性前缀的高并发批容量分配，规避复杂树结构在饱和批下的算力膨胀 |
 
-DSpark 的独特位置在于，它不是单独优化 draft model，也不是单独优化 verification algorithm，而是把两者和 serving hardware curve 连起来。
+### 7.2 高并发 LLM 推理系统的工程设计原则
 
-## 24. 与推理系统工程的关系
+超越具体的模型结构，DSpark 为构建工业级大模型推理服务提供了四条普适的系统工程准则：
+1. **将目标模型批容量视为首要稀缺预算**：在单请求离线评测中，多验证几个草稿词元似乎毫无代价；但在高并发连续批处理（continuous batching）中，每一个送入目标模型的低置信度草稿词元都在直接挤占同批其他请求的算力配额。推测解码必须具备批级预算意识。
+2. **解码调度策略必须与硬件吞吐画像耦合**：最优的提议截断长度不存在脱离负载的全局常数，必须将推理引擎在具体 GPU 上的每秒步数曲线 $\mathrm{SPS}(B)$ 显式编码进在线调度目标。
+3. **概率校准（Calibration）是期望收益调度的前提**：当置信度分数不再仅用于单调阈值截断，而是以连乘形式 $a_{r,j} = \prod_{i \le j} c_{r,i}$ 进入期望吞吐公式时，任何未校准的过度自信都会被指数级放大并误导全局资源分配，因此必须将 ECE 纳入模型上线门禁。
+4. **以“吞吐-延迟”帕累托前沿取代单一加速比汇报**：大模型服务的真实效能取决于特定 tok/s/user SLA 锚点下的单卡可承载吞吐，使用完整的吞吐-交互速率前沿曲线评估解码算法，远比脱离并发背景的“单样本加速 X 倍”更具工程指导意义。
 
-从系统工程角度，DSpark 的启发比“accepted length 提升多少”更广。
+## 8. 工程落地清单、方法局限性与总结
 
-### 24.1 Batch Capacity 是核心资源
+### 8.1 从离线评测到在线调度的工程接入清单
 
-在高并发 LLM serving 中，target model 的 batch capacity 是稀缺资源。一个低置信度 token 如果被送去验证，不只是自己可能被拒绝，还会让同一批里其他更高价值 token 等待。
+若工程团队计划在自有推理栈中复刻或接入 DSpark 范式，建议按以下四个阶段分步推进：
 
-这类似推荐系统里的曝光预算：不是所有候选都值得进入精排，不是所有 draft suffix 都值得进入 target verification。
+1. **数据对齐与草稿模型训练**：使用线上目标模型对业务真实提示词分布自举生成回复文本，确保训练分布无偏移；针对目标模型架构选定均匀分布的深浅隐藏层索引（`target_layer_ids`），联合优化 $\mathcal{L}_{L1}$、$\mathcal{L}_{\mathrm{CE}}$ 与 $\mathcal{L}_{\mathrm{conf}}$（若受限于数十 TB 的全量 Target Cache 存储成本，可优先基于官方开源的预训练权重或采用在线实时提取隐藏状态的蒸馏流水线做领域微调）。
+2. **离线多维基准与校准度验收**：在数学、代码、对话等分领域测试集上统计无截断平均接受长度 $\tau$ 及逐位置条件接受率曲线，确认半自回归头有效压制了后缀衰减；同时绘制可靠性图并拟合并部署后验校准参数，确保各位置 ECE 控制在 `1%`～`2%` 以内。
+3. **推理引擎剖析与全局调度器集成**：在目标部署硬件上离线压测目标模型在不同验证批大小 $B$ 下的执行耗时，生成轻量查找表 $\mathrm{SPS}(B)$；在连续批处理调度器（如 SGLang / vLLM 调度循环）中接入 Algorithm 1 的贪心前缀准入逻辑，并配置异常熔断回退机制（当并发极端爆表或置信度异常时平滑退回单步解码）。
+4. **分并发等级与 SLA 锚点的线上灰度验收**：在灰度流量上分并发桶监控首词元延迟（TTFT）、单用户 TPS 分布、单卡聚合吞吐以及实际触发的平均验证长度 $\bar{\ell}$，确认系统在低并发下充分放大单步接受长度、在高并发下自动收缩验证预算且不劣化尾延迟。
 
-### 24.2 解码策略应该看 Load
+### 8.2 方法边界与核心结论
 
-很多解码算法在单请求 benchmark 上比较速度，但线上系统的最优策略随并发变化。DSpark 的 Algorithm 1 把 $\mathrm{SPS}(B)$ 放进目标函数，说明解码策略应该和 serving engine profile 绑定。
+在借鉴 DSpark 时，同样需要客观把握其适用边界：一方面，草稿模型与目标模型高度绑定，一旦目标模型权重更新、或者从常规对话切换至长思维链（thinking mode）与特定垂直领域分布，草稿模型的接受率与置信度校准度均可能发生漂移，需要配套增量微调与重校准机制；另一方面，在高度发散、创造性极强或词表分布极度平坦的生成任务上，目标分布本身的熵极高，任何推测解码所能获得的平均接受长度上限都会自然收窄。
 
-### 24.3 Confidence 要能校准，不只是能排序
-
-如果 confidence 只用于排序，AUC 高可能够用；如果 confidence 要进入期望吞吐公式，calibration 就很重要。Fig. 6 和 `confidence_head.py` 都说明 DSpark 把 calibration 当作可观测指标。
-
-### 24.4 线上速度不是单个数字
-
-Fig. 7 的 frontier 说明 LLM serving 速度应同时报告：
-
-- per-user TPS。
-- aggregate token throughput。
-- SLA anchor。
-- concurrency。
-- target model 和 engine 配置。
-
-单独说“加速 2 倍”很容易误导。DSpark 的线上结果更像是一个 Pareto frontier 移动，而不是固定倍率。
-
-## 25. 复现与工程清单
-
-如果要在工程环境里复刻 DSpark-style workflow，至少要检查以下内容。
-
-### 25.1 数据与 Target Cache
-
-- 确认 target model，例如 `Qwen/Qwen3-4B`。
-- 准备 prompt dataset，例如 open-perfectblend。
-- 用 target model 重新生成 answers，保证 draft 训练分布匹配 target deployment。
-- 预计算 target hidden states cache。
-- 评估存储成本；默认 Qwen3-4B setting 约 38TB，不适合轻量实验。
-
-### 25.2 Draft Model 训练
-
-- 选择配置：`config/dspark/dspark_qwen3_4b.py` 等。
-- 确认 `block_size` 与目标验证长度一致。
-- 确认 `target_layer_ids` 与目标模型结构匹配。
-- 监控 CE、L1、confidence BCE、position-wise accept rate。
-- 保存 checkpoints 到 `~/checkpoints/<project_name>/<exp_name>/step_*`。
-
-### 25.3 离线评估
-
-- 使用 `eval.py` 跑 GSM8K、MATH500、AIME25、MBPP、HumanEval、LiveCodeBench、MT-Bench、Alpaca、Arena-Hard-v2。
-- 报告 accepted length $\tau$。
-- 按 domain 拆分 math/code/chat。
-- 记录 confidence ECE、AUC、Brier。
-- 比较 Eagle3、DFlash、DSpark，而不是只报告单模型结果。
-
-### 25.4 Serving 集成
-
-- 实现 target engine 的 $\mathrm{SPS}(B)$ profiling。
-- 把 confidence logits 转成 calibrated confidence。
-- 实现 batch-level prefix scheduler。
-- 记录每轮实际 verification length、accepted length、rejected tokens。
-- 按并发分桶监控 throughput 和 TPS。
-- 设置 fallback：当 confidence head、scheduler 或 drafter 异常时回退 MTP-1 或普通 autoregressive decoding。
-
-### 25.5 上线验收
-
-- 低并发：DSpark 不应显著增加首 token latency。
-- 中并发：aggregate throughput 应优于 baseline。
-- 高并发：verification budget 应自动下降，不能让 target batch 爆掉。
-- SLA anchor：在不同 tok/s/user 目标下绘制 frontier，而不是只看平均速度。
-- 质量一致性：确认 speculative decoding 不改变 target model 输出分布的正确性假设。
-
-## 26. 局限性与批判
-
-DSpark 的结果很强，但不能过度外推。
-
-第一，生产 traffic 不可复现。Fig. 7/8 来自 DeepSeek-V4 live user traffic 和内部 serving engine。外部读者无法复现这些曲线，也无法确认 traffic mix、prompt length、输出长度、batching policy 对结果的影响。
-
-第二，production scheduler 未完整开源。DeepSpec 开源了模型、训练、评估和 checkpoints，但 Algorithm 1 在真实 serving engine 中如何接入、如何 profile $\mathrm{SPS}(B)$、如何处理连续 batching 和 SLA policy，仍然是系统实现细节。
-
-第三，target cache 成本极高。默认 Qwen3-4B cache 约 38TB，使得“从零训练 DSpark”对多数个人和小团队不现实。更现实的路径是使用 released checkpoints 或在小数据、小模型上做方法验证。
-
-第四，domain shift 需要重新训练。README 提醒，如果目标模型运行在 thinking mode 或 domain-specific setting，应该重新 fine-tune draft model。Speculative drafter 对 target model 和 generation distribution 很敏感，不能把一个 checkpoint 当作通用加速器。
-
-第五，accepted length 不是唯一指标。更长 accepted length 通常意味着更快，但真实用户体验还受首 token latency、tail latency、输出质量、服务稳定性和成本影响。DSpark 的线上结果用 frontier 方式报告，这是正确方向，但外部部署仍需重新评估。
-
-第六，confidence calibration 是脆弱环节。Algorithm 1 依赖 prefix survival 的数值可靠性。如果 confidence head 在新 domain 上过度自信，scheduler 可能做出错误分配。
-
-## 27. 推荐阅读路径
-
-如果时间有限，建议按以下顺序读。
-
-1. 先读 Abstract 和 Fig. 1，建立 DSpark 的整体结构。
-2. 读 Section 3.1，理解 semi-autoregressive generation 为什么缓解 suffix decay。
-3. 读 Section 3.2 和 Algorithm 1，理解 hardware-aware prefix scheduler。
-4. 读 Table 1，确认离线 accepted length 的主结果。
-5. 读 Fig. 2-4，理解 parallel capacity、suffix decay、sequential head 的消融。
-6. 读 Fig. 5-6，理解 confidence threshold 和 calibration。
-7. 读 Fig. 7-8，理解线上 serving frontier。
-8. 看 DeepSpec README，确认代码能做什么、不能做什么。
-9. 看 `config/dspark/dspark_qwen3_4b.py`、`markov_head.py`、`loss.py`、`draft_ops.py`。
-10. 最后看 `scripts/data/README.md`，理解为什么完整训练复现成本很高。
-
-## 28. 结论
-
-DSpark 的贡献不只是提出一个新的 draft model，而是把 speculative decoding 的优化目标重新组织了一遍。
-
-传统视角容易问：draft model 能不能一次生成更多 token？DSpark 的回答是：更长 draft block 只有在 target verification 资源不被浪费时才有价值。因此要同时解决两个问题：
-
-- **Draft better**：用 parallel backbone + semi-autoregressive head 提高 prefix 质量，缓解 suffix decay。
-- **Verify smarter**：用 calibrated confidence + hardware-aware scheduler，把 target batch capacity 分给最可能存活的 prefix token。
-
-从论文结果看，DSpark 在离线 accepted length 上稳定超过 Eagle3 和 DFlash；从线上部署看，它能在 DeepSeek-V4 serving 中把吞吐-交互 frontier 往外推。更重要的是，它给推理系统提供了一个清晰范式：大模型解码加速不能只看单请求算法，也必须看 batch capacity、负载、校准和 SLA。
-
-对工程实现者来说，DeepSpec 的价值在于把 DSpark 的训练与评估链路公开出来；但它也明确暴露了真实复现成本和 production gap。本文的实践建议是：如果只是学习方法，先用 released checkpoints 和 eval pipeline 理解 accepted length 与 confidence metrics；如果要做生产级改造，必须补上 engine profiling、global scheduler、线上监控和安全回退。
+回顾全文，DSpark 的核心价值在于它跳出了单纯在草稿模型内部堆叠算子的局部视角，以 **“Draft Better（并行主干 + 半自回归顺序头缓解后缀衰减）”** 与 **“Verify Smarter（校准置信度 + 硬件感知贪心前缀调度）”** 的双轮驱动，打通了从词元级分布对齐到高并发集群吞吐帕累托前沿演进的完整闭环，为现代大模型在线推理加速树立了清晰的工程范式。
 
 ## 参考资料
 
