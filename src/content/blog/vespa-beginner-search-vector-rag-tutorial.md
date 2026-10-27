@@ -14,128 +14,107 @@ tags:
 draft: false
 ---
 
-Vespa 这个名字容易让人先想到机车，但本文讲的是 **Vespa.ai / Vespa Engine**：一个开源的大规模数据 serving engine，用来构建搜索、推荐、个性化、向量检索、RAG 和机器学习排序系统。如果只把 Vespa 叫作“向量数据库”，会漏掉它最重要的部分。Vespa 可以存向量、做 ANN，但它真正的定位更像一个统一的 AI retrieval serving platform：在同一个系统里同时处理全文检索、结构化过滤、向量近邻、tensor 计算、多阶段排序、模型推理、实时更新和分布式低延迟服务。官方首页对它的描述很直接：Vespa 可以在 vectors、tensors、text 和 structured data 上查询、组织和推理，并服务搜索、RAG、推荐和半结构化导航等场景。
+在搭建企业级搜索、RAG（检索增强生成）或实时推荐系统时，很多工程团队都会经历一段痛苦的“多系统拼接期”：用 Elasticsearch 跑 BM25 关键词检索，用 Milvus 或 Qdrant 跑稠密向量近邻（ANN），用 Redis 存文档的实时点击率、库存或租户 ACL 权限列表，最后再起一组 Python 微服务跑重排模型（Reranker）。
 
-本文定位于一篇从零上手的 Vespa 工程实操教程。我们会用一个统一的 `docs-search` 示例，从本地 Docker 启动开始，编写 application package，定义 schema，写入（feed）文档，执行 YQL 查询，加入 BM25 与向量字段，完成 hybrid search 和 rank-profile 调试，最后将其扩展到生产级 RAG chunk schema。读完本文后，你应该能清晰回答三个核心问题：
+这套拼装架构在 Demo 阶段跑得顺风顺水，可一旦上了生产高并发流量，延迟和成本就会迅速失控。原因很直观：假设每次查询需要从文本路和向量路各召回 500 个候选文档，为了给这 1,000 个候选打分排序，业务网关必须先把 1,000 个文档 ID 拉回内存，再去 Redis 批量捞取上千条实时属性，拼接成庞大的 JSON/Protobuf 载荷发给排序服务。最终你会发现，**80% 的 P99 延迟和 CPU 开销都浪费在了跨服务的网络序列化与候选数据搬运上**，真正花在相关性计算上的时间反而微乎其微。
 
-1. Vespa 的 application package、schema、`services.xml`、YQL 和 rank-profile 分别承担什么职责。
-2. 一个最小本地 Vespa 搜索应用怎样完成部署、写入、更新、查询和特征调试。
-3. Vespa 的 BM25、向量近邻、多阶段混合排序以及在 RAG / 推荐系统中的后端角色应该如何理解与演进。
+**Vespa**（Vespa.ai / Vespa Engine）正是为了终结这种“数据到处搬运”的碎片化架构而生的开源大规模实时检索与服务引擎。透过繁多的配置项看本质，Vespa 的整套架构建立在**四条环环相扣的设计哲学**之上：
 
-本文默认你有 Docker 或 Podman 基础，能在命令行里执行 `docker`、`curl`、`python3` 和 Vespa CLI。所有配置与代码均以完整代码块给出，实操时可直接复制到本地实验目录运行。
+1. **计算向数据靠拢**（Compute-near-Data over Data Movement）：将词法倒排索引（Inverted Index）、HNSW 向量图索引、内存列式属性（Attribute）以及张量/模型推理引擎统一部署在同一个有状态内容节点（Content Node）中。检索出上千个候选后，直接在数据所在的内存地址上原地读取特征、执行多阶段打分，最后只把胜出的几十条结果摘要通过网络传回上层。
+2. **多阶段级联排序漏斗**（Cascaded Phased Ranking）：相关性精度与算力开销天生存在矛盾。Vespa 在架构层面原生定义了三阶段排序漏斗：在每个数据分片上用廉价代数表达式对全量匹配候选做粗排（`first-phase`），仅对分片内前 $N$ 名运行特征交叉、GBDT 或轻量网络做精排（`second-phase`），最后在无状态容器层对跨分片归并后的全局前 $K$ 名做重型交叉编码器重排或分数归一化（`global-phase`）。
+3. **单次执行计划内的过滤与双路召回融合**（Single-Pass Filtered Hybrid Retrieval）：在分离架构中，“先过滤还是先做向量近邻”是个臭名昭著的两难问题——后置过滤（Post-filtering）极易把 Top-$K$ 候选滤空，而外置前置过滤又会破坏 HNSW 图的连通性。Vespa 将结构化属性位图（Bitvector）直接注入 HNSW 图游走与倒排求交算子内部，在单次 YQL 查询计划中同时完成多租户硬过滤、BM25 词面召回与向量近邻搜索。
+4. **声明式应用包与白盒特征归因**（Declarative Application Package & White-Box Match Features）：把集群拓扑（`services.xml`）、字段物理布局（`index` / `attribute` / `summary`）和排序公式（`rank-profile`）收拢进统一的声明式配置包，并允许通过 `match-features` 随每条命中文档输出所有子特征的真实计算值，让线上相关性调优彻底告别黑盒盲猜。
 
-## 1. 为什么学 Vespa：定位、场景与核心心智模型
+下面我们就顺着这四条设计哲学，用一个贯穿全文的 `docs-search` 实战工程，从本地 Docker 容器启动开始，一步步走完应用包配置、Schema 物理存储设计、数据实时写入、YQL 检索、BM25 与 HNSW 混合排序调试，直至演进为生产级多租户 RAG Chunk 检索后端。
 
-### 1.1 适用场景与定位：不止是向量数据库
+---
 
-Vespa 不是最轻量的工具。如果你的需求只是存 1 万条向量、快速搭一个个人 demo，那么 Milvus、Qdrant、Chroma、SQLite 向量扩展甚至直接调用 FAISS，上手都会更快。然而，当你的业务需求开始演进为下面这些复杂形态时，Vespa 就值得认真评估：
+## 1. 架构全貌与核心心智模型：为什么不把所有需求都塞进普通向量库？
 
-| 业务需求 | 为什么 Vespa 合适 |
-| --- | --- |
-| 搜索既要关键词匹配，又要语义向量召回 | Vespa 在同一引擎内原生支持 lexical search、vector search 和统一的 ranking pipeline |
-| 检索结果需要复杂排序与实时特征 | rank-profile 可以组合 BM25、向量相似度、业务属性、模型特征和 tensor 表达式 |
-| 数据高频变化且要求实时可见 | Vespa 强调 real-time updates 与在线局部字段更新，而非离线建好索引后长期不动 |
-| RAG 需要过滤、分片、排序与证据返回 | 文档字段、structured filter、`nearestNeighbor` 和 summary 裁剪可在单次查询中闭环 |
-| 推荐系统需要候选召回和在线多阶段排序 | Vespa 可同时承担向量召回、实时特征访问与 first-phase / second-phase / global-phase 排序 |
-| 希望减少多系统拼接成本 | 设计目标是尽量让 retrieval、ranking、inference 靠近数据原地执行，避免跨服务搬运候选集 |
+### 1.1 搜索、向量库与 Vespa 的工程权衡
 
-把 Vespa 放回大家熟悉的搜索与向量生态中横向对比，可以更直观地看清它的坐标（以下对比仅帮助理解系统边界，并非优劣排名）：
+如果你的需求仅仅是存 1 万条静态文本向量、快速搭一个个人知识库原型，那么直接用 Qdrant、Chroma、Milvus 甚至 SQLite 向量插件都会非常轻便。但当业务进入深水区，面临以下复合挑战时，单一向量库就会捉襟见肘：
 
-| 系统 | 直觉定位 | 典型适用场景 |
+| 真实生产痛点 | 传统多系统拼装方案的做法 | Vespa 的原生解法 |
 | --- | --- | --- |
-| Elasticsearch / OpenSearch | 经典全文搜索与日志/文档分析生态 | 文本搜索、日志检索、多维聚合、已有 ELK/OpenSearch 生态 |
-| Milvus | 面向大规模 embedding 的专用向量检索系统 | 亿级向量存储、ANN 召回、以纯向量相似为主的数据集 |
-| Qdrant | 开发者友好的轻量向量数据库 | 快速搭建语义搜索、带 payload filter 的向量召回服务 |
-| Vespa | 统一 AI retrieval serving engine | 文本 + 向量 + 结构化过滤 + 多阶段排序 + 在线模型推理 + 实时更新 |
+| **专有名词与语义意图需要兼顾** | 分别查 ES 和向量库，在业务代码里写 RRF（倒数排名融合）硬拼两路结果 | 同一条 YQL 中用 `or` 联合召回词法与向量候选，共享同一个 `rank-profile` 统一打分 |
+| **排序需要融合实时业务特征** | 召回 ID 后再查外部缓存拉取发布时间、点赞数、权威度做二次加权 | 业务特征以 `attribute` 常驻内容节点内存，排序表达式直接原地读取 `attribute(published_at)` |
+| **文档高频局部更新** | 改一个标签或点击率就要重新传整段文本和 384 维向量重建索引 | 原生支持面向 `attribute` 字段的内存级高频局部更新（Partial Update），毫秒级对查询可见 |
+| **企业级 RAG 强权限隔离** | 先搜出 Top-50 向量再调权限服务过滤，常因无权限导致返回结果不足 | `tenant_id` / `acl` 开启 `fast-search` 内存索引，与 `nearestNeighbor` 在底层协同过滤 |
 
-从官方架构图中可以清楚看到 Vespa 在完整 AI retrieval workflow 中的位置：
+把 Vespa 放回主流检索基础设施坐标系中，可以清晰看清各自的架构重心：
+
+| 系统 | 核心架构定位 | 最契合的工程场景 |
+| --- | --- | --- |
+| **Elasticsearch / OpenSearch** | 基于 Lucene 的分布式文档搜索与日志分析引擎 | 全文检索、ELK 可观测性日志分析、多维分面聚合（Aggregations） |
+| **Milvus** | 面向海量高维 Embedding 的云原生专用向量数据库 | 亿级规模纯向量存储、多索引类型（IVF/HNSW/DiskANN）高吞吐近似近邻召回 |
+| **Qdrant** | Rust 编写的轻量高性能向量检索引擎 | 追求快速落地、以语义检索为主并附带 JSON Payload 过滤的应用 |
+| **Vespa** | **计算与数据合一的 AI Retrieval & Ranking 引擎** | **多路召回（文本+向量+结构化）+ 多阶段复杂排序 + 在线张量/模型推理 + 实时特征更新** |
 
 ![Vespa distributed architecture](https://vespa.ai/vespa-content/uploads/2026/06/Vespa-Distributed-Architecture-1.png)
 
-*Source: Vespa.ai Architecture, official website.*
-
-这张架构图将 Vespa 的核心能力归纳为 Retrieve、Rank、Infer、Update、Serve 五个环节，底层由 unified data & compute、tensor engine、query execution 和 distributed architecture 支撑。官方架构页传达的核心设计哲学是：不要把全文检索、向量检索、特征存储、模型推理和在线服务拆成多个彼此通过网络搬运大量候选数据的独立系统，而是尽量在统一的分布式架构中、靠近数据所在节点完成这些计算。
-
-这也解释了 Vespa 与普通向量数据库的本质差异。普通向量库通常回答的问题是：
+从上方架构图可以看到，Vespa 将在线检索拆解为 **Retrieve**（多路召回）、**Rank**（多阶段排序）、**Infer**（模型推理）、**Update**（实时更新）和 **Serve**（分布式服务）五个闭环阶段。普通向量库只回答“给我一个查询向量，返回余弦距离最近的 Top-$K$ 向量”；而 Vespa 回答的是一个完整的在线决策问题：
 
 ```text
-给我一个 query vector，返回最相似的 topK vectors。
+输入：用户搜索词 + 查询向量 + 用户画像张量 + 多租户/时间过滤条件
+  -> 1. 在各分片原地完成布尔过滤、倒排词项匹配与 HNSW 图近邻召回
+  -> 2. 对分片内所有召回候选执行 First-Phase 粗排（BM25 + 向量 Closeness + 实时新鲜度）
+  -> 3. 对分片内 Top-N 候选执行 Second-Phase 精排（特征交叉 / GBDT / ONNX 模型）
+  -> 4. 容器层归并各分片结果，按指定 Document Summary 裁剪字段并附带调试特征返回
 ```
 
-而 Vespa 在生产环境中更常回答的问题是：
+### 1.2 无状态容器层与有状态内容层的两层解耦
 
-```text
-给我一个文本 query、query vector、用户上下文和结构化过滤条件；
-先用关键词、向量和元数据过滤联合召回候选集；
-再用 rank-profile 在数据节点就地组合 BM25、closeness、业务新鲜度与模型输出完成多阶段排序；
-最后按指定 summary 裁剪返回结果并附带可解释的调试特征。
-```
+初学者看 Vespa 文档时容易被各种组件名绕晕，其实只需要抓住五个核心概念以及“无状态层 vs 有状态层”的物理分工：
 
-因此，本文将 Vespa 当作搜索、RAG 与推荐的在线 serving 基础设施来讲解。它不是 prompt orchestration 框架，也不是离线训练框架；你可以把 embedding 生成、LLM 调用、业务逻辑和前端 UI 放在外部服务中，由 Vespa 专门负责把最匹配的候选文档找出来、排好序、返回必要字段。
-
-### 1.2 核心概念与读写链路
-
-Vespa 的学习曲线之所以比单一向量库更陡，主要在于需要建立一套统一的配置与执行心智模型。入门阶段需要先掌握五个核心概念：
-
-| 概念 | 职责与作用 | 工程类比 |
+| 核心概念 | 职责与物理角色 | 直观工程类比 |
 | --- | --- | --- |
-| application package | 定义一个 Vespa 应用的完整声明式配置包 | 搜索服务的配置工程目录 |
-| schema | 定义文档类型、字段、索引、summary 与 rank profiles | 数据表结构 + 索引策略 + 排序算子配置 |
-| document | 被写入 Vespa 的单条数据记录 | 搜索文档、商品条目、文章或 RAG chunk |
-| container cluster | 无状态请求处理层，暴露 HTTP 接口与自定义组件 | API Gateway + Query Planner + Document 路由层 |
-| content cluster | 有状态数据存储、索引维护与检索计算层 | 分片存储引擎 + 倒排/向量索引 + 就地排序节点 |
-
-官方文档中的 Vespa Overview 图清晰展示了容器层（Stateless Container Cluster）与内容层（Stateful Content Cluster）的协作关系：
+| **Application Package** | 包含 `services.xml` 与 `schemas/*.sd` 的声明式配置目录 | 搜索集群的基础设施即代码（IaC）工程包 |
+| **Schema (`*.sd`)** | 定义单类文档的字段类型、三种物理存储方式、返回摘要与排序模型 | 数据库建表语句 + 索引定义 + 排序算子脚本 |
+| **Document** | 具有全局唯一 ID 的单条写入记录 | 一篇技术文档、一件商品或一个 RAG 文本块（Chunk） |
+| **Container Cluster** | **无状态请求处理层**：接收 HTTP 请求、解析 YQL、向内容节点扇出（Fan-out）并归并最终结果 | API 网关 + 分布式查询协调器（Coordinator） |
+| **Content Cluster** | **有状态数据与计算层**：负责数据分片存储、倒排/HNSW 索引构建，以及就地执行匹配和排序 | 存储分片引擎 + 原地计算工人（Worker） |
 
 ![Vespa overview](https://docs.vespa.ai/assets/img/vespa-overview.svg)
 
-*Source: Vespa Documentation, official docs.*
-
-图中最值得关注的是无状态层与有状态层的职责边界：container cluster 负责接收 HTTP 查询与写入请求、解析 YQL、分发子查询并合并最终响应；content cluster 则负责文档持久化、属性更新、倒排与 HNSW 索引维护，以及在数据本地执行候选匹配和排序计算。这两条核心读写链路可以用下面的流程图概括：
+对照上方组件拓扑图，一条查询请求（Query Path）和一条写入请求（Feed Path）在两层之间的流转轨迹非常清晰：
 
 ```text
-【查询链路 Query Path】
-client
-  |  HTTP / Vespa CLI query
-  v
-container cluster
-  |  parse YQL, prepare query, fan out to content nodes
-  v
-content cluster
-  |  match candidates by text / vector / filter
-  |  compute first-phase & second-phase ranking close to data
-  v
-container cluster
-  |  merge top hits, optional global-phase, fill summaries, render JSON
-  v
-client
+【查询链路 Query Path：扇出计算，仅归并轻量胜出者】
+Client ──(HTTP /search/)──> Container Cluster (解析 YQL，准备查询张量，并发扇出)
+                                  │
+                    ┌─────────────┴─────────────┐
+                    ▼                           ▼
+           Content Node (Shard 0)      Content Node (Shard 1)
+           1. 倒排 + HNSW + 属性过滤     1. 倒排 + HNSW + 属性过滤
+           2. 原地计算 First/Second 排序  2. 原地计算 First/Second 排序
+           3. 仅返回本分片 Top-K ID 与分值 3. 仅返回本分片 Top-K ID 与分值
+                    └─────────────┬─────────────┘
+                                  ▼
+                Container Cluster (归并全局 Top-K，按 Summary 拉取必要展示字段，渲染 JSON)
 
-【写入链路 Feed Path】
-client / feed pipeline
-  |  document JSON / JSONL (put / update / remove)
-  v
-container document-api
-  |  validate & route document operation by document ID
-  v
-content cluster
-  |  store fields, update attributes in memory, build inverted & HNSW indexes
-  v
-document becomes immediately visible to queries
+【写入链路 Feed Path：按 ID 路由，内存与索引实时更新】
+Client ──(JSONL put/update/remove)──> Container (document-api 校验并按 Document ID 哈希路由)
+                                          │
+                                          ▼
+                                Content Cluster (落盘 Document Store，刷新内存 Attribute，增量更新倒排与 HNSW 图)
 ```
 
-查询链路和写入链路完全由 application package 驱动：`services.xml` 决定集群拓扑与节点分工，`schemas/*.sd` 决定文档如何存储、如何建索引、如何裁剪返回以及如何计算排序得分。
+理解了这张图，你就明白了为什么 Vespa 在高并发下依然能保持低延迟：在 `First-Phase` 和 `Second-Phase` 阶段，成千上万个候选文档根本不会离开各自所在的 Content Node 内存；只有最终胜出的 Top-$K$ 文档才会在最后一步填充摘要（Summary Fill）并通过网络返回给 Container。
 
-## 2. 本地环境准备与第一个 Application Package
+---
 
-### 2.1 Docker 容器启动与 Vespa CLI 配置
+## 2. 本地环境搭建与第一个 Application Package
 
-入门阶段使用本地 Docker 容器是最直接的方式。在开始前请准备以下本地环境：
+### 2.1 启动 Docker 容器与配置 Vespa CLI
 
-- **Docker Desktop 或 Podman**：确保守护进程正在运行，且至少分配 **4GB 及以上可用内存**（官方 hybrid search 教程同样将 4GB dedicated memory 作为最低要求，内存不足会导致部署缓慢或容器 OOM 退出）。
-- **Vespa CLI**：可通过 Homebrew（`brew install vespa-cli`）或官方 GitHub Releases 安装。
-- **`curl` 与 `python3`**：用于验证 HTTP 端点和生成带 384 维向量的测试数据。
+我们在本地通过 Docker 运行单节点 Vespa 容器来动手实验。启动前请确认本地 Docker Desktop 或 Podman 正在运行，且**至少分配了 4 GB 及以上的可用内存**（HNSW 图索引构建与 JVM 容器层需要一定的常驻内存，内存不足会导致部署超时或容器 OOM 退出）。同时安装好 `vespa-cli`（macOS 可直接执行 `brew install vespa-cli`）、`curl` 与 `python3`。
 
-本教程使用 Vespa 容器的两个标准端口：`8080` 用于查询、写入和 Document API 等数据面 HTTP 请求；`19071` 用于 config server 和应用部署控制面。执行以下命令拉取镜像并启动本地容器：
+Vespa 容器对外暴露两个核心端口：
+- **`8080`（数据面端口）**：承载查询（`/search/`）、文档读写（`/document/v1/`）等所有在线 HTTP 流量；
+- **`19071`（控制面端口）**：承载 Config Server，专门接收 `vespa deploy` 发来的应用包配置并下发给内部进程。
+
+执行以下命令拉取镜像并启动容器：
 
 ```bash
 docker pull vespaengine/vespa
@@ -145,24 +124,22 @@ docker run --detach --name vespa --hostname vespa-container \
   vespaengine/vespa
 ```
 
-容器启动后，可以通过 `docker logs -f vespa` 观察启动过程，或使用容器内置的日志格式化工具查看可读性更好的服务日志：
+容器启动后，可以使用内置的 `vespa-logfmt` 工具查看格式化后的实时服务日志，并将 CLI 目标指向本地验证就绪状态：
 
 ```bash
+# 查看容器内格式化服务日志（可选）
 docker exec vespa vespa-logfmt
-```
 
-接着将 Vespa CLI 的目标环境指向本地，并检查服务就绪状态：
-
-```bash
+# 将 CLI 指向本地容器并检查控制面与数据面状态
 vespa config set target local
 vespa status
 ```
 
-如果 `vespa status` 报错，请先不要急着编写 schema，优先检查 Docker 容器是否正常运行（`docker ps`）、`8080` 与 `19071` 端口是否被本机其他进程占用、Docker 内存配额是否充足，或者清理掉之前残留的同名容器（`docker rm -f vespa`）后重新启动。
+当 `vespa status` 显示 `Container (query API)` 和 `Deploy API` 均为绿色 Ready 状态时，说明底座已经就绪。
 
-### 2.2 最小工程结构与 `services.xml` 精读
+### 2.2 最小应用包结构与 `services.xml` 拓扑解析
 
-我们创建一个名为 `docs-search` 的示例应用，用来检索技术文档片段，逐步支持全文检索、标签过滤、向量召回与混合排序。入门阶段只需要两个文件即可构成最小可用的 application package：
+我们创建一个名为 `docs-search` 的技术文档检索应用。在 Vespa 中，一个最小可运行的 Application Package 只需要两个声明式文件：
 
 ```text
 docs-search/
@@ -171,14 +148,14 @@ docs-search/
     doc.sd
 ```
 
-其中 `services.xml` 描述 Vespa 的服务集群拓扑，`schemas/doc.sd` 描述文档类型 `doc` 的字段、索引与排序规则。可以把整个 `docs-search/` 目录理解为搜索服务的声明式基础设施配置。先在本地创建该目录并进入工作区（后文所有 `vespa deploy` 命令默认均在 `docs-search/` 目录下执行）：
+先在本地创建该目录并进入工作区（后文所有 `vespa deploy` 命令均在 `docs-search/` 目录下执行）：
 
 ```bash
 mkdir -p docs-search/schemas
 cd docs-search
 ```
 
-将以下配置写入 `docs-search/services.xml`：
+将以下集群拓扑配置写入 `docs-search/services.xml`：
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -203,25 +180,24 @@ cd docs-search
 </services>
 ```
 
-这份配置文件清晰对应了前文介绍的两层架构：
+这段 XML 就是前文“两层解耦架构”的代码映射：
+- `<container id="default">` 声明了无状态容器集群，内部通过 `<search />` 开启查询接口，通过 `<document-api />` 开启文档写入与 CRUD 接口；
+- `<content id="docs">` 声明了有状态内容集群，`<redundancy>1</redundancy>` 表示本地单节点保存 1 份数据副本；
+- `<document type="doc" mode="index" />` 是连接两个文件的关键纽带——它告诉内容集群加载名为 `doc` 的 Schema（对应 `schemas/doc.sd`），并启用支持实时倒排与向量索引的 `index` 模式。
 
-| 配置节点 | 核心含义与工程作用 |
-| --- | --- |
-| `<container id="default">` | 定义无状态容器集群，负责接管外部 HTTP 请求 |
-| `<search />` | 在容器集群上启用查询处理与 `/search/` 端点 |
-| `<document-api />` | 在容器集群上启用文档读写与 `/document/v1/` 端点 |
-| `<content id="docs">` | 定义有状态内容集群，负责存储数据、维护索引与执行匹配计算 |
-| `<document type="doc" mode="index" />` | 声明该内容集群存储 `doc` 类型文档（必须与 `doc.sd` 的 schema 名一致），并启用 `index` 模式 |
-| `<redundancy>1</redundancy>` | 数据副本数设为 1，本地单节点实验无需多副本；生产环境需根据高可用要求调整 |
-| `<node hostalias="node1">` | 将容器与内容服务绑定到本地单节点的默认主机别名 `node1` |
+---
 
-在本地开发阶段，我们只需要记住“container 接请求、content 存数据并算排序”；到了生产环境中，可以在这两个集群下扩展多个节点、配置多副本与分组分布，而无需改动上层查询代码。
+## 3. Schema 物理存储哲学：`index`、`attribute` 与 `summary` 的黄金边界
 
-## 3. Schema 设计：字段、索引、属性与演进规范
+### 3.1 为什么一个字段要区分三种物理存储形态？
 
-### 3.1 编写 `doc.sd`：`index`、`attribute` 与 `summary` 的边界
+在关系型数据库里，你建一列 `VARCHAR` 再加个索引就完事了；但在追求极致低延迟的检索系统里，**“怎么查这个字段”直接决定了它应该用什么数据结构躺在内存或磁盘上**：
 
-将以下内容写入 `docs-search/schemas/doc.sd`，这份 schema 一次性包含了后续实验所需的文本、结构化属性、向量索引和多套排序配置：
+1. 如果你要对一段长文本做分词、词干提取、短语匹配和 BM25 打分，它必须建成**词典 + 倒排链（Inverted Index）**；或者如果它是一个 384 维向量且需要快速找近似最近邻，它必须建成 **HNSW 导航图索引**——在 Vespa 中，这叫 **`indexing: index`**。
+2. 如果你要在排序公式里每毫秒读取上千个文档的 `published_at` 时间戳算时间衰减，或者按 `tags` / `tenant_id` 做精确过滤与分组统计（Grouping），去倒排链或磁盘行存里捞数据会慢得无法接受。它必须像列式数据库一样，按文档 ID 下标做成**常驻内存的正排数组/查找表**——在 Vespa 中，这叫 **`indexing: attribute`**。
+3. 如果某个字段（比如 `url` 或正文 `body`）只需要在最后选出 Top-10 结果后展示给前端看，平时根本不参与匹配和算分，那它只需要存进支持按文档 ID 批量读取的**压缩文档摘要库（Document Store）**——在 Vespa 中，这叫 **`indexing: summary`**。
+
+想通了这三者的物理本质，我们再来编写 `docs-search/schemas/doc.sd` 就会觉得每一行配置都顺理成章：
 
 ```text
 schema doc {
@@ -326,36 +302,34 @@ schema doc {
 }
 ```
 
-初学者阅读 Vespa schema 时，最容易混淆的是 `indexing:` 语句里的三个核心关键字：`index`、`attribute` 和 `summary`。它们分别决定了字段在底层的物理存储方式与可参与的计算阶段：
+仔细审视这份 `doc.sd` 中的四个关键工程细节：
 
-- **`index`（倒排/图索引）**：对于文本字段（如 `title`、`body`），`index` 表示分词后构建倒排索引，用于全文检索、词项匹配与 BM25 计算；只有显式声明了 `index: enable-bm25`，才能在 `rank-profile` 中调用 `bm25(field)`。对于 tensor 向量字段（如 `embedding`），`index` 表示构建 HNSW 近似近邻图索引。
-- **`attribute`（内存列式属性）**：表示字段以内存属性结构驻留，适合结构化精确过滤、范围比较、分组聚合（grouping）、排序算子实时读取（如 `attribute(published_at)`）以及向量距离计算。对高频用于 `where` 过滤的标量或数组字段，可以加上 `attribute: fast-search` 为其构建额外的查找结构；但对仅偶尔展示、不参与高频过滤的字段，无需开启 `fast-search` 以免增加内存开销。
-- **`summary`（结果返回摘要）**：表示该字段写入文档摘要存储，允许在查询命中后随结果返回给客户端。如果某个字段没有配置 `summary`，即使它在查询中被成功匹配或参与了排序，最终返回的 JSON `fields` 里也不会出现该字段。此外，通过定义 `document-summary compact`，可以在查询时按需只拉取轻量字段子集，避免每次都传输大段正文或高维向量。
+- **`index: enable-bm25` 的预计算机制**：为什么 `title` 和 `body` 开了 `indexing: index` 还不够，必须额外写一行 `index: enable-bm25`？因为标准 BM25 公式需要用到词项在文档内的词频（TF）以及经过文档长度归一化后的阻尼系数；显式声明 `enable-bm25` 会指示 Vespa 在构建倒排索引时额外存储预编码的词频与文档长度字节，从而让排序阶段调用 `bm25(title)` 时只需极速查表，省去现场扫描分词的开销。
+- **`attribute: fast-search` 的取舍**：普通 `attribute` 本质上是按文档内部序号索引的数组，如果直接在上面执行 `where published_at > 1760000000`，内容节点需要线性扫描该分片的内存数组；加上 `attribute: fast-search` 后，Vespa 会为该属性额外维护一棵 B-Tree 字典与倒排位图（Bitvector），把高频过滤从线性扫描加速为对数级查找。代价是多消耗一份内存，因此只应加在高频出现在 `where` 过滤条件里的字段上。
+- **`embedding` 同时声明 `attribute | index`**：向量字段必须存成内存 `attribute` 才能支持读取原始浮点数计算精确距离，同时加上 `index` 并配置 `hnsw` 才能构建近似最近邻图索引。
+- **`document-summary compact` 的带宽保护**：默认的全文摘要会把长篇 `body` 甚至 384 个浮点数的 `embedding` 一并塞进返回 JSON；定义 `compact` 摘要后，列表页查询只需指定 `presentation.summary=compact`，就能只拉取轻量元数据，大幅削减摘要填充与网络传输耗时。
 
-在此基础上，`fieldset default` 指定了当查询使用 `userQuery()` 时默认搜索 `title` 和 `body` 两个文本字段；而 `rank-profile` 则定义了 `default`、`bm25`、`semantic` 和 `hybrid` 四套排序策略。我们可以把字段配置原则总结为下表：
+我们可以将 Schema 字段的设计套路浓缩为一张速查表：
 
-| 字段用途 | 推荐 Schema 配置 | 本例对应字段 |
+| 字段业务角色 | 推荐物理配置 | 底层数据结构与作用 |
 | --- | --- | --- |
-| 全文检索与相关性打分 | `indexing: index \| summary` + `match: text` + `index: enable-bm25` | `title`, `body` |
-| 结构化过滤与排序特征 | `indexing: attribute \| summary`（高频过滤加 `attribute: fast-search`） | `tags`, `published_at` |
-| 精确标识与展示元数据 | `indexing: attribute \| summary` + `match: word` | `id`, `url` |
-| 稠密向量 ANN 检索 | `tensor<float>(x[D])` + `indexing: attribute \| index` + `distance-metric` + `hnsw` | `embedding` |
+| **全文检索文本**（`title`, `body`） | `indexing: index \| summary` + `match: text` + `index: enable-bm25` | 磁盘/内存倒排索引 + BM25 预计算表 + 摘要存储 |
+| **高频过滤与排序标量**（`published_at`） | `indexing: attribute \| summary` + `attribute: fast-search` | 内存列存数组 + B-Tree/位图索引，支持微秒级过滤与排序读取 |
+| **低频过滤标签或展示字段**（`tags`, `url`） | `indexing: attribute \| summary` | 内存列存（支持局部更新与按值匹配）+ 摘要存储 |
+| **稠密语义向量**（`embedding`） | `tensor<float>(x[D])` + `indexing: attribute \| index` + `hnsw` | 内存张量存储 + 内存 HNSW 多层导航图 |
 
-### 3.2 Schema 演进风险与向量版本管理
+### 3.2 生产环境的 Schema 演进风险与向量版本隔离
 
-在本地学习时，修改 `doc.sd` 后直接执行 `vespa deploy` 即可生效；但在生产环境中，Schema 变更会直接影响底层索引结构、内存占用、写入管线和在线查询兼容性。不同类型变更的风险等级差异很大：
+在本地实验时，改完 `doc.sd` 直接跑 `vespa deploy` 就能生效；但在存有数千万文档的生产集群上，不同 Schema 变更的破坏半径截然不同：
 
-| Schema 变更类型 | 线上影响与风险等级 | 工程处理建议 |
+| 变更操作 | 线上风险等级 | 底层发生了什么？该如何安全操作？ |
 | --- | --- | --- |
-| 新增 `summary` 字段或 `document-summary` | 低风险，不影响既有索引匹配 | 部署后新写入文档即生效，历史文档视需要补写 |
-| 新增 `attribute` 或 `index` 字段 | 中等风险，需要重新 feed 或 partial update 数据才能命中有值记录 | 先部署 schema，再异步回填字段数据，最后切流查询 |
-| 修改 `rank-profile` 表达式 | 排序分布变化，可能导致线上相关性波动 | 新增带版本号的 profile（如 `hybrid_v2`），经离线评估与灰度对比后再替换默认配置 |
-| 修改字段类型或修改 `tensor` 维度 | 高风险破坏性变更，涉及底层存储重建或 `validation-overrides` | 避免原地强改，建议新增字段或新建集群双写迁移 |
-| 升级 Embedding 模型版本 | 极高隐蔽风险，新旧向量空间不兼容会导致召回质量静默崩塌 | 严禁将新模型的 query vector 与旧模型的 document embedding 混搜 |
+| 新增 `document-summary` 或调整 `rank-profile` 公式 | 低风险 | 仅改变容器层裁剪逻辑或算分算子，无需重写底层文档数据；建议新增带版本号的 `hybrid_v2` 灰度对比后再切换默认 profile |
+| 新增 `attribute` 或 `index` 字段 | 中风险 | 已存量文档在该字段上为空，需先部署 Schema，再通过异步管线执行 Partial Update 回填数据后，方可在查询中启用强过滤 |
+| 修改字段类型或修改 `tensor` 向量维度（如 `x[384]` → `x[768]`） | 高风险（破坏性） | 底层内存布局与 HNSW 图结构完全不兼容，会被部署校验拦截（需 `validation-overrides` 强行清空重建）；生产上应采用**新增字段（如 `embedding_v2`）或蓝绿集群双写**平滑切换 |
+| 切换 Embedding 模型（哪怕维度同为 384 维） | 极高隐蔽风险 | 新旧模型的向量空间旋转错位，拿新模型的 Query 向量去搜旧模型的文档向量会导致相关性静默雪崩 |
 
-一个稳健的线上 Schema 演进流程应遵循：`schema 变更提案 -> 本地容器验证 -> Staging 部署并回放样本数据 -> 离线查询回归与延迟压测 -> 生产灰度发布 -> 监控指标与一键回滚预案`。
-
-尤其需要注意的是向量字段的模型版本管理：一旦切换了 embedding 模型（哪怕维度同样是 384 维），新旧向量也不在同一个语义空间内。工程实践中建议在 schema 中显式增加版本属性字段：
+针对最后一条“Embedding 模型跨版本污染”的经典大坑，最稳妥的工程规范是在 Schema 中显式设立一个带 `fast-search` 的模型版本字段：
 
 ```text
 field embedding_version type string {
@@ -365,28 +339,30 @@ field embedding_version type string {
 }
 ```
 
-并在查询时强制带上模型版本过滤条件，从而让模型升级、双写灰度和紧急回滚完全可控：
+在模型升级期间，双写管线为新向量打上新版本号，在线查询则在 YQL 中强制锁死当前网关所使用的 Embedding 模型版本，从而实现零停机的平滑灰度与秒级回滚：
 
 ```bash
 vespa query \
-  'yql=select * from doc where embedding_version contains "e5-small-v1" and ({targetHits:50}nearestNeighbor(embedding, q))' \
+  'yql=select * from doc where embedding_version contains "e5-small-v2" and ({targetHits:50}nearestNeighbor(embedding, q))' \
   "input.query(q)=$(cat query-vector.txt)" \
   'ranking=semantic'
 ```
 
-## 4. 数据写入（Feed）、首次部署与 Document API
+---
 
-### 4.1 构造 JSONL 数据与 Document ID 规范
+## 4. 数据写入（Feed）、首次部署与 Document API 实时更新
 
-Vespa 支持通过 JSON 或 JSONL 格式批量写入文档，每一行代表一个独立的文档操作。Vespa 的全局文档唯一标识符（Document ID）遵循固定格式：
+### 4.1 全局 Document ID 规范与测试数据生成
+
+Vespa 要求写入的每一条文档都必须携带全局唯一标识符（Document ID），其标准格式为：
 
 ```text
 id:<namespace>:<document-type>::<user-specific-id>
 ```
 
-在我们的示例中，形如 `id:docs-search:doc::hybrid-search` 的 ID 里，`docs-search` 是业务命名空间（namespace），`doc` 必须严格对应 `doc.sd` 中声明的 document type，双冒号后面的 `hybrid-search` 则是业务侧主键。
+例如在 `id:docs-search:doc::hybrid-search` 中，`docs-search` 是用于逻辑归类的命名空间（Namespace），中间的 `doc` **必须严格等于 Schema 文件中声明的 `document doc` 类型名**，双冒号后面的 `hybrid-search` 则是业务系统自己的主键 ID。
 
-为了让包含 384 维向量的 schema 可以直接在本地跑通，我们用一段简短的 Python 脚本生成 4 条测试文档并保存为 `documents.jsonl`。注意这里的 `embedding` 只是用正弦函数生成的确定性测试向量（toy embedding），仅用于打通数据与查询链路；真实生产系统应调用句向量模型生成：
+为了在本地立即跑通 384 维向量检索与混合排序，我们在 `docs-search/` 目录下用一段 Python 脚本生成 4 条测试文档并保存为 `documents.jsonl`（脚本使用正弦函数依据固定 `seed` 生成确定性的 384 维测试向量，实际生产中替换为调用句向量模型即可）：
 
 ```bash
 python3 - <<'PY' > documents.jsonl
@@ -455,11 +431,9 @@ for d in docs:
 PY
 ```
 
-执行 `head -n 1 documents.jsonl` 可以查看生成的单行结构。除了全量写入（`put`）之外，Vespa 的 `<document-api />` 还支持单文档读取（`get`）、局部字段更新（`update`，例如只实时刷新某篇文档的 `tags` 或点击率特征而无需重传正文字段与向量）以及删除（`remove`），这些 CRUD 操作既可以通过 `vespa document` CLI 执行，也可以直接请求 `/document/v1/<namespace>/<doc-type>/docid/<id>` HTTP 接口。
+### 4.2 部署应用、批量 Feed 与局部字段实时更新（CRUD）
 
-### 4.2 首次部署、批量写入与基础连通性验证
-
-确认当前终端位于 `docs-search/` 目录下（执行 `ls` 应能看到 `services.xml`、`schemas/` 和 `documents.jsonl`），然后依次执行应用部署与数据写入：
+确认当前目录下已有 `services.xml`、`schemas/doc.sd` 和 `documents.jsonl` 后，执行部署与高速批量写入：
 
 ```bash
 vespa config set target local
@@ -467,13 +441,13 @@ vespa deploy
 vespa feed documents.jsonl
 ```
 
-当控制台返回部署成功且 4 条文档全部写入完成后，我们先执行一条不带任何复杂排序的最小查询来验证端到端连通性：
+写入完成后，先跑一条全量匹配查询验证端到端数据链路：
 
 ```bash
 vespa query 'yql=select * from doc where true limit 3'
 ```
 
-如果返回如下结构的 JSON，且 `root.fields.totalCount` 为 `4`、`root.children` 中包含刚才写入的文档列表，说明容器层、内容层、Schema 索引与摘要返回链路已经全部跑通：
+看到返回的 JSON 中 `root.fields.totalCount` 为 `4`，且 `root.children` 数组包含了文档的 `fields` 摘要，说明集群已经正常运转：
 
 ```json
 {
@@ -498,61 +472,66 @@ vespa query 'yql=select * from doc where true limit 3'
 }
 ```
 
-## 5. YQL 查询、BM25 全文检索与结构化过滤
-
-### 5.1 YQL 基础语法与结构化过滤
-
-Vespa 使用 YQL（Vespa Query Language）描述“从哪个 schema 中、按什么条件取出哪些字段”。其最核心的职责边界是：**YQL 负责决定哪些文档进入候选集（Retrieval & Filtering），而 `rank-profile` 负责决定这些候选文档如何计算得分与排序（Ranking）**。尽管 YQL 也支持 `order by` 子句按属性字段直接排序，但在构建搜索和 RAG 系统时，应尽量把召回与过滤条件写在 YQL 中，把相关性打分逻辑收敛在 `rank-profile` 中。
-
-下面是一组最常用的基础 YQL 与结构化过滤查询示例：
+除了用 `vespa feed` 批量写入 `put` 操作外，借助 `services.xml` 中开启的 `<document-api />`，我们还可以随时对单条文档执行读取（`get`）、**内存级局部更新**（`update`）与删除（`remove`）。例如，当某篇文档新增了一个标签或更新了发布时间戳时，根本不需要重新传输正文和 384 维向量，直接向 `/document/v1/<namespace>/<doc-type>/docid/<id>` 发送 `assign` 或 `add` 指令即可原地修改内存 `attribute`：
 
 ```bash
-# 1. 只投影返回需要的字段（减少网络传输开销）
+# 1. 按 Document ID 直接读取单条文档完整内容
+vespa document get id:docs-search:doc::hybrid-search
+
+# 2. 局部更新 (Partial Update)：仅向 tags 数组追加一个新标签，不触碰正文与向量索引
+curl -X PUT -H "Content-Type: application/json" \
+  --data '{"fields": {"tags": {"add": ["production"]}}}' \
+  http://localhost:8080/document/v1/docs-search/doc/docid/hybrid-search
+```
+
+---
+
+## 5. YQL 检索语法、BM25 打分与结构化分面聚合
+
+### 5.1 YQL 的核心边界：把“选候选”和“算排序”彻底分开
+
+很多从 SQL 转过来的开发者容易习惯性地把所有排序逻辑都写成 `ORDER BY`。但在 Vespa 中，必须建立一条清晰的工程铁律：**YQL 的 `where` 子句只负责把符合条件的文档召回进候选池（Retrieval & Filtering），至于候选池里的文档谁排第一、谁排第二，交给 `rank-profile` 决定（Ranking）**。
+
+下面这组命令展示了 YQL 在投影、全文检索、结构化数组/数值过滤以及组合查询上的核心用法：
+
+```bash
+# 1. 字段投影：只拉取 id、title、url 三个字段，省去传输大段 body
 vespa query 'yql=select id,title,url from doc where true limit 2'
 
-# 2. 使用 userQuery() 在默认 fieldset (title, body) 上执行文本检索
+# 2. 默认全文检索：userQuery() 解析外部 query 参数，并在 default fieldset (title, body) 上匹配
 vespa query \
   'yql=select id,title,url from doc where userQuery() limit 5' \
   'query=hybrid search'
 
-# 3. 使用 contains 指定在单个文本字段上匹配词项
+# 3. 单字段词项包含：指定只在 title 字段中匹配词项 "Vespa"
 vespa query \
   'yql=select id,title,url from doc where title contains "Vespa" limit 5'
 
-# 4. 在数组属性字段 tags 上做结构化过滤
+# 4. 结构化数组过滤：匹配 tags 属性数组中包含 "vector-search" 的文档
 vespa query \
   'yql=select id,title,tags from doc where tags contains "vector-search" limit 5'
 
-# 5. 在数值属性字段 published_at 上做时间范围过滤并按时间倒序排列
+# 5. 数值范围过滤 + 属性硬排序：利用 fast-search 属性筛选时间戳并按时间倒序排列
 vespa query \
   'yql=select id,title,published_at from doc where published_at > 1760000000 order by published_at desc limit 10'
 
-# 6. 组合结构化标签过滤与全文检索
+# 6. 结构化过滤与 BM25 全文检索联合召回
 vespa query \
   'yql=select id,title,tags from doc where tags contains "vespa" and userQuery() limit 10' \
   'query=rank profile' \
   'ranking=bm25'
 ```
 
-在真实的电商、文档站或知识库搜索 UI 中，除了过滤之外，还经常需要在搜索结果侧边栏展示“按标签或分类聚合统计数量”的导航面板（例如 `tag: vespa (10)`、`tag: rag (4)`）。Vespa 在 YQL 中内置了强大的 Grouping / Faceting 聚合语法（形如 `select * from doc where ... | all(group(tags) each(output(count())))`），能够在一次检索过程中同时返回排序结果和分面统计计数。初学阶段了解这一能力边界即可，建议先将主链路的文本、向量与混合排序调通，再按需引入分面聚合。
+在真实的电商或文档中心页面上，除了展示中间的搜索结果列表，往往还需要在左侧边栏渲染“按标签统计命中数”的分面导航（Faceting，如 `vespa (3)`、`ranking (2)`）。在 Vespa 中无需发起第二次查询，直接在 YQL 末尾通过管道符 `|` 接上 **Grouping 聚合表达式**，就能在单次扫描中同时拿到命中文档和标签计数：
 
-### 5.2 BM25 文本相关性检索与特征验证
-
-在前面的 `doc.sd` 中，我们已经为 `title` 和 `body` 开启了 `index: enable-bm25`，并定义了将两者 BM25 分数相加的 `bm25` 排序配置，同时用 `match-features` 暴露了各个字段的分项得分：
-
-```text
-rank-profile bm25 inherits default {
-  first-phase {
-    expression: bm25(title) + bm25(body)
-  }
-  match-features {
-    bm25(title)
-    bm25(body)
-  }
-}
+```bash
+vespa query \
+  'yql=select id,title from doc where true limit 2 | all(group(tags) each(output(count())))'
 ```
 
-现在我们可以显式指定 `ranking=bm25` 发起查询，并通过 `ranking.listFeatures=true` 打开特征观察开关：
+### 5.2 BM25 词面相关性与 `match-features` 白盒验证
+
+当我们在查询中传入 `ranking=bm25` 并附带 `ranking.listFeatures=true` 时，Vespa 不仅会按 `bm25(title) + bm25(body)` 计算总分，还会把 `match-features` 中声明的每个子项得分随文档一并吐出：
 
 ```bash
 vespa query \
@@ -562,45 +541,27 @@ vespa query \
   'ranking.listFeatures=true'
 ```
 
-在返回的每条结果中，除了总分 `relevance` 外，你还能在 `matchfeatures` 字段里清晰看到 `bm25(title)` 和 `bm25(body)` 各自贡献了多少分。BM25 的核心优势在于词面精确匹配能力强、计算高效且完全可解释，特别适合包含专有名词、代码标识符、型号缩写和明确关键词的查询；但它的局限性同样明显——无法跨越词面鸿沟理解同义表达（例如用户搜索 `semantic retrieval` 时，若文档里只写了 `vector nearest neighbor`，纯 BM25 就可能漏召回）。这正是我们需要引入向量检索的原因。
+观察返回 JSON 中的 `matchfeatures` 块，你可以清楚看到某篇文档排在第一究竟是因为标题命中了高 IDF 词项（`bm25(title)` 高），还是因为正文反复提及了关键词（`bm25(body)` 高）。
 
-## 6. 向量检索与 Hybrid Search（混合检索）
+BM25 的优势是词面匹配精准、零推理开销且完全白盒可解释，对专有名词、错误码、函数名和产品型号极其敏锐；但它的软肋在于**词汇鸿沟**（Lexical Gap）——当用户搜索 `"semantic retrieval"`，而文档里写的是 `"vector nearest neighbor"` 时，由于两边没有共同词项，纯 BM25 的得分为 0。要跨越这道鸿沟，就必须引入稠密向量检索。
 
-### 6.1 Tensor 向量字段与 HNSW 索引配置
+---
 
-Vespa 使用统一的 `tensor` 类型系统来表达一维向量和更高维张量。回顾我们在 `doc.sd` 中为 `embedding` 字段编写的定义：
+## 6. 向量近邻（HNSW）与 Hybrid Search 混合检索
 
-```text
-field embedding type tensor<float>(x[384]) {
-  indexing: attribute | index
-  attribute {
-    distance-metric: angular
-  }
-  index {
-    hnsw {
-      max-links-per-node: 16
-      neighbors-to-explore-at-insert: 100
-    }
-  }
-}
-```
+### 6.1 HNSW 图索引参数与距离度量权衡
 
-这段配置中的每一项都有明确的工程含义：
+回顾 `doc.sd` 中 `embedding` 字段的定义，Vespa 将向量表示为固定维度的稠密张量 `tensor<float>(x[384])`，并在内存属性之上构建了 HNSW（Hierarchical Navigable Small World）多层近邻图索引：
 
-| 配置项 | 含义与调参取舍 |
-| --- | --- |
-| `tensor<float>(x[384])` | 声明一个名为 `x`、维度固定为 384 的单精度浮点稠密向量 |
-| `indexing: attribute \| index` | 同时将向量存入内存属性并构建 ANN 索引，支持快速近似近邻检索与精确距离计算 |
-| `distance-metric: angular` | 指定角度距离度量（常用于余弦相似场景，此外还支持 `euclidean`、`prenormalized-angular`、`dotproduct` 等） |
-| `hnsw` | 启用 Hierarchical Navigable Small World 图索引加速近似最近邻搜索 |
-| `max-links-per-node: 16` | HNSW 图中每个节点的最大边数（对应论文参数 $M$），增大可提升召回率但会增加内存占用 |
-| `neighbors-to-explore-at-insert: 100` | 写入建图时的探索候选宽度（对应 $efConstruction$），增大可提升图质量但会降低写入吞吐 |
+| HNSW 与向量配置项 | 物理机制说明 | 线上性能与内存权衡 |
+| --- | --- | --- |
+| `distance-metric: angular` | 余弦/角度距离度量；若向量在写入前已做过单位长度归一化，生产上更推荐改用 **`prenormalized-angular`**（直接蜕化为极速内积运算） | 省去每次距离计算时的平方根归一化开销，显著降低 CPU 消耗 |
+| `max-links-per-node: 16` | HNSW 图中每个节点在每层最多维护的邻居边数（即参数 $M$） | 调大（如 32）可提升高维复杂分布下的召回率，但图索引常驻内存与写入耗时线性增长 |
+| `neighbors-to-explore-at-insert: 100` | 插入新文档向量时动态搜索候选邻居的队列宽度（即参数 $efConstruction$） | 调大（如 200）能建出质量更高的导航图，代价是文档写入（Feed）吞吐下降 |
 
-需要注意，Schema 中声明的维度 `x[384]` 是强约束：无论是写入文档时的字段数组，还是查询时传入的 query vector，维度都必须严格等于 384，少一维、多一维或格式错误都会直接触发请求失败。
+### 6.2 `nearestNeighbor` 查询与“三处张量名对齐”铁律
 
-### 6.2 `nearestNeighbor` 近邻查询与三处名称对齐
-
-我们先用 Python 生成一个与 `seed=2`（即 `hybrid-search` 文档）相近的 384 维查询向量，保存到 `query-vector.txt`：
+我们先用 Python 生成一个与第 2 条测试文档（`seed=2`，即 `hybrid-search`）同分布的 384 维查询向量，存入 `query-vector.txt`：
 
 ```bash
 python3 - <<'PY' > query-vector.txt
@@ -610,7 +571,7 @@ print("[" + ",".join(map(str, values)) + "]")
 PY
 ```
 
-随后使用 YQL 的 `nearestNeighbor(field, query_tensor)` 算子发起纯向量近邻检索，并使用 `semantic` 排序配置以及 `compact` 摘要格式：
+随后调用 YQL 的 `nearestNeighbor(field, query_tensor)` 算子执行向量近邻搜索，并指定使用 `compact` 轻量摘要返回：
 
 ```bash
 vespa query \
@@ -621,15 +582,21 @@ vespa query \
   'hits=5'
 ```
 
-在编写向量查询时，新手最容易踩坑的地方是**三处张量名称必须严格对齐**：
+在编写向量查询时，新手十有八九会栽在 **`missing query tensor` 报错**上。请务必牢记：**YQL、请求参数、Schema 排序配置三处的查询张量名字（此处为 `q`）与维度必须严丝合缝对齐**：
 
-| 声明位置 | 配置写法 | 作用说明 |
-| --- | --- | --- |
-| YQL 查询条件 | `nearestNeighbor(embedding, q)` | 指定用文档字段 `embedding` 与查询输入张量 `q` 计算近邻 |
-| HTTP / CLI 查询参数 | `input.query(q)=[...]` | 在请求时传入名为 `q` 的实际向量数值 |
-| Schema `rank-profile` | `inputs { query(q) tensor<float>(x[384]) }` | 声明排序配置接收名为 `query(q)` 的 384 维浮点张量输入 |
+```text
+1. Schema (doc.sd)         : rank-profile semantic { inputs { query(q) tensor<float>(x[384]) } }
+                                                                   │
+2. YQL (where 子句)         : ... where {targetHits:10}nearestNeighbor(embedding, q)
+                                                                                 │
+3. HTTP / CLI 请求参数       : input.query(q)=[0.333, 0.345, ...]  <───────────────┘
+```
 
-此外，请特别区分查询中的两个数量参数：`{targetHits:10}` 是传给 `nearestNeighbor` 算子的**向量召回候选预算**（即让底层 HNSW 索引为每个内容节点找出至少 10 个最近邻候选交给后续排序阶段），而 `'hits=5'`（或 YQL 中的 `limit 5`）才是**最终返回给客户端的结果条数**。在结合结构化过滤进行向量检索时，也只需在 YQL 中用 `and` 连接条件，Vespa 会自动在满足过滤条件的文档集合上执行近邻搜索：
+同时，这里有两个极易混淆的数量参数必须区分清楚：
+- **`{targetHits: 10}`（单分片向量召回预算）**：这是传给底层 HNSW 图搜索算子的注解，意思是要求每个内容节点从 HNSW 图里找出至少 10 个最近邻文档送入 `first-phase` 排序池；
+- **`hits=5` 或 `limit 5`（最终返回条数）**：这是经历完所有阶段排序并跨分片归并后，最终打包进 HTTP 响应返回给客户端的文档数量。
+
+当需要在向量近邻搜索上叠加结构化过滤时，直接用 `and` 连接即可。Vespa 会先评估过滤条件的命中比例：如果满足 `tags contains "rag"` 的文档很少，直接对这批文档算精确向量距离；如果满足条件的文档较多，则在遍历 HNSW 图的过程中动态检查过滤位图，彻底避免了“先找 Top-10 向量再过滤导致结果为空”的窘境：
 
 ```bash
 vespa query \
@@ -639,9 +606,9 @@ vespa query \
   'hits=5'
 ```
 
-### 6.3 Hybrid Search：合并词面与语义召回
+### 6.3 Hybrid Search：词面与语义的双路召回与尺度陷阱
 
-混合检索（Hybrid Search）的核心工程思想是：不要把召回质量押注在单一信号上。BM25 擅长捕捉精确术语、代码符号与字面重合，而向量检索擅长捕捉同义改写、跨词面意图与自然语言问答。在 Vespa 中，实现混合检索只需在 YQL 中用 `or` 合并两路候选集，并交由统一的 `hybrid` 排序配置打分：
+把 BM25 和向量检索合二为一，就是生产级检索系统最核心的**混合检索**（Hybrid Search）。在 Vespa 中，只需在 YQL 里用 `or` 将 `userQuery()` 与 `nearestNeighbor()` 并联起来，两路命中的文档就会自动取并集进入同一个 `hybrid` 排序流水线：
 
 ```bash
 vespa query \
@@ -653,92 +620,84 @@ vespa query \
   'hits=5'
 ```
 
-对应的 `hybrid` 排序配置继承自 `semantic`，在 `first-phase` 中将标题/正文的 BM25 得分与向量 `closeness` 线性组合：
+看返回的 `matchfeatures`，你会立即发现一个关键的工程问题：**为什么不能在生产环境里无脑把 `bm25` 和 `closeness` 直接相加？**
+
+因为两者的数学量纲完全不同：
+- **`closeness(field, embedding)`** 的定义为 $\frac{1}{1 + \text{distance}}$，其取值严格有界，永远落在 $(0, 1]$ 区间内（角度距离下通常集中在 $0.4 \sim 0.8$ 之间）；
+- **`bm25(title) + bm25(body)`** 则是无上界的非负实数，当查询包含多个生僻词且同时命中标题和正文时，BM25 总分轻松飙到 $15 \sim 30$ 分；而当查询只做语义改写、词面零命中时，BM25 得分为 $0$。
+
+如果你直接写 `bm25(title) + bm25(body) + 0.5 * closeness(field, embedding)`，只要词面碰巧擦中一两个词，十几分的 BM25 就会把最大只有 $0.5$ 分的向量相似度彻底淹没！为了解决跨路特征的尺度对齐问题，下一节我们就来看 Vespa 的多阶段排序与全局归一化机制。
+
+---
+
+## 7. 多阶段排序（Phased Ranking）、特征归一化与性能调优
+
+### 7.1 `first-phase` → `second-phase` → `global-phase` 三级火箭
+
+为什么 Vespa 要把排序拆成三个阶段？算一笔账就明白了：假设一个内容节点上有 1,000 万篇文档，一次混合查询初步匹配到了 50,000 个候选文档。
+- 如果对这 50,000 个候选文档全都跑一遍复杂的 GBDT 树模型或神经网络，单次查询的 CPU 时间就会突破数秒；
+- 反过来，如果先用极低成本的基础算子（如预计算的 BM25 + 向量距离）在 5 毫秒内给 50,000 个候选快速排个名（**`first-phase`**），只挑出得分最高的前 100 名（**`rerank-count: 100`**）送入 **`second-phase`** 跑复杂特征交叉与业务衰减函数，最后再把各分片汇总后的前 20 名送入容器层的 **`global-phase`** 做跨文档分数归一化（如 `normalize_linear` 或 `reciprocal_rank`），就能用 1% 的算力开销拿到 99% 的精排质量！
+
+下面这段进阶 `rank-profile` 展示了如何在 `doc.sd` 中综合运用自定义函数（`function`）、新鲜度实时衰减、两阶段排序以及 `global-phase` 倒数排名融合（RRF）：
 
 ```text
-rank-profile hybrid inherits semantic {
-  first-phase {
-    expression: bm25(title) + bm25(body) + 0.5 * closeness(field, embedding)
-  }
-  match-features {
-    bm25(title)
-    bm25(body)
-    closeness(field, embedding)
-    distance(field, embedding)
-  }
-}
-```
-
-这里直接相加的线性表达式是为了直观展示机制，但在生产环境中需要格外谨慎：无界且随文档长度波动的 BM25 分数与分布在 `(0, 1]` 区间的 `closeness` 往往处于不同数值尺度，直接相加容易导致某一路信号完全支配最终排序。工程演进时建议遵循以下五步法：
-
-1. **单路验证 BM25**：只跑文本检索，确认分词、`fieldset` 和词面相关性正常。
-2. **单路验证 Semantic**：只跑 `nearestNeighbor`，确认向量维度、距离度量和语义召回正常。
-3. **合并候选集**：用 `userQuery() or ({targetHits:K}nearestNeighbor(...))` 放宽召回池。
-4. **观测特征分布**：开启 `match-features`，统计真实查询集上 BM25 与 `closeness` 的分值区间。
-5. **精细化重排**：引入分值归一化、倒数排名融合（RRF）或多阶段排序（second-phase / global-phase）。
-
-## 7. Ranking Profile 进阶、调试与性能质量调优
-
-### 7.1 多阶段排序（First-Phase / Second-Phase）与业务特征组合
-
-当候选集规模较大或排序模型较复杂时，不可能对所有召回文档都执行昂贵的深度打分。Vespa 的 `rank-profile` 原生支持多阶段级联排序架构，并在表达能力上支持自定义函数（`function`）、业务属性计算与多阶段重排：
-
-- **`first-phase`（第一阶段粗排）**：在 content node 上对所有匹配 YQL 条件的候选文档逐一执行，要求表达式轻量高效（如 BM25、基础向量 `closeness`、简单时间衰减）。
-- **`second-phase`（第二阶段精排）**：同样在各个 content node 本地执行，但仅对 `first-phase` 得分最高的 Top-N 文档（由 `rerank-count` 控制）运行更复杂的特征交叉、GBDT 树模型或轻量神经网络。
-- **`global-phase`（全局重排）**：在 container node 合并完所有分片返回的优选结果后，对全局 Top-K 候选执行最终重排、跨分片归一化或交叉编码器（Cross-Encoder）打分。
-
-下面的扩展示例展示了如何在 `rank-profile` 中编写自定义函数计算文档新鲜度加成（`freshness_boost`），并结合 `first-phase` 与 `second-phase` 构建两阶段排序及调试特征输出：
-
-```text
-rank-profile hybrid-multiphase inherits semantic {
+rank-profile hybrid-production inherits semantic {
   function age_days() {
     expression: max(0, (now() - attribute(published_at)) / 86400)
   }
 
-  function freshness_boost() {
-    expression: if(age_days < 30, 0.2, 0.0)
+  function freshness_score() {
+    expression: exp(-age_days / 30.0)
   }
 
   function lexical_score() {
-    expression: bm25(title) + bm25(body)
+    expression: bm25(title) * 2.0 + bm25(body)
   }
 
   first-phase {
-    expression: lexical_score + 0.5 * closeness(field, embedding)
+    expression: lexical_score + 10.0 * closeness(field, embedding)
   }
 
   second-phase {
     rerank-count: 100
-    expression: firstPhase + freshness_boost
+    expression: firstPhase + 2.0 * freshness_score
+  }
+
+  global-phase {
+    rerank-count: 20
+    expression {
+      reciprocal_rank(lexical_score, 60) +
+      reciprocal_rank(closeness(field, embedding), 60) +
+      0.1 * freshness_score
+    }
   }
 
   match-features {
     bm25(title)
     bm25(body)
+    lexical_score
     closeness(field, embedding)
     age_days
-    freshness_boost
+    freshness_score
     firstPhase
   }
 }
 ```
 
-排序逻辑越复杂，越要在 `match-features` 中保留中间函数值，否则当线上排序结果发生漂移时将难以定位究竟是词面分、向量分还是业务加权项导致的变化。
+看看这段配置里的精妙之处：在 `global-phase` 中，内置算子 `reciprocal_rank(feature, k)` 会自动根据当前 Top-20 候选在该特征上的相对名次 $r \in \{1, 2, \dots, 20\}$ 计算 $\frac{1}{k + r}$（常取 $k=60$）。这样一来，不管 `lexical_score` 是 30 分还是 3 分，也不管向量用的是余弦距离还是内积，它们在 `global-phase` 里都被转换成了量纲完全一致的名次得分，彻底解决了混合检索的分值支配难题！
 
-### 7.2 响应结构、Document Summary 与 Trace 调试
+### 7.2 响应结构拆解与 `tracelevel` 执行计划剖析
 
-理解 Vespa 查询响应 JSON 的核心字段是日常排障的基础：
+当你需要排查线上慢查询或相关性异常时，读懂 Vespa 返回 JSON 的顶层诊断字段至关重要：
 
-| 响应 JSON 路径 | 字段含义与调试价值 |
+| 返回 JSON 核心路径 | 诊断价值与工程含义 |
 | --- | --- |
-| `root.children[]` | 最终返回的命中文档数组，按 `relevance` 从高到低排列 |
-| `children[].id` / `relevance` | 命中文档的完整 Vespa Document ID 及其最终排序得分 |
-| `children[].fields` | 由当前 `document-summary` 决定的返回字段集合（开启调试时含 `matchfeatures`） |
-| `root.fields.totalCount` | 匹配查询条件的文档总数（取决于查询形态，可能是精确值或估计值） |
-| `root.coverage` | 查询覆盖率信息，用于排查是否有分片超时、降级或数据未完全就绪 |
-| `timing` / `trace` | 开启调试参数后返回的各阶段耗时明细与内部执行计划 |
+| `root.fields.totalCount` | 匹配 YQL `where` 条件的候选文档总数 |
+| `root.coverage` | **查询健康度风向标**：包含 `coverage`（覆盖百分比）与 `degraded` 原因；若出现 `timeout` 或 `match-phase` 降级，说明某分片负载过高未能扫完全部候选 |
+| `root.children[].relevance` | 当前命中文档经过最高阶段排序（如 `global-phase`）后的最终得分 |
+| `root.children[].fields.matchfeatures` | 开启 `ranking.listFeatures=true` 后输出的各子特征真值，用于复盘排序名次 |
 
-当你需要深入查看查询在 container 与 content 节点之间的解析、分发与耗时细节时，可以在查询中附加 `tracelevel=2`（注意输出信息量较大，仅用于开发排障，切勿在生产流量上默认开启）：
+如果发现某条查询耗时偏高，可以在请求时临时加上 `tracelevel=2`（注意仅在排障时按需开启，避免线上全量打印）：
 
 ```bash
 vespa query \
@@ -747,47 +706,39 @@ vespa query \
   'tracelevel=2'
 ```
 
-面对任何一条结果不符合预期的复杂查询，只要依次追问三个问题，Vespa 就永远不会变成黑盒：
+在返回的 `trace` 树中，你可以精确看到查询在 Container 层的解析耗时、向 Content 节点扇出的网络往返时间、各分片执行匹配与 `first-phase` / `second-phase` 排序的毫秒数，以及最后一步读取 `summary` 摘要的耗时。
 
-1. **候选集从哪里来？** 是通过 `userQuery()`、`nearestNeighbor`、结构化过滤，还是它们的 `and`/`or` 组合召回的？
-2. **排序由谁控制？** 请求实际命中的是哪个 `rank-profile`，其 `first-phase` / `second-phase` 表达式是什么？
-3. **得分如何构成？** 打开 `ranking.listFeatures=true` 后，每条结果的 `match-features` 能否合理解释当前名次？
+### 7.3 性能与质量调优的八个黄金旋钮
 
-### 7.3 性能与质量调优的第一层旋钮
+在将 Vespa 推向高并发生产环境前，建议优先围绕以下八个第一层旋钮建立压测基线（观测 `targetHits -> P99 延迟`、`targetHits -> NDCG@10` 与 `Summary 体积 -> 吞吐` 三条曲线）：
 
-跑通基本功能后，工程下一步通常是权衡检索质量与服务延迟。在引入复杂深度学习重排模型之前，建议优先掌握以下第一层基础旋钮：
-
-| 调优旋钮 | 直接影响 | 常见工程取舍 |
+| 调优旋钮 | 作用阶段 | 性能与质量权衡指南 |
 | --- | --- | --- |
-| `hits` / `limit` | 最终返回给客户端的文档数量 | 数量越大，摘要填充与网络序列化响应体开销越大 |
-| `targetHits` / `totalTargetHits` | `nearestNeighbor` 阶段的向量候选预算 | 预算越高，长尾召回率越好，但距离计算与粗排延迟随之上升 |
-| HNSW `max-links-per-node` | 图索引每个节点的连接度 | 调高可改善高召回区间的精度，但会显著增加常驻内存占用 |
-| HNSW `neighbors-to-explore-at-insert` | 写入时搜索近邻的深度 | 调高可提升图索引质量，但会降低文档写入（feed）吞吐 |
-| `document-summary` 字段体积 | 摘要阶段读取磁盘/内存与传输的 payload 大小 | 列表页检索应使用轻量 summary，避免无意义返回大段正文或原始向量 |
-| `rank-profile` 表达式与 `rerank-count` | 粗排与精排阶段的 CPU 计算量 | 将昂贵算子下沉到 `second-phase` 并限制 `rerank-count` |
-| `match-features` 数量 | 附加特征的打包与传输成本 | 评估与排障阶段极有价值，但线上高并发正常请求不应默认全开 |
-| 结构化 Filter 选择性 | 参与向量/文本匹配的文档子集范围 | 过滤条件过宽会增加计算量，过严则可能导致召回候选不足 |
+| **`targetHits`** | 向量近邻召回 | 决定每个分片送入粗排的 ANN 候选数；通常设在 `50 ~ 200` 即可，盲目设上千会导致距离计算与粗排耗时陡增而质量边际收益极小 |
+| **HNSW `max-links-per-node`** | 向量索引构建与遍历 | 默认 `16`；若高维向量召回率不达标可升至 `24 ~ 32`，但需预留充足内存 |
+| **`attribute: fast-search`** | 结构化条件过滤 | 凡是出现在 `where` 子句中的高基数过滤字段（如 `tenant_id`、`published_at`）务必开启，消除全表内存扫描 |
+| **`first-phase` 复杂度** | 全量候选粗排 | 严禁在 `first-phase` 放重型张量矩阵乘或深度模型，只放 BM25、基础 `closeness` 和简单属性加权 |
+| **`second-phase rerank-count`** | 分片内精排 | 控制单分片跑精排模型的文档数（常取 `50 ~ 200`），是在线 CPU 水位的总阀门 |
+| **`global-phase rerank-count`** | 容器层全局重排 | 控制跨分片归一化或 Cross-Encoder 的文档数（常取 `20 ~ 50`） |
+| **`document-summary` 粒度** | 最终摘要填充 | 为列表页、RAG 引用上下文、详情页分别定义专属的轻量 `document-summary`，绝不在列表查询里拉取原始向量和长篇全文 |
+| **`match-features` 开关** | 结果打包 | 离线评估与线上抽样 Debug 时开启 `ranking.listFeatures=true`，正常生产流量默认关闭以节省序列化带宽 |
 
-在做质量调优时，切忌只盯着某一条 demo query 调权重，因为混合检索非常容易出现“改好一个 case 却让整体退化”的现象。建议先构建一个包含 50～200 条真实查询的离线回归集（人工标注或至少审查 Top-10），每次修改 `rank-profile` 后对比哪些查询变好、哪些变差、BM25 与 `closeness` 的分值范围是否失衡。在做性能调优时，则重点观测三条曲线：`targetHits -> P99 延迟`、`targetHits -> 离线相关性指标（如 NDCG@10）` 以及 `summary 大小 -> 响应延迟`。例如，当 `targetHits` 从 20 增加到 200 时若相关性几乎不再提升而延迟翻倍，就应果断收紧候选预算。
+---
 
-## 8. 从教程示例走向 RAG 与推荐系统后端
+## 8. 从教程示例演进到生产级 RAG 与推荐系统后端
 
-### 8.1 RAG 检索后端定位与生产级 Chunk Schema 扩展
+### 8.1 企业级多租户 RAG Chunk Schema 实战
 
-在 RAG（Retrieval-Augmented Generation）架构中，Vespa 通常不直接负责编排 Prompt 或调用大语言模型，而是作为核心的 **Retrieval & Ranking Backend**。一条典型的生产级 RAG 链路如下：
+为什么说 Vespa 极其适合做企业级 RAG 的检索底座？
 
-```text
-用户提问 (User Question)
-  -> 查询改写 / 意图分类 / 生成 Query Embedding
-  -> Vespa 混合检索 (BM25 + nearestNeighbor + 租户/权限/语言/时间过滤)
-  -> Vespa 多阶段排序 (融合词面匹配、语义相似度、文档权威度与时效性)
-  -> 按 citation summary 返回 Top-K 证据片段及来源元数据
-  -> 上游应用或编排框架组织 Prompt 调用 LLM 生成带引用的回答
-```
+因为在真实的 ToB 知识库问答中，存入系统的往往是切分自数百万份 PDF、Wiki 和工单的海量**文档分片**（Chunks）。每一次用户提问，检索后端必须在几十毫秒内同时搞定五件事：
+1. **多租户与 ACL 权限硬隔离**（绝不能把 A 公司的财报 Chunk 召回给 B 公司员工，否则送进 LLM 就会酿成越权泄密）；
+2. **多粒度词法召回**（同时匹配文档大标题 `title`、小节标题 `section` 与分片正文 `text` 的 BM25，确保精确型号与错误码不漏）；
+3. **语义向量近邻召回**（捕捉自然语言同义提问）；
+4. **融合文档时效性（`updated_at`）与多路信号重排**；
+5. **精准返回带溯源链接（`source_uri`）的证据摘要供 LLM 生成角标引用**。
 
-将 Vespa 与外部 AI 组件放在一起看，职责边界非常清晰：Embedding 服务负责将文档切块和查询转化为向量；LangChain / LlamaIndex 或自研网关负责 Agent 流程、工具调用与 Prompt 拼接；LLM 服务负责最终文本生成；而 **Vespa 专门负责在海量文档分片（chunks）上安全、快速、可解释地完成多路召回、权限过滤、混合重排与证据返回**。
-
-本文前面的 `doc` schema 为了降低入门门槛只定义了少量字段。在真实的企业级 RAG 系统中，检索粒度通常是切分后的文档块（chunk），需要携带多租户隔离、ACL 权限、章节上下文与引用溯源信息。我们可以将教程示例平滑演进为如下生产级 `schemas/chunk.sd`：
+我们可以直接将前面的 `doc.sd` 扩展为如下开箱即用的生产级 `schemas/chunk.sd`：
 
 ```text
 schema chunk {
@@ -800,6 +751,7 @@ schema chunk {
     field doc_id type string {
       indexing: attribute | summary
       match: word
+      attribute: fast-search
     }
 
     field source_uri type string {
@@ -845,7 +797,7 @@ schema chunk {
     field embedding type tensor<float>(x[384]) {
       indexing: attribute | index
       attribute {
-        distance-metric: angular
+        distance-metric: prenormalized-angular
       }
       index {
         hnsw {
@@ -874,150 +826,124 @@ schema chunk {
     inputs {
       query(q) tensor<float>(x[384])
     }
+    function lexical() {
+      expression: 2.0 * bm25(title) + 1.5 * bm25(section) + bm25(text)
+    }
     first-phase {
-      expression: bm25(title) + bm25(section) + bm25(text) + closeness(field, embedding)
+      expression: lexical + 10.0 * closeness(field, embedding)
+    }
+    global-phase {
+      rerank-count: 24
+      expression: reciprocal_rank(lexical, 60) + reciprocal_rank(closeness(field, embedding), 60)
     }
     match-features {
       bm25(title)
       bm25(section)
       bm25(text)
       closeness(field, embedding)
-      distance(field, embedding)
     }
   }
 }
 ```
 
-基于这份 `chunk` schema，业务后端可以在单次查询中同时完成租户隔离（`tenant_id`）、语种过滤（`language`）、三字段 BM25 检索、向量近邻召回以及面向 LLM 上下文窗口裁剪的 `citation` 摘要返回：
+有了这份 `chunk` Schema，上游 RAG 编排服务（无论用 LangChain、LlamaIndex 还是自研网关）只需要发一条查询，就能在单次网络往返中拿到经过租户隔离、双路召回与 RRF 重排后的 Top-8 引用片段（按 `citation` 摘要自动剥离掉庞大的 `embedding` 字段），直接拼进 Prompt 喂给大模型：
 
 ```bash
 vespa query \
   'yql=select * from chunk where tenant_id contains "acme" and language contains "zh" and (userQuery() or ({targetHits:50}nearestNeighbor(embedding, q)))' \
-  'query=Vespa 如何配置 rank profile' \
+  'query=Vespa 如何配置多阶段排序' \
   "input.query(q)=$(cat query-vector.txt)" \
   'ranking=rag-hybrid' \
   'presentation.summary=citation' \
   'hits=8'
 ```
 
-当然，也要清醒认识工程边界：RAG 的最终回答质量并非只由 Vespa 决定，文档解析与 chunk 切分策略、Embedding 模型表征能力、Query 改写、Prompt 约束以及评估集建设同样缺一不可。Vespa 解决的是检索与排序层的工程确定性。
+### 8.2 推荐系统在线召回与实时特征服务落点
 
-### 8.2 推荐系统在线召回与排序落点
+同样的“计算向数据靠拢”架构，也可以无缝迁移到实时推荐系统中：
 
-除了搜索与 RAG，Vespa 也是构建实时推荐与个性化系统的常见底座。推荐系统中的核心概念可以自然映射到我们已经学过的 Vespa 原语上：
-
-| 推荐系统核心概念 | Vespa 中的对应实现落点 |
+| 推荐系统在线模块 | 在 Vespa 中的原生实现方式 |
 | --- | --- |
-| 物品静态与实时特征（Item Features） | Document fields、`attribute` 内存属性（支持高频局部 `update`）与 tensors |
-| 物品双塔向量（Item Embedding） | Document 中的 `tensor` 字段 + HNSW 索引 |
-| 用户实时向量与上下文（User Embedding / Context） | 查询请求传入的 `input.query(user_emb)` 等输入张量 |
-| 多路候选召回（Candidate Generation） | `nearestNeighbor` 向量召回 + 文本标签召回 + 库存/地域/已读过滤 |
-| 在线粗排与精排策略（Ranking Policy） | `rank-profile` 的 `first-phase`、`second-phase` 与 ONNX / GBDT 模型推理 |
-| 业务规则与多样性打散 | 排序表达式提权/降权、结构化过滤与 Grouping 分组采样 |
-| 特征归因与线上调试 | `match-features` 与 `rank-features` |
+| **双塔召回（Two-Tower Retrieval）** | 物品侧向量（Item Tower Embedding）存入文档 `tensor` 字段并建 HNSW 索引；用户侧实时向量（User Tower Embedding）随请求 `input.query(user_emb)` 传入，通过 `nearestNeighbor` 毫秒级召回候选集 |
+| **高频实时特征更新** | 物品的实时曝光量、点击率（CTR）、库存状态定义为内存 `attribute` 字段，通过流处理管线高频发送 Partial Update 原地刷新，无需重建双塔向量索引 |
+| **粗排与精排模型推理** | 将双塔内积、用户-物品交叉特征写入 `first-phase`，将导出的 ONNX 神经网络或 GBDT/XGBoost 模型挂载到 `second-phase` 在内容节点本地推理 |
+| **作者/类目多样性打散** | 利用 YQL 的 Grouping 语法（如 `all(group(category) max(5) each(max(2) each(output(summary()))))`）在单次查询内强制限制同一类目或同一作者的曝光上限 |
 
-同样需要明确的是，Vespa 作为在线 serving 引擎，并不会自动替你完成推荐系统的离线数据闭环：曝光与点击日志采集、正负样本拼接、双塔与排序模型训练、特征一致性校验以及 A/B 实验平台，仍然需要配套的数据与机器学习工程体系支撑。
+---
 
-## 9. 部署形态选择、故障排查与完整命令回放
+## 9. 部署选型、故障排错手册与完整命令回放
 
-### 9.1 本地 Docker、Vespa Cloud 与自托管选型及生产化路线
+### 9.1 本地 Docker、Vespa Cloud 与自托管选型
 
-当你的原型准备走向团队协作或生产环境时，通常需要在三种运行形态之间做选择：
+当应用从个人笔记本走向生产环境时，三种主流部署形态的工程权衡如下：
 
-| 部署形态 | 适用阶段 | 核心优势 | 主要工程代价与风险 |
+| 部署方式 | 适用阶段与团队画像 | 核心收益 | 运维与工程成本 |
 | --- | --- | --- | --- |
-| 本地 Docker 单容器 | 个人学习、Schema 验证、功能原型 | 启动快、零成本、可完全离线试错 | 单节点无高可用，性能与运维方式不代表生产环境 |
-| Vespa Cloud（官方托管） | 团队项目、试生产、追求少运维的线上服务 | 官方负责集群扩缩容、安全升级与多区高可用，CLI 体验一致 | 需注册云账号、配置证书权限并承担托管服务成本 |
-| 自托管（Kubernetes / 裸金属） | 具备专职平台团队、有严格数据驻留或合规要求的企业 | 基础设施自主可控，可深度定制网络与存储硬件 | 集群编排、容量规划、滚动升级、监控告警与故障恢复均需自建 |
+| **本地 Docker 单容器** | 本地开发、Schema 调试、CI 集成测试 | 启动极快、零外部依赖、支持完整功能验证 | 单点无冗余，不可直接用于承载生产流量 |
+| **Vespa Cloud（官方托管）** | 追求快速上线、希望省去底层运维的中小团队或核心业务 | 自动管理多节点分片、滚动升级、证书安全与自动扩缩容 | 按节点资源计费，需配合云端租户与证书体系 |
+| **Kubernetes / 裸金属自托管** | 有专职基础设施团队、对数据合规驻留与硬件成本有强管控诉求 | 100% 自主可控，可针对 NVMe 与大内存机型深度定制 | 需自行维护 Config Server 集群高可用、容量规划、监控告警与版本升级 |
 
-Vespa CLI 在本地与云端之间切换只需修改 `target` 配置：
+### 9.2 高频故障速查表与五步黄金排障法
 
-```bash
-# 本地 Docker 模式
-vespa config set target local
+日常开发中遇到报错或查询结果异常时，可对照下表直接定位根因：
 
-# Vespa Cloud 托管模式
-vespa config set target cloud
-vespa auth login
-vespa config set application mytenant.myapp.default
-```
-
-如果你打算用 1 小时到 1 周的时间系统掌握 Vespa 并推进到准生产状态，推荐遵循以下循序渐进的实验与生产化路线：
-
-- **第 1 小时（跑通闭环）**：启动本地 Docker，完成 `vespa deploy`、`vespa feed`、`where true` 全量查询与 BM25 查询，能清晰解释 `services.xml` 与 `doc.sd` 的职责分工。
-- **第 1～2 天（单路能力与特征直觉）**：准备 20 条以上真实查询，结合 `tags`/`published_at` 过滤观察 BM25 Top-10，开启 `match-features` 分析各字段得分；接入真实 Embedding 模型生成 384 或 768 维向量，对比纯 BM25 与纯 `nearestNeighbor` 在精确术语和语义改写查询上的优劣。
-- **第 3 天（混合排序实验）**：用 `or` 合并文本与向量召回，编写 `hybrid` 乃至带 `second-phase` 的排序配置，调节权重并人工评估 Top-10 排序变化。
-- **第 1 周及生产化准备（工程加固）**：固定 Document ID 命名规范与模型版本号字段；建立带重试与幂等保证的自动 feed 管线；设计轻量 `compact`/`citation` 摘要；构建离线查询评估集；针对 `targetHits`、HNSW 参数与并发 QPS 进行压测；补齐延迟监控（P95/P99）、节点健康检查、安全认证与多节点冗余（`redundancy`）规划。
-
-### 9.2 常见错误清单与统一排查顺序
-
-初学 Vespa 时遇到的绝大多数问题，都可以通过下表快速定位：
-
-| 常见错误类型 | 典型报错或异常现象 | 排查与修复方法 |
+| 故障现象 | 根因定位 | 修复方案 |
 | --- | --- | --- |
-| 容器未就绪或内存不足 | `vespa status` 失败、部署卡死或容器自动退出 | 执行 `docker ps`、`docker logs vespa`，确保分配给 Docker 的内存 $\ge$ 4GB |
-| 端口冲突 | 容器启动失败或 `8080`/`19071` 无法连接 | 检查宿主机端口占用，或清理旧容器 `docker rm -f vespa` |
-| 执行目录错误 | `vespa deploy` 提示找不到应用文件 | 确认当前终端工作目录下直接包含 `services.xml` 和 `schemas/` |
-| Schema 与服务配置名不一致 | 部署失败或写入/查询报 document type 错误 | 确保 `services.xml` 中 `<document type="doc">` 与 `schemas/doc.sd` 中的 `schema doc` 一致 |
-| 查询命中但缺少某字段 | 返回的 `children[].fields` 中看不到目标字段 | 给该字段补上 `indexing: ... \| summary`，并检查是否指定了不含该字段的 `document-summary` |
-| BM25 报错或分数恒为 0 | 部署报错或 `bm25(field)` 无效 | 确认目标文本字段配置了 `indexing: index` 且显式声明 `index: enable-bm25` |
-| 向量写入或查询报 Tensor 错误 | 提示维度不匹配或格式解析失败 | 核对 schema `x[384]`、feed 文档中的数组长度与 `query-vector.txt` 的元素个数完全一致 |
-| `nearestNeighbor` 报缺少输入 | 查询报错 missing query tensor | 严格对齐 YQL `nearestNeighbor(embedding, q)`、参数 `input.query(q)` 与 `inputs { query(q) ... }` |
-| 混淆 `targetHits` 与 `hits` | 返回条数与预期不符 | 记住 `targetHits` 是单节点 ANN 召回候选预算，`hits` / `limit` 才是最终返回条数 |
-| Hybrid 排序被单路信号垄断 | 排序结果完全等同于纯 BM25 或纯向量 | 开启 `ranking.listFeatures=true` 检查分值尺度，引入权重缩放、归一化或两阶段重排 |
+| `vespa status` 报错或部署卡死退出 | Docker 守护进程未启动、端口 `8080`/`19071` 冲突或容器内存不足 4 GB | 检查 `docker ps` 与 `docker logs vespa`，调大 Docker 内存配额并清理旧容器 `docker rm -f vespa` |
+| `vespa deploy` 提示找不到应用文件 | 执行命令时不在包含 `services.xml` 的根目录 | 切换至 `docs-search/` 目录后再执行 `vespa deploy` |
+| 写入或查询报 `document type` 不存在 | `services.xml`、Schema 文件名与 Document ID 三处的类型名不一致 | 确保 `<document type="doc">`、`schema doc` 与 `id:ns:doc::xxx` 中的类型名完全一致 |
+| 查询命中了文档，但 `fields` 里缺少某字段 | 该字段在 Schema 中未声明 `summary`，或当前查询指定了不含它的 `document-summary` | 在字段定义中补上 `indexing: ... \| summary` 并重新部署 |
+| 使用 `bm25(field)` 时部署失败或恒得 0 分 | 文本字段漏写了 `indexing: index` 或漏开了 `index: enable-bm25` | 为该文本字段补齐 `indexing: index \| summary` 与 `index: enable-bm25` |
+| 向量写入或查询报 Tensor 维度/格式错误 | 写入数组长度、Query 向量长度与 Schema `x[384]` 不一致 | 严格校验生成脚本，确保每一条向量恰好包含 384 个浮点数 |
+| `nearestNeighbor` 报 `Expected 'query(q)'` | YQL、CLI 参数与 `rank-profile inputs` 三处的张量名未对齐 | 核对 `nearestNeighbor(embedding, q)`、`input.query(q)` 与 `inputs { query(q) ... }` |
+| Hybrid 排序完全被 BM25 词面分统治 | 未做分值缩放或跨路归一化，无界 BM25 淹没了 $(0,1]$ 区间的 `closeness` | 开启 `ranking.listFeatures=true` 观察分值区间，调整权重或引入 `global-phase` `reciprocal_rank` |
 
-遇到链路不通或检索结果异常时，请严格遵循以下**统一排查顺序**逐层验证，切忌在底层尚未打通时盲目修改上层参数：
+任何时候遇到“查不出结果”或“排序不对劲”，请严格沿着下面这条**五步黄金排障流水线**自底向上排查，切忌在底层尚未确认打通时盲目乱改排序权重：
 
 ```text
-1. 容器与状态：docker ps / docker logs vespa -> vespa status 确认控制面与数据面就绪
-2. 应用包部署：vespa deploy 确认 services.xml 与 schema 语法校验通过并激活
-3. 数据写入验证：vespa feed -> 执行 select * from doc where true 确认 totalCount > 0 且 summary 字段齐全
-4. 单路召回验证：先单独跑通 BM25 文本查询，再单独跑通 nearestNeighbor 向量查询
-5. 混合与排序调试：合并 or 候选集 -> 指定 ranking profile -> 开启 ranking.listFeatures=true 核对 match-features
+Step 1 [查容器状态] : docker ps + vespa status ──> 确认 8080 与 19071 端口绿灯就绪
+Step 2 [查部署生效] : vespa deploy ──> 确认 services.xml 与 doc.sd 通过静态语法与类型校验
+Step 3 [查全量写入] : vespa feed + select * from doc where true ──> 确认 totalCount > 0 且 summary 字段完整
+Step 4 [查单路召回] : 先单独跑通 BM25 (userQuery)，再单独跑通向量近邻 (nearestNeighbor)
+Step 5 [查混合特征] : 合并 or 查询 + ranking.listFeatures=true ──> 对照 matchfeatures 核验每一项子特征得分
 ```
 
-### 9.3 最小可运行验证、完整命令回放与核心术语速查
+### 9.3 从零跑通的完整命令回放与核心术语表
 
-完成本教程全部实操后，你的本地环境应满足以下最小可运行验收标准：
-
-- Docker 容器 `vespa` 正常运行，且 `docker exec vespa vespa-logfmt` 无持续报错。
-- `vespa deploy` 与 `vespa feed documents.jsonl` 均成功执行，`where true` 查询能返回写入的文档及预期的 summary 字段。
-- `ranking=bm25`、`ranking=semantic`（配合 `nearestNeighbor`）以及 `ranking=hybrid` 三种模式均能正常返回结果，且附加 `ranking.listFeatures=true` 时能看到 `bm25(title)`、`bm25(body)`、`closeness(field, embedding)` 等调试特征。
-
-这也构成了 Vespa 日常开发最核心的迭代闭环：`编辑 schema / services.xml -> vespa deploy -> vespa feed -> vespa query -> 检查 match-features -> 调整 rank-profile`。下面将本文从零启动到混合检索的完整命令按顺序汇总，方便一键对照回放（其中生成测试数据的 Python 脚本见第 4.1 节与第 6.2 节）：
+将前文所有步骤串联起来，下面是一套可在 3 分钟内从零跑通本地 Vespa 混合检索应用的完整命令清单（生成 `documents.jsonl` 与 `query-vector.txt` 的内联 Python 脚本分别见第 4.1 节与第 6.2 节）：
 
 ```bash
-# 1. 启动本地 Vespa 容器
+# 1. 拉取并启动本地 Vespa 容器
 docker pull vespaengine/vespa
 docker run --detach --name vespa --hostname vespa-container \
   --publish 8080:8080 --publish 19071:19071 \
   vespaengine/vespa
 
-# 2. 创建应用目录并编写 services.xml 与 schemas/doc.sd
+# 2. 创建工程目录并写入 services.xml、schemas/doc.sd 与测试数据
 mkdir -p docs-search/schemas
 cd docs-search
-# （按第 2.2 节和第 3.1 节写入配置文件，按第 4.1 节生成 documents.jsonl）
+# (在此写入第 2.2 节的 services.xml、第 3.1 节的 schemas/doc.sd，并运行第 4.1 节与第 6.2 节的 Python 脚本)
 
-# 3. 部署应用并写入数据
+# 3. 部署应用包并批量写入文档
 vespa config set target local
 vespa deploy
 vespa feed documents.jsonl
 
-# 4. 验证全量查询与 BM25 文本检索
+# 4. 验证全量连通性与 BM25 词法检索
 vespa query 'yql=select * from doc where true limit 3'
 vespa query \
   'yql=select id,title,url from doc where userQuery() limit 5' \
   'query=hybrid search tutorial' \
   'ranking=bm25'
 
-# 5. 验证纯向量近邻查询（按第 6.2 节生成 query-vector.txt）
+# 5. 验证 HNSW 向量近邻检索
 vespa query \
   'yql=select id,title,url from doc where {targetHits:10}nearestNeighbor(embedding, q)' \
   "input.query(q)=$(cat query-vector.txt)" \
   'ranking=semantic' \
   'hits=5'
 
-# 6. 验证 Hybrid Search 与特征调试输出
+# 6. 验证 Hybrid Search 混合检索与白盒特征输出
 vespa query \
   'yql=select id,title,url from doc where userQuery() or ({targetHits:20}nearestNeighbor(embedding, q))' \
   'query=hybrid search tutorial' \
@@ -1027,49 +953,40 @@ vespa query \
   'hits=5'
 ```
 
-为便于日常查阅，这里将 Vespa 最常出现的专有术语浓缩为速查表：
+最后，将 Vespa 日常开发中高频出现的核心术语汇总如下，供随时查阅：
 
-| 术语 | 一句话核心定义 |
+| 核心术语 | 物理本质与一句话速记 |
 | --- | --- |
-| Application package | Vespa 应用声明式配置包，至少包含 `services.xml` 和 `schemas/*.sd` |
-| `services.xml` | 定义 `container` 与 `content` 集群拓扑、端点开关与节点分布的配置文件 |
-| Schema (`*.sd`) | 定义文档结构、字段类型、索引方式、`document-summary` 和 `rank-profile` 的核心文件 |
-| Document ID | 全局文档标识，格式为 `id:<namespace>:<document-type>::<user-id>` |
-| `index` / `attribute` / `summary` | 字段三大存储属性：分别对应倒排或图索引、内存列式属性（过滤/排序/距离计算）与结果返回摘要 |
-| Fieldset | 一组文本字段的逻辑集合，供 `userQuery()` 作为默认全文检索范围 |
-| YQL | Vespa 查询语言，决定从哪个 schema 按什么过滤与召回条件选出候选集 |
-| `userQuery()` / `nearestNeighbor` | YQL 中的两大核心算子：分别用于解析请求文本查询与执行向量近似最近邻搜索 |
-| `targetHits` vs `hits` | `targetHits` 是向量算子在单节点的候选召回预算；`hits` 是最终返回给客户端的结果数 |
-| Tensor / HNSW | Tensor 是 Vespa 表达向量与高维张量的类型；HNSW 是构建在 Tensor 上的近似近邻图索引 |
-| Rank profile | 排序策略配置，支持 `inputs`、自定义 `function`、`first-phase`、`second-phase` 与 `global-phase` |
-| `closeness` / `bm25` | 常用排序特征：分别度量向量近邻相似度与文本词面相关性 |
-| `match-features` | 随命中文档一并输出的排序子特征明细，是实现白盒可解释调优的关键工具 |
+| **Application Package** | 定义 Vespa 集群拓扑、Schema 与排序模型的完整声明式配置包 |
+| **`index` / `attribute` / `summary`** | 字段的三种物理存储形态：倒排或 HNSW 图索引（用于检索）、内存列式正排（用于过滤/排序/局部更新）、磁盘压缩摘要（用于结果返回） |
+| **`attribute: fast-search`** | 为内存属性额外构建 B-Tree 与位图索引，把 `where` 过滤从线性扫描加速为对数级查找 |
+| **Fieldset** | 将多个文本字段（如 `title, body`）编组，作为 `userQuery()` 的默认全文搜索范围 |
+| **YQL** | Vespa 查询语言，专门负责声明“按什么布尔、词法或向量条件把文档选进候选池” |
+| **`targetHits` vs `hits`** | `targetHits` 是单分片 HNSW 算子捞取的候选预算；`hits` 是跨分片归并排序后最终返回给客户端的条数 |
+| **Rank Profile** | 排序流水线配置，定义输入张量、自定义函数、`first-phase` / `second-phase` / `global-phase` 与调试特征 |
+| **`match-features`** | 随每条命中结果返回的排序子项真值字典，是排查线上排序原因的显微镜 |
 
-如果只想记住一个最精炼的公式化心智模型，请记住这四句话：
+---
+
+## 10. 总结：把四句话刻进检索工程直觉
+
+回看 Vespa 的整套设计，你会发现它表面上是一套包含 XML、Schema DSL 和 YQL 的配置体系，底层却处处闪耀着**分布式系统与信息检索的硬核工程智慧**：为了消灭跨服务搬运候选集的网络开销，它坚持让计算向有状态内容节点靠拢；为了平衡精度与算力，它用三阶段级联漏斗把昂贵算子锁在极小候选集内；为了兼顾实时性与多模态检索，它在同一套内存引擎里打通了倒排、HNSW 图与列式属性。
+
+在实际工程中，只要把下面这四句话刻进直觉，就能游刃有余地驾驭 Vespa：
 
 ```text
-schema 决定数据怎么被理解与索引
-YQL 决定候选怎么被过滤与取出
-rank-profile 决定候选怎么分阶段排序
-summary 决定结果怎么裁剪与返回
+Schema 决定字段以什么物理结构驻留内存与磁盘（index / attribute / summary）
+YQL 决定哪些文档有资格进入候选池（userQuery / nearestNeighbor / filter）
+Rank-Profile 决定候选文档如何在数据原地分阶段算分排序（first / second / global phase）
+Summary 决定最终胜出的 Top-K 文档裁剪哪些字段返回客户端
 ```
 
-## 10. 结论与参考资料
+## 参考资料
 
-Vespa 入门的核心在于建立清晰的职责分层：`services.xml` 定义无状态容器层与有状态内容层的服务拓扑；Schema 定义文档字段、倒排/HNSW 索引、内存属性、返回摘要与排序模型；Feed 管线将业务数据与向量实时写入文档存储；YQL 负责组合全文、向量与结构化条件召回候选；`rank-profile` 则在靠近数据的节点上完成多阶段打分与特征输出。一旦这套心智模型建立起来，Vespa 就成为一个统一的 AI retrieval serving 平台——你可以从最简单的 BM25 文本搜索起步，平滑叠加向量近邻、元数据过滤、多阶段重排、RAG 证据裁剪与推荐系统在线服务，并且每一步排序结果都能通过 `match-features` 白盒解释。
-
-如果你准备进一步深入阅读官方资料，推荐按以下顺序递进：**Vespa Basics -> News Tutorial -> Hybrid Search Tutorial -> Schema Reference -> YQL Reference -> Ranking & Phased Ranking -> Nearest Neighbor Search Guide -> RAG Documentation -> Vespa Cloud / pyvespa**。先用本文的最小应用在本地跑通完整闭环，再带着具体的业务问题查阅参考手册，学习效率会高得多。
-
-### References
-
-- [Vespa.ai official website](https://vespa.ai/)
-- [Vespa AI Search Platform Architecture](https://vespa.ai/architecture/)
-- [Vespa Documentation](https://docs.vespa.ai/)
+- [Vespa.ai Official Website](https://vespa.ai/) & [Vespa AI Search Platform Architecture](https://vespa.ai/architecture/)
+- [Vespa Documentation](https://docs.vespa.ai/) & [Vespa Basics](https://docs.vespa.ai/en/basics/vespa-basics.html)
 - [Hybrid Text Search Tutorial](https://docs.vespa.ai/en/learn/tutorials/hybrid-search.html)
-- [News search and recommendation tutorial](https://docs.vespa.ai/en/learn/tutorials/news-2-basic-feeding-and-query.html)
-- [Vespa CLI documentation](https://docs.vespa.ai/en/clients/vespa-cli.html)
-- [Approximate nearest neighbor search using HNSW](https://docs.vespa.ai/en/querying/approximate-nn-hnsw.html)
-- [Nearest neighbor search guide](https://docs.vespa.ai/en/querying/nearest-neighbor-search-guide.html)
-- [Schemas](https://docs.vespa.ai/en/basics/schemas.html)
-- [YQL query language](https://docs.vespa.ai/en/query-language.html)
-- [Ranking introduction](https://docs.vespa.ai/en/ranking.html)
+- [News Search and Recommendation Tutorial](https://docs.vespa.ai/en/learn/tutorials/news-2-basic-feeding-and-query.html)
+- [Vespa CLI Documentation](https://docs.vespa.ai/en/clients/vespa-cli.html)
+- [Approximate Nearest Neighbor Search using HNSW](https://docs.vespa.ai/en/querying/approximate-nn-hnsw.html) & [Nearest Neighbor Search Guide](https://docs.vespa.ai/en/querying/nearest-neighbor-search-guide.html)
+- [Schemas Reference](https://docs.vespa.ai/en/basics/schemas.html)、[YQL Query Language](https://docs.vespa.ai/en/query-language.html) & [Phased Ranking](https://docs.vespa.ai/en/phased-ranking.html)

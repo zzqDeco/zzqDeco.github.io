@@ -14,207 +14,147 @@ tags:
 draft: false
 ---
 
-Haotian Bai、Yuanhuiyi Lyu、Lutao Jiang、Sijia Li、Haonan Lu、Xiaodong Lin 和 Lin Wang 的 **CompoNeRF: Text-guided Multi-object Compositional NeRF with Editable 3D Scene Layout** 是一篇非常适合从“单物体 text-to-3D”过渡到“多物体 3D 场景生成”时精读的论文。它的核心问题超越了单个 NeRF 的文本贴合度，直接聚焦于多对象场景的组合控制：
+用 2D 扩散模型通过分数蒸馏采样（Score Distillation Sampling，SDS）生成单个 3D 物体时，输入一句 `"a red apple"`，神经辐射场（NeRF）往往能顺利收敛出一个红苹果。可一旦把提示词换成多物体场景——比如 `"a red apple and a yellow banana"`，或者 `"glasses of wine, salad and french bread on a wooden table"`——整个三维优化过程就会迅速失控：原本该生成两个独立物体的地方长出了一个红黄相间的畸形混合体，沙拉和法棍融化在了木桌表面，甚至多个核心物体直接人间蒸发。
 
-> 当文本里同时出现多个对象、空间关系、风格约束和可编辑布局时，怎样避免扩散模型的文本引导把对象混在一起、漏掉对象、复制属性，或者生成一个无法编辑的整体 blob？
+为什么在 2D 图像生成里早已司空见惯的多物体组合，一搬到 3D NeRF 优化里就会引发灾难性的**引导坍缩**（Guidance Collapse）？
 
-论文把这个现象称为 **guidance collapse（引导坍缩）**。在单物体 text-to-3D 中，使用 Stable Diffusion 这类 2D 生成先验，通过 Score Distillation Sampling（SDS）把文本条件迁移到 NeRF 参数上，已经能做出不少可视化结果。但多物体场景面临额外困难：同一个 global prompt 里包含多个 object slot，2D diffusion 先验未必能稳定解析数量、属性绑定、空间布局和遮挡关系；直接优化一个整体 NeRF，最终也很难拆成可移动、可缩放、可删除、可替换的对象。
+追根溯源，这是因为传统的单表示 Text-to-3D 框架同时违背了多物体场景的三个物理与语义规律：首先，单片 NeRF 本质上是一个从全空间连续坐标映射到体密度和颜色的黑盒函数 $(\mathbf{x},\mathbf{d})\mapsto (\sigma,\mathbf{c})$，内部根本不存在“这块体积属于苹果、那块体积属于香蕉”的天然边界；其次，2D 扩散模型的交叉注意力层（Cross-Attention）在面对包含多个名词和修饰词的长句时，本身就存在严重的属性串位与漏词倾向，把这种模糊的全局梯度原封不动地回传给同一个三维场，只会让不同部位抢夺同一团密度；最后，即便侥幸优化出了包含多个物体的整体辐射场，所有物体也已经死死焊在同一个 MLP 权重里，用户根本无法单独平移一只酒杯、放大一盘沙拉，或者把训练好的物体拆出来复用到新房间里。
 
-CompoNeRF 的核心思路是把场景显式拆成多个对象级 NeRF，并用可编辑的 3D box layout 把这些局部对象放进全局坐标系，再通过 density-based composition 和 dual-level text guidance 做场景级校准。区别于资产库检索系统或端到端布局扩散模型，它构建了一个 **优化式、可组合、可重组的 NeRF 场景生成框架**。
+为了解开这个死结，香港科技大学（广州）与 OPPO 研究院等团队提出的 **[CompoNeRF: Text-guided Multi-object Compositional NeRF with Editable 3D Scene Layout](https://arxiv.org/abs/2303.13843v3)**（[项目主页](https://vlislab22.github.io/componerf/) / [官方仓库](https://github.com/hbai98/Componerf)）给出了一套极具代表性的结构化解耦方案。透过具体的公式与实验看本质，CompoNeRF 的架构建立在**四条环环相扣的设计哲学**之上：
 
-本文精读的版本基线为 [arXiv:2303.13843v3](https://arxiv.org/abs/2303.13843v3)（修订于 2023-12-02，arXiv 页面显示后续存在 2024-09-24 的 v5 版本；本文严格以 v3 PDF/HTML 为准，不混入后续版本的变动）。文中插入的图表均来自 v3 PDF，仅做等比例裁切展示，遵循 CC BY 4.0 许可。官方项目页为 [vlislab22.github.io/componerf](https://vlislab22.github.io/componerf/)，官方 GitHub 仓库 [hbai98/Componerf](https://github.com/hbai98/Componerf) 的 README 仍显示 `Coming soon ...`，因此本文聚焦于论文级方法推导、实验解读与工程复现边界梳理。
+1. **用 3D 包围盒给连续辐射场“划定私有领地”，把多物体纠缠拆解为独立局部场**（Spatial Disentanglement via 3D Box Slots）：放弃用单个大 NeRF 硬扛整场戏的做法，转为按用户给定的 3D 包围盒布局（3D Box Layout），为每个物体分配专属的局部 Instant-NGP 辐射场 $F_{\theta_{l,j}}$。每个局部场只管自己盒子里的物体，从参数源头切断跨物体的几何吞噬，同时让三维包围盒直接充当移动、缩放、删除与重组的交互句柄。
+2. **局部子文本锁身份，全局长文本管语境，实现监督信号的尺度分治**（Dual-Level Text Guidance）：将单一的 SDS 损失拆分为各司其职的双层监督——**局部 SDS** 用纯净的单物体子文本（Subtext，如 `"french bread"`）单独监督各自局部场的独立渲染图，死死锁住物体的类别身份与专属颜色；**全局 SDS** 则用完整的场景长文本监督多物体合成后的全局视图，专门负责协调物体间的相对比例、桌面承托关系与整体环境氛围。
+3. **组合发生在三维光线积分层，用体密度残差校准替代二维图层拼贴**（3D Ray-Level Density Calibration over 2D Alpha Blending）：把多个独立训练的局部 NeRF 摆进同一个坐标系，绝不能简单地各自渲染成 2D 图片再做 Alpha 混合。当一条全局光线穿过多个 3D 包围盒时，来自不同物体的采样点必须按全局深度严格重排，在同一条光线上共同竞争累计透射率（Transmittance）；同时引入轻量级全局校准 MLP，以残差形式同时微调体密度 $\sigma_g$ 与颜色 $\mathbf{C}_g$，解决仅改颜色无法处理的接触面几何过渡与遮挡阴影。
+4. **把一次性场景优化沉淀为可复用的 3D 组件资产**（Decompose-and-Recompose Paradigm）：per-scene SDS 优化动辄耗时数千步，如果每次微调布局都推倒重来，工程成本根本无法承受。CompoNeRF 支持将训练好的局部 NeRF 组件拆解（Decompose）并缓存至离线库；当切换到新布局或新场景时，直接加载现成组件完成空间初始化，仅需针对全局校准网络做轻量级微调（Recompose）以消化新环境的光影差异。
 
-## 1. 论文信息与核心问题定义
+下面我们就顺着这四条设计哲学，从底层渲染公式、网络架构到消融实验与失败边界，层层拆解这套多物体可组合 NeRF 框架。
 
-| 项目 | 内容 |
-| --- | --- |
-| 题名 | CompoNeRF: Text-guided Multi-object Compositional NeRF with Editable 3D Scene Layout |
-| 作者 | Haotian Bai, Yuanhuiyi Lyu, Lutao Jiang, Sijia Li, Haonan Lu, Xiaodong Lin, Lin Wang |
-| 版本基线 | arXiv:2303.13843v3（2023-12-02；后续存在 v5, 2024-09-24） |
-| 领域 | text-to-3D, NeRF, diffusion prior, compositional scene generation |
-| 许可证 | CC BY 4.0 |
-| 项目页 | https://vlislab22.github.io/componerf/ |
-| 官方代码 | https://github.com/hbai98/Componerf（README 显示 `Coming soon ...`） |
+---
 
-一句话概括论文贡献：
+## 1. 为什么多物体 Text-to-3D 容易发生引导坍缩？
 
-> CompoNeRF 将多物体 text-to-3D 从“优化一个整体 3D 表示”改造成“先按 3D box layout 组织多个局部 NeRF，再用局部/全局双层文本引导和密度组合模块校准整体场景”的可编辑组合生成流程。
+### 1.1 连续场的无边界困境与 SDS 梯度耦合
 
-这一贡献建立在三个相互支撑的系统设计之上：**对象级解耦**（object-level disentanglement）让每个对象拥有独立的局部 NeRF 和对应的 subtext prompt，避免把所有对象塞进同一个 global text 里让扩散模型盲目分配语义；**布局可控性**（layout controllability）允许用户通过 3D boxes 设定对象位置与尺度，将 box layout 作为可编辑的中间控制接口；**密度级场景组合**（density-based composition）则针对局部 NeRF 拼接后出现的遮挡、阴影、反射、局部纹理与全局语义不一致问题，引入 global MLP 将局部输出校准到全局坐标系，证明了同时校准密度与颜色远比仅校准颜色可靠。
-
-### 1.1 从 Fig. 1 看 CompoNeRF 的任务边界
-
-Fig. 1 给出了论文的总览图，清晰界定了 CompoNeRF 旨在支持的三个核心动作：compose、decompose 与 recompose。
-
-![Fig. 1: CompoNeRF 总览、compose/decompose/recompose 与 baseline 对比](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig01-overview-editing.webp)
-
-*Source: Bai et al., arXiv:2303.13843v3, Fig. 1, CC BY 4.0.*
-
-图左侧是输入端：一个可编辑的 3D 布局和一句场景文本。布局中每个 box 对应一个对象位置，文本里不同颜色对应不同对象的局部描述。中间是 CompoNeRF 的组合过程：把对象级 NeRF 放进全局 frame，按照 ray-box intersection 采样，并通过 composition module 生成全局场景。右侧展示了三项核心能力：
-
-1. **compose**：把多个局部对象合成一个语义与几何连贯的 coherent scene。
-2. **decompose**：把已经训练生成的局部 NeRF 组件拆解并缓存下来。
-3. **recompose**：在改变 layout 或文本后，直接复用缓存的对象组件重新组合出新场景。
-
-图右侧的 baseline 对比直观揭示了一个典型失效现象：Latent-NeRF 或 SJC 这类单表示优化方法在多物体场景中极易出现对象融合、整体模糊与语义绑定不清。CompoNeRF 的策略是先把对象语义和空间槽位显式拆开，再在体渲染层完成组合。这也决定了它与后续其他 3D 场景生成路线的本质分野：
-
-| 方向 | 代表思路 | CompoNeRF 的位置 |
-| --- | --- | --- |
-| 单物体 text-to-3D | 从文本优化一个对象 NeRF/mesh | 继承 SDS/NeRF 优化，但扩展到多对象组合 |
-| 布局生成 | 先生成家具/物体 box layout | 不负责自动生成布局，默认由用户或上游提供 layout |
-| 资产检索式 3D scene | 从 CAD/mesh 库检索对象并放置 | 直接生成并优化 NeRF，而非检索现成资产库 |
-| 物理仿真式场景修正 | 用碰撞、支撑、重力优化布局 | 主要靠 box layout 和文本/视觉先验，不含物理引擎 |
-
-因此，这篇论文的核心价值在于提出了一套清晰的问题分解范式：**对象语义、对象空间和全局场景一致性必须分层建模，绝不能全部丢给同一个 global SDS loss 去盲目混合。**
-
-## 2. 研究背景、Guidance Collapse 与相关工作坐标
-
-### 2.1 NeRF 连续场与 SDS 的多物体瓶颈
-
-NeRF（Neural Radiance Field，神经辐射场）将一个 3D 场景表示为从空间位置和视线方向映射到体密度与颜色的连续函数：
+在标准神经辐射场（NeRF）中，整个三维世界被编码为一个连续的隐式映射函数：
 
 $$
-F_\theta: (\mathbf{x}, \mathbf{d}) \mapsto (\sigma, \mathbf{c})
+F_\theta: (\mathbf{x}, \mathbf{d}) \mapsto (\sigma, \mathbf{c}),
 $$
 
-其中 $\mathbf{x}$ 是空间三维坐标，$\mathbf{d}$ 是观察方向，$\sigma$ 是体密度（volume density），$\mathbf{c}$ 是 RGB 颜色。沿一条相机光线 $\mathbf{r}$ 进行离散采样与积分，即可计算像素颜色：
+其中 $\mathbf{x}\in\mathbb{R}^3$ 是空间采样点坐标，$\mathbf{d}\in\mathbb{S}^2$ 是相机视线方向，$\sigma$ 是决定该点是否被实体占据的体密度（Volume Density），$\mathbf{c}$ 是与视角相关的 RGB 辐射颜色。当相机发出一条光线 $\mathbf{r}$ 时，系统沿光线采样 $N$ 个离散点，通过可微体渲染（Volume Rendering）积分出像素颜色：
 
 $$
 \hat{\mathbf{C}}(\mathbf{r}) =
 \sum_{k=1}^{N} T_k
 \left(1 - \exp(-\sigma_k \delta_k)\right)
-\mathbf{C}_k
+\mathbf{C}_k,
 $$
 
-这里 $T_k$ 是第 $k$ 个采样点之前的累计透射率，$\delta_k$ 是相邻采样点之间的距离。NeRF 的优势在于连续、可微且支持新视角合成；但在多物体生成任务中，它的天然短板在于**只有连续场表示而没有显式对象结构**。一个整体 NeRF 内部并不存在“这部分密度属于苹果、那部分密度属于香蕉”的天然边界。对单对象 text-to-3D 而言这不是问题，但在多对象场景中，缺少对象级结构会直接导致四大难题：
+其中 $\delta_k$ 是相邻采样点之间的距离，$T_k = \exp\left(-\sum_{p<k}\sigma_p\delta_p\right)$ 是光线到达第 $k$ 个点之前的累计透射率（即光线没被前面物体挡住的概率）。
 
-- **数量失控**：文本要求生成两个对象，模型可能只生成一个融合后的混合体。
-- **属性串位**：文本规定红色属于 apple、黄色属于 banana，模型可能交换或同时复制属性。
-- **空间失真**：文本描述“A next to B”，模型往往只学到语义共现而丢失准确相对位置。
-- **无法编辑**：想要单独平移或缩放某个物体时，整体式 NeRF 缺乏对象级操作句柄（handle）。
-
-与此同时，Score Distillation Sampling（SDS）将预训练 2D 扩散模型作为可微优化器的外部评分器。给定渲染图像 $\mathbf{X}$、加噪时间步 $t$ 与文本条件 $T$，扩散模型预测噪声 $\epsilon_\phi(\mathbf{X}_t,t,T)$，SDS 利用预测噪声与真实注入噪声的差值向 3D 表示参数 $\theta$ 提供梯度：
+这套连续场表示在做多视角三维重建时非常优雅，但一旦配合分数蒸馏采样（SDS）做多物体生成，麻烦就接踵而至。回顾 SDS 的梯度更新公式：给定当前相机视角下的渲染图 $\mathbf{X}$、加噪时间步 $t$ 与文本提示 $T$，预训练 2D 扩散模型 $\epsilon_\phi$ 预测噪声残差，直接向三维参数 $\theta$ 提供更新方向：
 
 $$
 \nabla_{\theta}\mathcal{L}_{\text{SDS}}(\mathbf{X}_t,T)
 =
 w(t)\left(
 \epsilon_{\phi}(\mathbf{X}_t,t,T)-\epsilon
-\right)
+\right).
 $$
 
-SDS 的优势是无需大规模 3D 数据集即可利用 2D 扩散模型的图文先验；但当一个全局 SDS loss 同时负责多个 NeRF 区域、多个对象语义与多视角几何一致性时，梯度分配就会陷入混乱——哪些像素应当响应 apple，哪些像素应当响应 banana，哪些梯度用于调整整体场景光照，哪些用于塑造局部几何，在单一全局损失下完全耦合在一起。
+当提示词 $T$ 里只有一个物体时，整张渲染图的所有像素都在为同一个语义目标服务。但当 $T$ 变成包含三四个物体的复杂场景描述时，单一全局 SDS 配合单片 NeRF 就会陷入四重困境：
+- **数量漏检**：扩散模型只要在画面里看到了显著的“红苹果”特征，哪怕“黄香蕉”还没长出来，整体图文匹配分就已经不低了，导致弱势物体直接被梯度忽略；
+- **属性串位**：扩散模型分不清哪团三维密度对应哪个名词，把原本属于苹果的红色刷到了香蕉上，或者生成出半苹半蕉的嵌合体；
+- **空间关系失控**：文本里的 `"next to"` 或 `"on top of"` 往往只被模型理解成二维画面里的共现关系，无法转化为准确的三维前后支撑；
+- **零可编辑性**：所有物体共享同一套网络参数 $\theta$，想把苹果往左挪 10 厘米，除了改提示词重训几千步之外别无他法。
 
-### 2.2 Guidance Collapse：Fig. 2 的核心诊断
+### 1.2 从任务全景看组合、拆解与重组闭环
 
-Fig. 2 是全文最关键的诊断图，直观展示了为什么仅靠冻结的 Stable Diffusion 全局文本监督会在多物体 3D 优化中失效，以及 CompoNeRF 为何必须引入局部 subtext 与全局 refinement。
+![Fig. 1: CompoNeRF 总览、compose/decompose/recompose 与 baseline 对比](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig01-overview-editing.webp)
+
+看上面这张系统全景图（Fig. 1），CompoNeRF 的核心思路就是**在连续场外面套上一层显式的面向对象空间骨架**。
+
+图左侧是系统的输入契约：一段用不同颜色标注了核心名词的场景长文本，配上一组可由用户自由编辑的 3D 包围盒布局（3D Scene Layout）。每个包围盒在三维空间中占好槽位，并精准绑定一个局部物体名称。中间与右侧展示了由此解锁的三大核心能力：
+1. **组合生成**（Compose）：将多个局部对象级 NeRF 按照 3D 包围盒放进全局场景坐标系，通过光线求交与组合模块生成前后遮挡正确、风格统一的完整场景（对比右侧底部，Latent-NeRF 与 SJC 在多物体提示下出现了严重的几何粘连与主体丢失）。
+2. **组件拆解**（Decompose）：把训练收敛后的每个局部对象 NeRF 单独剥离出来，存入离线组件缓存库。
+3. **跨场景重组**（Recompose）：当用户拖动包围盒改变布局、删除某个物体，或者把不同场景里拆出来的局部物体（比如场景 A 的棋盘、场景 B 的酒杯、场景 C 的台灯）拼进一个新布局时，直接复用缓存组件快速合成新场景。
+
+### 1.3 Guidance Collapse 的四种典型死法与破局路线
+
+为了把“为什么必须同时引入局部子文本与全局校准”讲透，作者在 Fig. 2 中用最简单的双物体案例（`"a red apple and a yellow banana"`）做了一次对照诊断。
 
 ![Fig. 2: guidance collapse 与局部/全局引导策略](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig02-guidance-collapse-solutions.webp)
 
-*Source: Bai et al., arXiv:2303.13843v3, Fig. 2, CC BY 4.0.*
+顺着图中的四条演化支路看过去，多物体 3D 优化的失败原因一目了然：
+- **死法一（只用全局文本监督各个局部槽位）**：虽然切分了两个局部 NeRF 槽位，但如果喂给它们的监督信号依然是同一句全局长文本 `"a red apple and a yellow banana"`，局部槽位根本不知道自己该认领苹果还是香蕉，结果两个盒子里都长出了苹果与香蕉的混合怪胎。
+- **死法二（只用局部子文本各自独立训练，硬拼输出）**：给左边的盒子喂 `"a red apple"`、右边的盒子喂 `"a yellow banana"`，每个物体的个体身份保住了，但直接拼进全局空间后，交界处的遮挡关系、表面反光与阴影完全割裂，像两张生硬贴在一起的剪纸。
+- **死法三（有局部子文本，但缺少全局残差校准器）**：即便加上了全局文本损失，如果没有专门的全局校准网络去修正跨盒子的密度与颜色，局部场在自己小天地里学到的辐射分布依然无法适应全局光照与接触上下文，重叠区会出现明显伪影。
+- **CompoNeRF 破局路线（图右侧虚线框）**：用对象专属子文本（Object-specific Subtexts）训练各个局部 NeRF 以锁定个体身份，在组合采样点上通过全局校准模块合成全局视图，再用全局长文本（Overarching Global Text）对合成视图施加顶层精炼约束。**局部损失保身份，全局损失管融合**，各司其职。
 
-图上半部分展示了一个简单的多物体 prompt（一个红苹果和一个黄香蕉）。尽管 Stable Diffusion 在 2D 图像空间能够根据 global text 生成包含两个物体的图片，也能根据 subtext 分别生成苹果或香蕉，但将这些监督信号迁移到 3D NeRF 时，不同路径会出现各自的断层：
-
-1. **仅用 global text 监督多个局部区域**：模型知道整体场景需要包含苹果和香蕉，但不知道哪个局部 NeRF 槽位应当对应哪个物体，导致每个局部区域都学到混合语义。
-2. **仅用 subtext 监督各自局部对象**：每个对象自身的身份（identity）与几何更加清晰，但组合交界处缺乏全局协调，遮挡、相对位置与整体色调显得生硬割裂。
-3. **局部对象直接拼接（naive composition）**：局部 NeRF 在各自的独立坐标系内成立，但放入全局坐标系后，在重叠区域、接触阴影或相邻表面会产生明显的伪影。
-4. **缺少最终全局校准（without global calibration）**：虽然保住了个体身份，但整个场景看起来像多个孤立物体的生硬拼贴，不像处于同一个 3D 世界。
-
-CompoNeRF 的解决路径对应图中的虚线框：以 global text 作为顶层全局监督，以 object-specific subtexts 分别训练每个局部 NeRF，在 composite samples 上执行组合体渲染，最后通过 global text refinement 校准整体输出。这里的核心洞见在于**不同尺度的损失函数作用于不同层级的表示对象**——local loss 作用于单个 local NeRF 以锁定对象身份，global loss 作用于 composite rendering 以保障场景级一致性。
-
-### 2.3 相关工作演进与横向技术坐标
-
-Table 1 将 CompoNeRF 放在 text-to-3D 与 3D 场景编辑的方法体系中进行横向对比。
+### 1.4 在 Text-to-3D 与场景编辑谱系中的位置
 
 ![Table 1: 与 text-to-3D / scene editing 相关工作的能力对比](/images/blog/componerf-text-guided-compositional-nerf/componerf-table01-related-work-comparison.webp)
 
-*Source: Bai et al., arXiv:2303.13843v3, Table 1, CC BY 4.0.*
-
-从演进脉络来看，CompoNeRF 在 SDS 时代的技术栈之上做了一次结构化扩展：
+对照上面这张能力矩阵（Table 1），可以清晰看到 CompoNeRF 在早期 Text-to-3D 浪潮中的生态位演进：
 
 $$
-\text{SDS text-to-3D}
-\quad \rightarrow \quad
-\text{object-specific local NeRFs}
-\quad \rightarrow \quad
-\text{layout-aware global composition}
+\text{单物体 SDS 优化（DreamFusion / SJC / Latent-NeRF）}
+\;\longrightarrow\;
+\text{多槽位局部 NeRF 解耦}
+\;\longrightarrow\;
+\text{布局感知的全局密度校准与重组}
 $$
 
-具体而言，它与同代及后续代表性工作的技术继承与边界对比如下表所示：
+DreamFusion（基于 Mip-NeRF 360）、SJC（基于体素辐射场）与 Latent-NeRF（基于 Instant-NGP 并在 Stable Diffusion 潜在空间优化）本质上都是**以单物体为中心**（Object-centric）的生成器，面对多物体提示词时既没有显式空间句柄，也无法拆解缓存。而 CompoNeRF 同样以高效的 Instant-NGP 哈希网格作为每个局部 NeRF 的底层表示，通过引入 3D Box 布局接口，一次性打通了表中所列的文本修改（**T**ext）、平移（**M**ove）、缩放（**S**cale）、删除（**R**emove）以及跨场景组件重组（**Recomposition**）。
 
-| 工作 / 方向 | 主要目标与表示 | 核心机制 | CompoNeRF 的继承与差异 |
-| --- | --- | --- | --- |
-| **DreamFusion** | 单物体 text-to-3D（Mip-NeRF 360） | SDS + 2D 扩散先验优化 3D | 继承 SDS 优化范式，但从单物体扩展到多对象组合场景 |
-| **SJC** | 单/少量对象 text-to-3D（Voxel 场） | Score Jacobian Chaining / 扰动平均 | 借鉴 SJC 的 perturb-and-average 稳定训练，补齐显式对象 layout 与组合模块 |
-| **Latent-NeRF** | 文本/形状引导 3D（Instant-NGP） | Latent 空间 NeRF 优化 | 共享 Instant-NGP 与 Stable Diffusion 先验，新增局部/全局坐标系解耦与双层引导 |
-| **Magic3D / DreamBooth3D** | 高清网格 / 个性化主体 3D | Coarse-to-fine 网格精炼 / 主体微调 | 侧重单主体质量或个性化，而 CompoNeRF 聚焦多对象槽位绑定与重组 |
-| **Text2Room / Set-the-Scene** | 房间级网格 / 组合式场景 | 渐进式视角补全 / 场景级组合优化 | 同样关注多物体场景，但 CompoNeRF 强调基于 ray-box 交集与密度残差校准的组件化复用 |
-| **MVDream** | 多视角一致 3D 生成 | 多视角联合扩散先验 | 后续工作用多视角扩散缓解 Janus 问题；CompoNeRF v3 仍基于单视角 SD v1-4 |
-| **CasLayout / Imaginarium** | 室内 OBB 布局 / 资产库场景重建 | 级联关系扩散 / 视觉解析+资产检索+物理优化 | 后两者分别解决“布局怎么自动生成”与“生产级 CAD 资产怎么摆放”，而 CompoNeRF 假定布局已知、专注生成式 NeRF 的可微组合 |
+---
 
-可以看到，Table 1 中标注的 **T/M/S/R（文本编辑、移动、缩放、删除）** 以及 **recomposition（缓存重组）** 能力，直接源于其将场景拆解为“3D box 布局句柄 + 局部 NeRF 组件 + 全局校准器”的三层模块化结构：移动与缩放对应修改 box 变换参数，删除对应移除某个局部组件，而重组则是将已缓存的局部 NeRF 放入新布局中再次做轻量级全局校准。
+## 2. 空间解耦与跨坐标系光线求交：用 3D Box 组织局部辐射场
 
-## 3. 总体架构与可编辑 3D Box 布局建模
-
-### 3.1 三阶段流水线总览（Fig. 3）
-
-Fig. 3 展示了 CompoNeRF 的完整系统流水线，包含 Editing 3D Scene、Scene Rendering 与 Joint Optimization 三个紧密衔接的阶段。
+### 2.1 三阶段系统流水线设计
 
 ![Fig. 3: editing layout、scene rendering、joint optimization 三阶段框架](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig03-framework-overview.webp)
 
-*Source: Bai et al., arXiv:2303.13843v3, Fig. 3, CC BY 4.0.*
+如 Fig. 3 所示，CompoNeRF 的单场景生成由三个紧密咬合的阶段构成：
+1. **三维场景布局定义**（Editing 3D Scene）：系统接收全局提示词 $T$（如 `"glasses of wine, salad and french bread on a wooden table"`），以及拆解好的 $m$ 个对象元组——每个元组包含一个子文本 $T_{l,j}$（如 `"wine"`、`"salad"`、`"french bread"`、`"wooden table"`）和一个定义在全局场景坐标系下的 3D 包围盒 $B_j$。这里体现了清晰的职责边界：CompoNeRF 并不包含从自然语言自动推理家具摆放坐标的布局生成网络，而是将 3D 包围盒定性为用户或上游规划器传入的显式控制接口。
+2. **跨坐标系组合渲染**（Scene Rendering）：系统同时维护两套坐标系——每个物体独享的**局部坐标系**（Local Frame）与所有物体共处的**全局场景坐标系**（Global Frame）。一条全局相机光线发出后，先与所有 3D 包围盒做求交测试；凡是被光线击中的盒子，就把交集段内的采样点从全局坐标变换到该盒子的局部坐标，查询对应的局部 NeRF 拿到局部密度 $\sigma_l$ 与颜色 $\mathbf{C}_l$；随后送入全局组合模块（Composition Module）校准出全局密度 $\sigma_g$ 与颜色 $\mathbf{C}_g$，最终沿光线按深度积分成全局图像。
+3. **局部与全局联合优化**（Joint Optimization）：在单步迭代中，优化器同时拿局部独立渲染图算 Local SDS、拿全局合成渲染图算 Global SDS，并附加工业级 NeRF 常用的二元熵稀疏正则项（Sparse Regularization），联合更新所有局部 NeRF 参数 $\{\theta_{l,j}\}_{j=1}^m$ 与全局校准 MLP 参数 $\theta_g$。
 
-1. **Stage 1: Editing 3D Scene（三维场景布局定义）**：系统接收四部分输入——全局文本提示 $T$（例如 “glasses of wine, salad and french bread on a wooden table”）、每个对象的局部子文本 $T_{l,j}$（例如 wine、salad、french bread、wooden table）、对应的 3D bounding boxes $\{B_j\}_{j=1}^m$，以及相机与光线采样配置。论文并不包含复杂的自然语言自动解析或自动布局生成网络，而是假定用户或上游模块已经完成了从长文本到“子文本 + 3D box”的拆解，从而将研究重心集中在给定布局后的多对象 NeRF 组合生成上。
-2. **Stage 2: Scene Rendering（跨坐标系组合渲染）**：系统维护两套坐标系——每个对象独立的局部坐标系（local frame）和所有对象共享的全局场景坐标系（global frame）。对任意一条全局光线 $\mathbf{r}_g$，系统先通过 ray-box intersection 判断它穿过了哪些对象的 3D box；对每个被命中的 box，将采样点从全局坐标系变换到该对象的局部坐标系，查询对应的局部 NeRF 获得局部密度 $\sigma_l$ 与颜色 $\mathbf{C}_l$；随后由 composition module 结合全局位置、视线方向与局部特征，校准得到全局密度 $\sigma_g$ 与颜色 $\mathbf{C}_g$，最后按全局深度排序积分成像素颜色。
-3. **Stage 3: Joint Optimization（局部与全局联合优化）**：优化器同时更新所有局部 NeRF 参数 $\{\theta_{l,j}\}_{j=1}^m$ 与全局校准 MLP 参数 $\theta_g$。监督信号由约束整体视图的 global SDS、约束各个独立对象视图的 local SDS，以及消除局部空间漂浮伪影的 sparse regularization 共同组成。
+### 2.2 3D 包围盒控制句柄与全局到局部的仿射映射
 
-### 3.2 3D Box 控制接口与全局-局部坐标变换
-
-从数学形式上看，CompoNeRF 将一个包含 $m$ 个对象的场景表示为结构化元组集合：
+把这个跨坐标系查询过程写成数学形式，一个包含 $m$ 个对象的可编辑场景可以紧凑地定义为元组集合：
 
 $$
 \mathcal{S} =
-\{(B_j, T_{l,j}, F_{\theta_{l,j}})\}_{j=1}^{m}
+\{(B_j, T_{l,j}, F_{\theta_{l,j}})\}_{j=1}^{m},
 $$
 
-其中第 $j$ 个对象 $O_j$ 由其 3D 包围盒 $B_j$、局部文本 $T_{l,j}$ 和局部辐射场 $F_{\theta_{l,j}}$ 定义，辅以全局提示词 $T$ 和全局校准网络参数 $\theta_g$。在实现层面，局部 NeRF 不仅输出密度与颜色，还会输出供全局校准使用的中间几何/外观特征 $\mathbf{h}_{l,j}$：
+其中全局场景空间被归一化在以世界原点为中心的立方体 $[-1, 1]^3$ 内，而每个局部辐射场 $F_{\theta_{l,j}}$ 也定义在各自独立的标准局部归一化空间中。在工程实现上，局部 NeRF 除了预测局部密度 $\sigma_{l,j}$ 和颜色 $\mathbf{C}_{l,j}$ 外，还会向后输出一维中间几何/外观特征向量 $\mathbf{h}_{l,j}$ 供全局校准器使用：
 
 $$
 F_{\theta_{l,j}}(\mathbf{x}_{l,j}, \mathbf{d}_{l,j})
 =
-(\sigma_{l,j}, \mathbf{C}_{l,j}, \mathbf{h}_{l,j})
+(\sigma_{l,j}, \mathbf{C}_{l,j}, \mathbf{h}_{l,j}).
 $$
 
-对于一条从相机原点 $\mathbf{o}_g$ 出发、沿全局方向 $\mathbf{d}_g$ 传播的全局光线：
-
-$$
-\mathbf{r}_g(t)=\mathbf{o}_g+t\mathbf{d}_g
-$$
-
-系统首先执行光线与所有 3D 包围盒的求交测试，筛选出命中的对象集合：
+当从全局相机位置 $\mathbf{o}_g$ 沿方向 $\mathbf{d}_g$ 发射一条全局光线 $\mathbf{r}_g(t)=\mathbf{o}_g+t\mathbf{d}_g$ 时，渲染器首先执行高速的轴对齐包围盒（AABB）光线求交算法，筛出这条光线穿过的所有对象包围盒索引集合：
 
 $$
 \mathcal{H}(\mathbf{r}_g)=
-\{j \mid \mathbf{r}_g \cap B_j \neq \varnothing\}
+\{j \in \{1,\dots,m\} \mid \mathbf{r}_g \cap B_j \neq \varnothing\}.
 $$
 
-对于每个命中的对象 $j \in \mathcal{H}(\mathbf{r}_g)$，需要将全局光线在交集区间内的采样点 $\mathbf{x}_g$ 映射到该对象的局部归一化坐标系：
+对于每一个被命中的对象 $j \in \mathcal{H}(\mathbf{r}_g)$，我们在光线穿过该盒子的区间 $[t_{\text{near}}^{(j)}, t_{\text{far}}^{(j)}]$ 内均匀采样 $N$ 个点。设某个采样点的全局三维坐标为 $\mathbf{x}_g$，该包围盒在全局坐标系下的中心平移为 $\mathbf{c}_j$、三轴缩放尺度为 $\mathbf{s}_j$，则全局点映射回第 $j$ 个局部 NeRF 内部坐标系的仿射变换 $\mathcal{T}_{g\to l}^{(j)}$ 为：
 
 $$
 \mathbf{x}_{l,j}
 =
 \mathcal{T}_{g\to l}^{(j)}(\mathbf{x}_g)
-$$
-
-当包围盒仅包含中心平移 $\mathbf{c}_j$ 与三轴尺度缩放 $\mathbf{s}_j$（即 axis-aligned bounding box，v3 论文的主体设定）时，该仿射变换简化为：
-
-$$
-\mathbf{x}_{l,j}
 =
-\frac{\mathbf{x}_g-\mathbf{c}_j}{\mathbf{s}_j}
+\frac{\mathbf{x}_g-\mathbf{c}_j}{\mathbf{s}_j}.
 $$
 
-若进一步扩展到带旋转矩阵 $R_j$ 的有向包围盒（OBB），则局部坐标与局部观察方向只需左乘逆旋转矩阵：
+如果进一步允许包围盒带有三维旋转矩阵 $R_j\in SO(3)$，则只需在缩放平移基础上左乘逆旋转矩阵：
 
 $$
 \mathbf{x}_{l,j}
@@ -222,18 +162,14 @@ $$
 R_j^{-1}
 \frac{\mathbf{x}_g-\mathbf{c}_j}{\mathbf{s}_j},
 \qquad
-\mathbf{d}_{l,j} = R_j^{-1}\mathbf{d}_g
+\mathbf{d}_{l,j} = R_j^{-1}\mathbf{d}_g.
 $$
 
-### 3.3 架构权衡：为什么不用单一整体 NeRF？
+你看，这套坐标映射最大的妙处在于：**当用户在编辑器里拖动或缩放第 $j$ 个物体的包围盒时，局部 NeRF 的权重 $\theta_{l,j}$ 一行都不用改，只需要改外面的 $(\mathbf{c}_j, \mathbf{s}_j, R_j)$，空间里的光线采样点就会自动映射到新的位置去查询该物体！**
 
-如果只用一个整体 NeRF 表示整个场景，渲染与优化链路看似最简短，但在多物体生成中会付出沉重代价：对象之间没有独立参数槽位，既无法单独拆解缓存，也极易在 SDS 梯度下发生身份互相污染；移动或删除任意一个物体都必须重新修改整个连续场。CompoNeRF 引入局部 NeRF 加 3D box 变换虽然增加了 ray-box 求交与跨坐标系重排序的工程开销，但换来了**对象级参数隔离**与**显式空间控制句柄**，这是后续一切编辑与重组能力的前提。
+### 2.3 局部独立积分与全局深度重排透射率竞争
 
-## 4. 局部/全局体渲染与密度组合模块
-
-### 4.1 局部体渲染与全局深度排序积分（Eq. 1–2）
-
-在单个对象的局部坐标系内，局部光线 $\mathbf{r}_l$ 仅穿过该对象自身的空间范围，采样 $N$ 个点即可完成局部体渲染（论文 Eq. 1）：
+在训练过程中，每个局部对象需要单独渲染出局部视图去接受子文本 $T_{l,j}$ 的监督。此时，局部光线 $\mathbf{r}_l$ 只穿过第 $j$ 个物体自己的局部空间，采样 $N$ 个点即可按标准体渲染积分出局部像素颜色：
 
 $$
 \hat{\mathbf{C}}_{l}(\mathbf{r}_{l})
@@ -241,10 +177,10 @@ $$
 \sum_{k=1}^{N}
 T_{l,k}
 \left(1-\exp(-\sigma_{l,k}\delta_k)\right)
-\mathbf{C}_{l,k}
+\mathbf{C}_{l,k}.
 $$
 
-而在全局坐标系下，一条全局光线 $\mathbf{r}_g$ 最多可能穿过全部 $m$ 个对象的包围盒，汇总产生最多 $mN$ 个采样点。论文 Eq. 2 给出了全局组合渲染公式：
+而在渲染全局组合视图时，一条全局光线 $\mathbf{r}_g$ 最多可能先后穿透全部 $m$ 个对象的包围盒（或者穿过两个相互嵌套/交叠的包围盒，比如摆在木桌包围盒上方的沙拉碗包围盒），汇总产生最多 $mN$ 个采样点。全局像素颜色由所有命中点的全局校准值 $(\sigma_{g,k}, \mathbf{C}_{g,k})$ 积分而成：
 
 $$
 \hat{\mathbf{C}}_{g}(\mathbf{r}_{g})
@@ -252,56 +188,62 @@ $$
 \sum_{k=1}^{mN}
 T_{g,k}
 \left(1-\exp(-\sigma_{g,k}\delta_k)\right)
-\mathbf{C}_{g,k}
+\mathbf{C}_{g,k}.
 $$
 
-这个公式表面上只是将求和上限从 $N$ 替换为 $mN$，但在三维空间计算上却包含了一套关键的重排逻辑：来自不同局部包围盒的采样点映射回全局坐标系后，必须按照它们沿全局光线 $\mathbf{r}_g$ 的深度值从小到大严格排序。记排序后的有效采样点序列为 $\{(\sigma_{g,k},\mathbf{C}_{g,k},\delta_k)\}_{k=1}^{K}$（其中 $K \le mN$），则第 $k$ 个采样点处的全局累计透射率 $T_{g,k}$ 由排在它前面的所有采样点（可能来自不同物体）共同决定：
+千万别把上面这个公式简单看成“把求和上限从 $N$ 改成 $mN$”。在三维渲染底层，它包含了一步决定遮挡关系成败的核心操作：**跨盒子采样点的全局深度重排**（Global Depth Sorting）。
+
+当一条全局光线先后穿过“红酒杯”和后方的“沙拉碗”，甚至同时处于“木桌”与“面包”两个包围盒的交叠区域时，来自不同局部 NeRF 的采样点映射回全局光线 $\mathbf{r}_g(t)$ 后，必须严格按照它们离相机原点的真实深度参数 $t_1 \le t_2 \le \dots \le t_K$（$K \le mN$）从小到大重新排队！排队之后，相邻点间距重新计算为 $\delta_k = t_{k+1} - t_k$，而第 $k$ 个采样点的全局累计透射率 $T_{g,k}$ 则由排在它前面的所有采样点（不管来自哪个物体）共同决定：
 
 $$
 T_{g,k}
 =
 \exp\left(
 -\sum_{p<k}\sigma_{g,p}\delta_p
-\right)
+\right).
 $$
 
-这一步正是“三维组合”真正发生的地方：多个物体无需先各自渲染成 2D 图片再做图层叠加，而是在同一条三维光线上直接按照真实深度竞争可见性（transmittance）。
+这正是“三维空间组合”与“二维图像拼接”的分水岭：多个物体在同一条三维光线上按照真实物理深度竞争可见性——如果前面的红酒杯在某处体密度 $\sigma_g$ 很高，透射率 $T_{g,k}$ 就会迅速衰减，自然遮挡住后面的沙拉；如果是半透明玻璃杯，后面的沙拉颜色则能按剩余透射率自然透出来。
 
-### 4.2 Density-based Composition 模块设计（Fig. 5，Eq. 4–5）
+---
 
-如果直接把局部 NeRF 输出的 $(\sigma_l, \mathbf{C}_l)$ 代入全局体渲染公式，当两个物体的 box 发生接触或重叠，或者需要表现桌面反射、物体间接触阴影与环境光协调时，各自独立训练的局部场就会出现明显的拼接断层。为此，Fig. 5 展示了 CompoNeRF 的核心组件——基于密度的残差校准模块（density-based composition module）。
+## 3. 全局残差校准：为什么必须同时修正体密度与颜色？
+
+### 3.1 基于密度的残差校准模块架构
+
+现在考虑一个更深入的问题：既然已经有了跨盒子的全局深度重排和透射率竞争，如果直接令全局密度等于局部密度（$\sigma_g = \sigma_l$）、全局颜色等于局部颜色（$\mathbf{C}_g = \mathbf{C}_l$），把各个局部 NeRF 原封不动地塞进全局光线里积分，行不行？
+
+答案是不行。因为每个局部 NeRF 在局部视图下训练时，只知道“我自己长什么样”，完全不知道“我被摆在了一张反光的木桌上”或者“我旁边紧挨着另一个物体”。直接硬塞会产生两个严重断层：一是两个包围盒接触或交叠的地方（比如面包贴着桌面、棋子落在棋盘上）会出现生硬的几何穿插或悬空缝隙；二是缺乏跨物体的环境光反射、接触面阴影（Ambient Occlusion）与全局色调统一。
+
+为此，CompoNeRF 设计了 Fig. 5 所示的**基于密度的组合校准模块**（Density-based Composition Module）。
 
 ![Fig. 5: density-based composition module 细节](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig05-density-composition-detail.webp)
 
-*Source: Bai et al., arXiv:2303.13843v3, Fig. 5, CC BY 4.0.*
-
-在局部分支中，局部 NeRF 的原始输出 $(\sigma_l, \mathbf{C}_l) = F_{\theta_l}(\mathbf{x}_l,\mathbf{d}_l)$ 直接用于局部渲染并接受 local SDS 监督，以确保局部几何与身份不被破坏。而在进入全局渲染分支时，系统引入两个轻量级全局校准网络——密度校准器 $f_{\theta_{g_d}}$ 与颜色校准器 $f_{\theta_{g_c}}$，采用残差形式修正局部输出（论文 Eq. 4 与 Eq. 5）：
+看图中的双路数据流：局部 NeRF 查询出的原始输出 $(\sigma_l, \mathbf{C}_l)$ 一路直接送去算局部渲染（保证局部身份不受干扰）；另一路在进入全局渲染前，经过两个由 4～6 层全连接层（隐藏层宽度 64）构成的轻量级全局校准网络——**密度校准器** $f_{\theta_{g_d}}$ 与**颜色校准器** $f_{\theta_{g_c}}$，以**残差加成**（Residual Calibration）的形式算出全局密度与全局颜色：
 
 $$
 \boldsymbol{\sigma}_{g}
 =
 \alpha_d f_{\theta_{g_d}}(\mathbf{x}_g)
-+ \boldsymbol{\sigma}_{l}
++ \boldsymbol{\sigma}_{l},
 $$
 
 $$
 \mathbf{C}_{g}
 =
 \alpha_c f_{\theta_{g_c}}(\mathbf{h},\mathbf{d}_g)
-+ \mathbf{C}_{l}
++ \mathbf{C}_{l}.
 $$
 
-其中 $\mathbf{x}_g$ 是全局采样位置，$\mathbf{d}_g$ 是全局视线方向，$\mathbf{h}$ 是局部网络提取的中间特征，$\alpha_d$ 与 $\alpha_c$ 控制全局校准残差的强度。这种残差设计兼顾了两方面需求：一方面，局部 NeRF 已经提供了对象的主体几何与基本外观，global MLP 不必从零学习整个场景；另一方面，跨物体的接触过渡、阴影投射、表面反射与全局色调统一，可以通过基于全局坐标 $\mathbf{x}_g$ 和方向 $\mathbf{d}_g$ 的残差项动态补偿。当然，$\alpha_d$ 的取值存在明确权衡：若 $\alpha_d$ 过大，全局密度残差容易喧宾夺主甚至吞噬局部几何；若 $\alpha_d$ 过小，又无法修正交界处的密度断裂。
+仔细推敲这两个公式的输入变量，能看出作者非常老道的架构考量：
+- **为什么采用残差结构（$\boldsymbol{\sigma}_l + \alpha_d f$）？** 因为局部 NeRF 已经把物体 90% 的主体几何与基础颜色学出来了，全局 MLP 的定位是“微调修补匠”，只需在全局坐标 $\mathbf{x}_g$ 和全局观察方向 $\mathbf{d}_g$ 的指引下，补偿物体交界处的接触过渡、桌面倒影和全局色调偏差，大大减轻了全局网络的收敛负担。
+- **为什么密度校准器只输入 $\mathbf{x}_g$，而颜色校准器输入 $(\mathbf{h}, \mathbf{d}_g)$？** 因为在物理世界中，某一点“有没有实体物质占据”（体密度 $\sigma_g$）只取决于它的三维空间位置 $\mathbf{x}_g$，绝不应该随着相机观察角度 $\mathbf{d}_g$ 的改变而忽隐忽现；而表面呈现出什么高光、反射与阴影颜色（$\mathbf{C}_g$），则既依赖局部材质特征 $\mathbf{h}$，又强烈依赖全局视线方向 $\mathbf{d}_g$。
 
-### 4.3 为什么 Color-based 设计与图像空间 Alpha Blend 不够？（Fig. 4，Eq. 6）
+### 3.2 仅校准颜色为什么会在接触面与近景翻车？
 
-一个自然的疑问是：能否只让局部 NeRF 决定几何密度，全局模块只负责修改表面颜色，或者干脆把每个物体单独渲染出来做 Alpha 混合？Fig. 4 对比了 density-based 设计与 color-based 设计的实际效果差异。
+你可能会问：让全局 MLP 去改体密度 $\sigma_g$，万一它把原本局部物体的几何形状改坏了怎么办？为什么不干脆锁死几何密度（令 $\boldsymbol{\sigma}_g = \boldsymbol{\sigma}_l$），只让全局网络去修正表面颜色呢？
 
-![Fig. 4: density-based 与 color-based 设计影响](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig04-density-vs-color-design.webp)
-
-*Source: Bai et al., arXiv:2303.13843v3, Fig. 4, CC BY 4.0.*
-
-在 color-based 变体中，系统完全冻结全局密度校准，仅对颜色做残差修正（论文 Eq. 6）：
+为了回答这个疑问，作者专门实现了一版**仅校准颜色**（Color-based Design）的变体：
 
 $$
 \boldsymbol{\sigma}_g=\boldsymbol{\sigma}_l,
@@ -309,16 +251,28 @@ $$
 \mathbf{C}_{g}
 =
 \alpha_c f_{\theta_{g_c}}(\mathbf{x}_g,\mathbf{d}_g)
-+ \mathbf{C}_{l}
++ \mathbf{C}_{l},
 $$
 
-从 Fig. 4 可以看出，color-based 方案虽然降低了几何优化的不确定性，有时能刷出较明显的表面反光或色彩变化，但在近景观察和收敛稳定性上却暴露出严重的几何与阴影伪影。原因在于：**多物体场景的融合不仅是表面颜色的改写，更是空间占据率（occupancy）与透射率 $T_{g,k}$ 的重新平衡。** 当两个对象接触、穿插或需要产生环境阴影与体积过渡时，如果不允许全局校准器微调 $\sigma_g$，那些在局部场中本不存在（或多余）的体密度就永远无法在全局光线上被生成（或抹除）。同理，如果退化到图像空间的 Alpha Blend，连三维光线上的深度交错与相互遮挡都无法正确建模。这正是 CompoNeRF 坚持在 3D 体渲染层采用 density-based 组合的根本原因。
+并在 Fig. 4 中将它与完整的 Density-based 方案做了近景与收敛过程的正面对比。
 
-## 5. 双层文本引导目标与训练算法实现
+![Fig. 4: density-based 与 color-based 设计影响](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig04-density-vs-color-design.webp)
 
-### 5.1 局部/全局双层 SDS 与稀疏正则化
+看 Fig. 4 的对比图像：Color-based 方案在远景猛一看似乎色彩挺鲜艳（甚至能在桌面上刷出夸张的彩色反光），但一旦拉近镜头看局部（Close-ups）或者观察训练收敛过程（Convergence），物体与桌面的接触边缘到处是破碎的伪影和半透明鬼影。
 
-为了同时保住每个对象的独立身份与整体场景的协调性，CompoNeRF 将总体优化目标定义为三项之和：
+为什么只改颜色救不了多物体组合？回到前面的全局体渲染公式就能瞬间想通：**颜色 $\mathbf{C}_{g,k}$ 对最终像素的贡献，是被前面的体密度不透明度 $\left(1-\exp(-\sigma_{g,k}\delta_k)\right)$ 死死乘住的！**
+- 如果两个物体接触的地方在局部场里留下了一道空白缝隙，那里局部密度 $\sigma_l = 0$，那么 $1-\exp(0) = 0$——此时哪怕颜色校准器 $f_{\theta_{g_c}}$ 算出了再完美的过渡颜色，乘上 $0$ 之后对画面的贡献也是零，缝隙依然是缝隙！
+- 反过来，如果两个包围盒重叠区多出了一团不该有的局部边缘毛刺（$\sigma_l > 0$），如果不允许全局密度校准器输出负残差把这团密度消掉，只靠涂改表面颜色，那团多出来的几何肿块永远杵在那里挡住后面的视线。
+
+因此，多物体融入同一场景，本质上是三维空间占据率（Occupancy）与表面外观的协同重塑，放开体密度残差校准是消除拼接断层的必经之路。
+
+---
+
+## 4. 双层文本引导与联合优化算法剖析
+
+### 4.1 局部 SDS、全局 SDS 与二元熵稀疏正则的协同博弈
+
+把空间表示和组合渲染搭好后，CompoNeRF 的总体优化目标由三项损失加权构成：
 
 $$
 \mathcal{L}
@@ -330,258 +284,188 @@ $$
 \sum_{j=1}^{m}
 \nabla\mathcal{L}_{\text{SDS}}(\hat{\mathbf{X}}_{l,j},T_{l,j})
 +
-\beta\mathcal{L}_{\text{sparse}}
+\beta\mathcal{L}_{\text{sparse}}.
 $$
 
-其中 $\hat{\mathbf{X}}_g$ 是全局组合渲染图像，受全局提示词 $T$ 监督；$\hat{\mathbf{X}}_{l,j}$ 是第 $j$ 个局部对象在自身局部坐标系下的独立渲染图像，受子文本 $T_{l,j}$ 监督；$\mathcal{L}_{\text{sparse}}$ 是针对局部 NeRF 密度场的稀疏正则项（基于二元熵惩罚）。这三项损失在训练中扮演着互补且相互制约的角色：
+其中 $\hat{\mathbf{X}}_g$ 是全局组合渲染图像，$\hat{\mathbf{X}}_{l,j}$ 是第 $j$ 个局部对象在各自局部相机视角下的独立渲染图像，$\mathcal{L}_{\text{sparse}}$ 是针对局部体密度的二元熵稀疏正则项（Binary Entropy Sparse Regularization，逼迫采样点密度要么趋近于 0 完全透明，要么趋近于高密度实心表面，严厉惩罚半空中的雾状半透明漂浮物）。这三股力量在训练中形成了一套精密的动态制衡：
 
-| 损失项 | 监督对象 | 解决的核心问题 | 权重失衡时的副作用 |
+| 损失项与默认权重 | 直接作用的渲染图与参数 | 解决的核心痛点 | 权重失衡时的退化后果 |
 | --- | --- | --- | --- |
-| **Local SDS** ($\alpha_l$) | 单个 local NeRF 渲染图 $\hat{\mathbf{X}}_{l,j}$ | 锁定对象类别 identity、局部几何形状与专属属性 | 权重过大时对象各自为战，忽略场景上下文与相对关系 |
-| **Global SDS** ($\alpha_g$) | 全局组合渲染图 $\hat{\mathbf{X}}_g$ | 提供跨对象空间关系、共享桌面/房间环境、整体光照与风格 | 权重过大时全局语义会侵蚀局部槽位，引发对象融合或属性串位 |
-| **Sparse Loss** ($\beta$) | 局部体密度分布 $\sigma_l$ | 抑制包围盒内的半透明雾状漂浮物（floaters），促使表面紧致 | 权重过大时会抹除玻璃、细杆、毛发等精细或半透明结构 |
+| **Local SDS**（$\alpha_l = 100$） | 局部独立视图 $\hat{\mathbf{X}}_{l,j}$ $\rightarrow$ 仅更新第 $j$ 个局部场 $\theta_{l,j}$ | 隔离跨物体干扰，确保每个包围盒内长出准确对应的物体几何与专属属性 | 过大时各个物体固执己见，抗拒全局环境协调，组合处生硬割裂 |
+| **Global SDS**（$\alpha_g = 100$） | 全局合成视图 $\hat{\mathbf{X}}_g$ $\rightarrow$ 同时更新全局校准器 $\theta_g$ 与局部场 $\theta_{l,j}$ | 提供跨物体空间关系、桌面/地面承托上下文、全局统一光照与接触阴影 | 过大时全局长文本语义会反噬局部槽位，在局部盒子里长出背景杂物或引发物体融合 |
+| **Sparse Loss**（$\beta = 5\times 10^{-4}$） | 局部体密度场 $\sigma_{l,j}$ $\rightarrow$ 更新局部场 $\theta_{l,j}$ | 清扫包围盒边角处的雾状漂浮伪影（Floaters），防止多盒叠加时雾气累加挡死视线 | 过大时会过度削蚀物体体积，把高脚杯细杆、沙拉叶片或玻璃球等精细半透明结构一并抹除 |
 
-值得强调的是，哪怕每个对象都已经有了精准的 subtext，**Global SDS 依然不可或缺**。因为只有局部监督时，优化出来的是互不相干的孤立物体集合；只有通过全局提示词 $T$ 对组合视图 $\hat{\mathbf{X}}_g$ 施加约束，桌面的承托关系、房间的氛围光以及物体之间的比例协调才会有梯度来源。
-
-### 5.2 Algorithm 1 逐行解析与工程伪代码
-
-论文附录的 Algorithm 1 完整给出了 CompoNeRF 的单步训练循环。
+### 4.2 训练主循环与跨盒采样伪代码推演
 
 ![Algorithm 1: CompoNeRF Training](/images/blog/componerf-text-guided-compositional-nerf/componerf-algorithm01-training.webp)
 
-*Source: Bai et al., arXiv:2303.13843v3, Algorithm 1, CC BY 4.0.*
+对照论文附录给出的 Algorithm 1，我们可以把单次训练迭代的完整数据流梳成一段清晰的工程逻辑：
 
-算法接收预训练文生图扩散模型 $\phi$、多物体提示词 $T$ 以及一组 3D boxes 作为输入，输出优化后的局部 NeRF 参数集 $\{\theta_{l,j}\}_{j=1}^{m}$ 与全局 MLP 参数 $\theta_g$。我们将其逐行拆解如下：
+1. **半球面相机与动态 FOV 采样（第 1–2 行）**：在以原点为中心的归一化全局空间外，从上半球面随机采样相机位置（半径在 $1.0\sim 1.5$ 之间随机抖动，训练期视场角 FOV 在 $40^\circ\sim 70^\circ$ 之间随机采样以兼顾全局远景与局部特写，测试期固定为 $60^\circ$），生成 $H\times W$ 条全局光线，并根据相机方位角在文本后追加 `"front view"`、`"side view"` 等方向提示词（Directional Prompt）。
+2. **批量光线-包围盒求交与局部查询（第 3–8 行）**：对每条全局光线计算其命中的包围盒序列（共 $m_i$ 个命中盒）。对第 $j$ 个命中盒，将交集区间变换到该物体的局部坐标系，采样 $N$ 个点查询局部 Instant-NGP 网络，既算出用于局部监督的局部体渲染颜色，又保留原始 $(\sigma_l, \mathbf{C}_l, \mathbf{h})$。
+3. **全局深度排序与残差校准积分（第 11–13 行）**：将所有命中盒子的采样点映射回全局坐标系，按全局光线深度统一升序排列，调用全局校准 MLP 算出 $(\sigma_g, \mathbf{C}_g)$ 后执行全局体渲染积分。
+4. **双层 SDS 回传与组件拆解缓存（第 15–17 行及末尾行）**：将积分出的局部视图列表与全局合成视图送入冻结的 **Stable Diffusion v1-4**（配合 SJC 的 Perturb-and-Average 多步扰动平均梯度策略提升稳定性），用 Adam 优化器（Batch Size = 1）更新参数。在单张 NVIDIA RTX 3090 上，简单多物体场景约迭代 5,000 步，复杂组合场景约迭代 8,000 步；训练结束后即可将 $\{\theta_{l,j}\}_{j=1}^m$ 拆解序列化为离线组件。
 
-- **第 1–2 行（采样相机与方向提示）**：从随机相机位姿采样 $H\times W$ 条全局光线，并根据相机方位角将 directional prompt（如 “front view”、“side view”）拼接到文本提示中，以辅助 2D 扩散先验提供视角一致的梯度。
-- **第 3–5 行（光线与包围盒求交）**：对每条全局光线执行多包围盒求交测试，记录命中的 $m_i$ 个对象包围盒。这是组合式 NeRF 区别于单片 NeRF 渲染的分水岭。
-- **第 6–8 行（局部坐标系采样与局部渲染）**：对第 $j$ 个命中的包围盒，将交集段转换到对应的 local frame，均匀采样 $N$ 个归一化点，查询局部 NeRF 获得局部密度与颜色，并按 Eq. 1 积分出该对象的局部视图颜色。
-- **第 11–13 行（全局重映射、深度排序与残差校准）**：将所有命中盒子的采样点映射回 global frame 并按全局深度排序，利用 Eq. 4 与 Eq. 5 计算校准后的全局密度 $\sigma_g$ 和颜色 $\mathbf{C}_g$，再按 Eq. 2 完成全局体渲染。
-- **第 15–17 行（双层 SDS 梯度回传与参数更新）**：汇总所有像素形成局部视图 $\hat{\mathbf{X}}_{l,j}$ 与全局视图 $\hat{\mathbf{X}}_g$，分别计算 local SDS、global SDS 与稀疏正则损失，通过 Adam 优化器更新参数。
-- **End 行（拆解与离线缓存）**：训练结束后，可将各个局部 NeRF（$\{\theta_{l,j}\}$）拆解并独立保存到离线资产库（offline dataset）中，为后续跨场景重组提供可直接加载的 3D 组件。
-
-若将 Algorithm 1 转化为工程实现视角下的主循环伪代码，其完整数据流如下：
+写成可直接对照实现的 Python 风格主循环如下：
 
 ```python
 for step in range(max_steps):
-    cameras = sample_random_cameras()
-    global_rays = generate_rays(cameras)
+    # 1. 采样随机半球相机与方向提示词 (半径 1.0~1.5, FOV 40~70度)
+    cam_pose, dir_prompt = sample_hemisphere_camera(radius_range=(1.0, 1.5), fov_range=(40, 70))
+    global_rays = generate_global_rays(cam_pose)
 
-    all_global_samples = []
+    global_samples = []
+    # 2. 跨包围盒求交、局部查询与全局残差校准
     for ray in global_rays:
-        hits = intersect_boxes(ray, boxes)
+        hits = intersect_aabb_boxes(ray, boxes)
         for hit in hits:
-            local_points, local_dir = transform_to_local(ray.samples, ray.dir, hit.box)
-            sigma_l, color_l, feat_l = local_nerf[hit.object_id](local_points, local_dir)
-            sigma_g, color_g = global_calibrator(
-                sigma_l, color_l, feat_l, ray.samples, ray.dir
-            )
-            all_global_samples.append((ray.depths, sigma_g, color_g))
+            pts_global, depths = sample_along_segment(ray, hit.t_near, hit.t_far, num_samples=N)
+            pts_local, dir_local = transform_global_to_local(pts_global, ray.dir, hit.box)
 
-    global_view = volume_render(sort_by_depth(all_global_samples))
-    local_views = [render_local_frame(nerf_j) for nerf_j in local_nerfs]
+            sigma_l, color_l, feat_h = local_nerfs[hit.obj_id](pts_local, dir_local)
+            sigma_g = sigma_l + alpha_d * global_mlp_density(pts_global)
+            color_g = color_l + alpha_c * global_mlp_color(feat_h, ray.dir)
+            global_samples.append((depths, sigma_g, color_g))
 
-    loss = alpha_g * global_sds(global_view, global_text)
-    loss += alpha_l * sum(local_sds(v_j, subtext_j) for v_j, subtext_j in zip(local_views, subtexts))
-    loss += beta * sparse_density_regularization(local_nerfs)
+    # 3. 按全局深度严格重排并积分全局视图，同时独立渲染各局部视图
+    global_view = volume_render_sorted(sort_by_depth(global_samples))
+    local_views = [render_local_object(nerf_j, cam_pose) for nerf_j in local_nerfs]
+
+    # 4. 计算双层 SDS 损失与局部稀疏正则
+    loss_g = alpha_g * sds_loss(sd_model, global_view, global_prompt + dir_prompt)
+    loss_l = alpha_l * sum(
+        sds_loss(sd_model, view_j, subtext_j + dir_prompt)
+        for view_j, subtext_j in zip(local_views, subtexts)
+    )
+    loss_sparse = beta * sum(binary_entropy_density_reg(nerf_j) for nerf_j in local_nerfs)
 
     optimizer.zero_grad()
-    loss.backward()
+    (loss_g + loss_l + loss_sparse).backward()
     optimizer.step()
 ```
 
-### 5.3 附录实现细节与复现参数基线
+---
 
-附录披露了决定复现成本与效果上限的关键超参数配置：
+## 5. 多物体生成实测与跨场景组件重组
 
-| 配置项 | v3 论文具体设定 |
-| --- | --- |
-| **Diffusion Prior** | Stable Diffusion v1-4 checkpoint（配合 SJC 的 perturb-and-average 梯度稳定策略） |
-| **NeRF Backbone** | 基于 Instant-NGP 的多分辨率哈希网格编码（grid encoder） |
-| **Global MLP 结构** | 4 层或 6 层全连接网络（Linear layers），隐藏层通道数为 64 |
-| **损失权重** | $\alpha_g=100$，$\alpha_l=100$，稀疏正则权重 $\beta=5\times 10^{-4}$ |
-| **优化器与硬件** | Adam 优化器，Batch size = 1，单张 NVIDIA RTX 3090 GPU |
-| **全局坐标系与相机** | 以世界原点为中心，归一化边长 $[-1,1]$；上半球面采样相机，随机半径 $1.0\sim 1.5$ |
-| **视场角（FOV）** | 训练阶段在 $40^\circ\sim 70^\circ$ 随机采样，测试评估阶段固定为 $60^\circ$ |
-| **训练迭代步数** | 简单多物体 prompt 约 5,000 steps，复杂组合场景约 8,000 steps |
+### 5.1 八大复杂场景定性对比：数量、属性绑定与局部解耦
 
-这些参数清晰表明：CompoNeRF 属于典型的 per-scene 优化式框架，需要针对每个具体场景迭代数千步，且对相机采样范围、FOV 抖动和损失权重高度敏感。
-
-## 6. 主实验评估与场景重组（Recomposition）
-
-### 6.1 实验设置与评估指标边界
-
-论文将 CompoNeRF 与两类代表性开源基线进行对比：**Latent-NeRF** 与 **SJC（Score Jacobian Chaining）**。为了保证对比公平，所有方法均对齐使用相同的 Instant-NGP 骨干网、Stable Diffusion v1-4 权重与相同的文本提示词。定量指标采用多视角渲染图像与全局文本之间的平均 **CLIP Score**。在阅读实验数据前需要明确：CLIP Score 能够衡量渲染视图与文本描述的高层语义对齐程度，但它对精细 3D 几何拓扑、严格多视角一致性以及物理支撑合理性并不敏感，因此必须结合定性视图一起审视。
-
-### 6.2 多物体定性对比（Fig. 6 与 Fig. 17）
-
-Fig. 6 展示了主实验中 8 个多物体场景的定性对比，前 3 个为双物体或物体加简单背景，后 5 个涉及棋盘与棋子、餐桌多种食物、多个地标建筑、沙漠多主体以及玻璃球组合等复杂场景。
+为了验证这套架构能否真正根治 Guidance Collapse，作者在对齐相同骨干网（Instant-NGP）、相同扩散权重（SD v1-4）与相同提示词的前提下，将 CompoNeRF 与 **Latent-NeRF** 及 **SJC** 在 8 个难度递增的多物体场景上做了正面交锋（Fig. 6）。
 
 ![Fig. 6: 多物体文本 prompt 的定性对比](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig06-qualitative-comparison.webp)
 
-*Source: Bai et al., arXiv:2303.13843v3, Fig. 6, CC BY 4.0.*
+仔细对比 Fig. 6 中的前 3 个双主体场景（公路汽车、月面宇航员、红苹果与黄香蕉）和后 5 个多主体复杂交互场景（国际象棋棋盘与棋子、木桌上的红酒/沙拉/法棍、三大微缩地标建筑、沙漠多植物景观、多色玻璃球组合），可以看到四个非常硬核的改进：
+- **彻底告别漏生成**：在 Case 3（红苹果与黄香蕉）和 Case 6（埃菲尔铁塔、比萨斜塔与金字塔）中，Latent-NeRF 与 SJC 要么只生成了一个红苹果而把香蕉彻底吃掉，要么只建出了单座塔状物；CompoNeRF 则因为每个物体都有专属的 3D Box 槽位兜底，一个不落地把所有主体全部立了起来。
+- **严防颜色与材质串位**：在多色玻璃球（Case 8）与果盘场景中，基线方法的颜色糊成一团，而 CompoNeRF 依靠局部子文本一对一监督，让每个局部场准确守住了自己的色彩属性。
+- **局部组件干净可拆**：注意看 CompoNeRF 每张结果图右侧附带的带色框小图——那是把对应的局部 NeRF 单独拎出来渲染的结果！小图里干净独立的汽车、宇航员、法棍和铁塔证明，模型摒弃了靠背景涂抹凑数的投机做法，真正在每个三维槽位里学到了解耦的 3D 实体。
+- **全局语境自然融合**：在 Case 5 的餐桌场景中，红酒杯、沙拉、法棍彻底摆脱了剪贴画式的悬浮感，经过全局校准网络微调后，稳稳融入了同一张木桌的表面纹理与阴影语境中。
 
-审视 Fig. 6 时，可以从四个核心维度检验 guidance collapse 是否得到缓解：
-
-1. **对象数量是否完整**：例如 Case 3（red apple 与 yellow banana），Latent-NeRF 与 SJC 要么只生成一个苹果状物体，要么把香蕉特征弱化成背景色块；CompoNeRF 凭借显式划分的两个局部对象槽位，稳定保留了两个独立物体。
-2. **属性与类别是否准确绑定**：在多物体提示词中，颜色与材质极易串位。CompoNeRF 利用 subtext 对每个 local NeRF 施加专一监督，确保红色绑定在苹果上、黄色绑定在香蕉上。
-3. **局部组件是否可拆解**：CompoNeRF 结果旁附带的小图展示了单独渲染出的 local NeRF 组件，证明其内部确实学到了解耦的对象表示，而非靠背景涂抹凑数。
-4. **全局场景语境是否协调**：在 Case 5（wine、salad、french bread 与 wooden table）中，多个物体需要在同一张木桌上自然共处。CompoNeRF 的全局校准模块将各个局部食物对象整合进了统一的餐桌语境中。
-
-附录 Fig. 17（原论文跨第 19–20 页，下图为完整拼接展示）进一步给出了更多多物体组合案例及对应的局部组件拆解视图，涵盖公路上的汽车、月球表面的宇航员、多地标微缩景观等：
-
-![Fig. 17: 更多多物体结果](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig17-more-qualitative-results.webp)
-
-*Source: Bai et al., arXiv:2303.13843v3, Fig. 17, CC BY 4.0. This blog stitches the cross-page figure regions for readability.*
-
-综合 Fig. 6 与 Fig. 17 可以得出客观结论：显式对象槽位与双层文本引导确实显著遏制了多物体语义混合与漏生成现象；但受限于 SD v1-4 的 2D 先验与低分辨率优化，生成结果整体仍带有 SDS 方法常见的模糊感与高频几何细节缺失，距离可直接投入工业管线的精细网格资产仍有差距。
-
-### 6.3 多视角 CLIP Score 定量分析（Table 2）
-
-Table 2 汇总了上述 8 个代表性场景在多视角下的 CLIP Score 对比。
+### 5.2 多视角 CLIP 语义对齐度与评测指标边界
 
 ![Table 2: 不同 3D scene 的 CLIP score 对比](/images/blog/componerf-text-guided-compositional-nerf/componerf-table02-clip-score-scenes.webp)
 
-*Source: Bai et al., arXiv:2303.13843v3, Table 2, CC BY 4.0.*
+看 Table 2 统计的多视角渲染图像与全局文本之间的平均 CLIP Score：CompoNeRF 在全部 8 个场景中全线领跑，尤其是在包含 4 个紧耦合交互对象的 Case 5（餐桌食物组合）上，将分数从 Latent-NeRF 的 `28.59` 和 SJC 的 `26.90` 大幅拉升到了 **`31.95`**。这组数据印证了一个规律：提示词里的名词槽位越多、空间遮挡关系越复杂，单一全局 SDS 的坍缩就越剧烈，局部/全局双层解耦带来的收益也就越显著。
 
-CompoNeRF 在全部 8 个场景中均取得了最高分，尤其在包含 4 个以上交互对象的 Case 5（餐桌场景）中领先幅度最为显著。这印证了当提示词中包含的对象数量增加、空间关系变复杂时，单一全局 SDS 的语义坍缩愈发严重，而局部/全局解耦架构能更稳定地维持多视角渲染与复杂文本的语义对齐。
+当然，从严谨的工程视角审视，CLIP Score 只是一个衡量“二维渲染图在语义上像不像提示词”的高层代理指标——它对细粒度三维网格拓扑是否光滑、环绕视角是否绝对一致以及物体底部是否严丝合缝贴合桌面并不敏感，这也是我们必须结合后续多视角消融图做进一步检验的原因。
 
-### 6.4 场景编辑与组件缓存重组（Fig. 7）
-
-Fig. 7 展示了 CompoNeRF 最具差异化的能力——跨场景拆解与重组（scene editing and recomposition）。
+### 5.3 拆解缓存与跨场景重组微调机制
 
 ![Fig. 7: scene editing / recomposition 结果](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig07-scene-editing-outcome.webp)
 
-*Source: Bai et al., arXiv:2303.13843v3, Fig. 7, CC BY 4.0.*
+Fig. 7 展示了 CompoNeRF 最具实用价值的杀手锏——**跨场景组件拆解与重组**（Scene Editing & Recomposition）。
 
-整个重组工作流分为四步：首先从已训练好的源场景（source scenes）中提取多个局部对象；其次将它们 decompose 为带独立标签的 local NeRF 组件并缓存；接着根据用户设定的新 3D box 布局完成空间初始化（initialization）；最后在新布局与新全局提示词下执行全局校准微调（calibration），输出最终的重组场景。
+看看图中的流水线是怎么玩的：系统先从三个已经训练好的不同源场景（Source Scenes）中，把局部物体拆解（Decompose）出来——比如从餐桌场景拆出木桌、酒杯和法棍，从卧室场景拆出台灯，从棋局场景拆出棋盘和棋子。接着，用户在新的全局空间里摆好新的 3D Box 布局（Initialization），把这些现成的局部 NeRF 组件直接填进新盒子里；最后启动重组校准微调（Calibration），合成出一个“木桌上同时摆着国际象棋、红酒杯与卧室台灯”的全新 3D 场景。
 
-为什么缓存了 local NeRF 之后，重组阶段仍然需要 finetune？因为当一个局部对象从旧场景迁移到新布局时，它周围的相邻物体、遮挡关系、环境光照、接触阴影以及它在全局相机视野中的像素占比都已经发生了改变，甚至源对象边缘可能还残留着旧场景的上下文痕迹（例如面包底部残留原木桌的阴影）。通过重组微调，系统无需从零训练每个物体的基础几何，只需集中算力消除跨场景拼接痕迹并适配新环境上下文。
+这里有一个值得深思的工程问题：**既然局部 NeRF 组件是现成的，为什么摆进新布局后不能直接零成本渲染，还非要做几千步重组微调（Finetuning）？**
 
-## 7. 消融实验与失败模式深度剖析
+原因在于**上下文残留与光照重配**。当“法棍”或“棋盘”在原来的源场景里联合训练时，全局 SDS 梯度其实也流过了局部 NeRF，导致局部物体的底部边缘往往残留着旧桌面的阴影颜色或接触面几何；而且进入新场景后，它旁边的邻居变了（比如棋盘旁边突然多了一盏发光的台灯），遮挡关系和全局相机视野占比也全变了。如果不做重组微调，直接拼出来的画面就会带着旧场景的阴影残渣。而通过重组微调，系统省去了从随机噪声捏出棋盘和台灯几何的最漫长过程，只需集中算力洗掉旧场景的边缘残留、把新邻居之间的光影和接触密度重新校准对齐即可。
 
-### 7.1 核心模块与多视角一致性消融（Fig. 8–9）
+---
 
-Fig. 8 在卧室组合场景（bed、nightstand、table lamp）上对比了四组消融设置：去掉全局校准模块（without global calibration）、去掉全局文本损失（without global text loss）、仅校准颜色（color-based design）以及完整密度校准方案（density-based design）。Fig. 9 则进一步给出了多视角旋转渲染结果。
+## 6. 消融实验与失败模式深度复盘
+
+### 6.1 全局校准、全局文本与多视角几何一致性验证
+
+如果把 CompoNeRF 的某个核心模块拆掉，画面会退化成什么样？Fig. 8 在卧室组合场景（床、床头柜、台灯）上给出了四组消融对比，Fig. 9 则展示了多视角旋转渲染结果。
 
 ![Fig. 8: global calibration、global text loss、color/density design 消融](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig08-ablation-bedroom.webp)
 
-*Source: Bai et al., arXiv:2303.13843v3, Fig. 8, CC BY 4.0.*
-
 ![Fig. 9: 多视角结果](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig09-multiview-results.webp)
 
-*Source: Bai et al., arXiv:2303.13843v3, Fig. 9, CC BY 4.0.*
+把这两张图对照着看，每个模块存在的必要性一清二楚：
+- **去掉全局校准器**（Without Global Calibration）：床、床头柜和台灯虽然各自待在盒子里，但床单纹理与周围地面毫无过渡，整体画面干瘪且缺乏统一的环境光感。
+- **去掉全局文本损失**（Without Global Text Loss）：每个局部物体只听自己子文本的话，虽然长出了床和柜子，但丢失了 `"bedroom"` 的整体氛围与家具之间的协调比例。
+- **只校准颜色**（Color-based Design）：床尾与地面的交界处出现了怪异的块状几何截断与阴影污染。
+- **完整密度校准方案**（Density-based Design）：不仅单视角下家具接触自然、光影柔和，而且在 Fig. 9 的连续环绕多视角下，依然稳稳保持住了三维空间结构的一致性。
 
-这两组对比清晰验证了各模块的必要性：移除 global calibration 后，床、床头柜与台灯虽然各自存在，但彼此之间缺乏统一的材质过渡与空间联系；移除 global text loss 后，局部物体虽保住了个体形态，却丢失了卧室整体的环境氛围与相对关系；color-based 方案在床体边缘和阴影接触区出现了明显几何畸变；唯有完整的 density-based 方案在多个环绕视角下都能保持稳定的空间结构与整体协调感。
+### 6.2 梯度有效分辨率、重组微调步数与校准网络容量权衡
 
-### 7.2 尺度分辨率、微调步数与 Global MLP 容量（Fig. 10–12）
-
-在工程调优层面，论文通过 Fig. 10、Fig. 11 和 Fig. 12 揭示了三个关键超参数的影响规律：
+在真正动手调参时，有三个决定成败的工程旋钮分别体现在 Fig. 10、Fig. 11 与 Fig. 12 中：
 
 ![Fig. 10: global frame scaling / guidance resolution](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig10-guidance-resolution.webp)
 
-*Source: Bai et al., arXiv:2303.13843v3, Fig. 10, CC BY 4.0.*
-
-- **全局缩放尺度与有效梯度分辨率（Fig. 10）**：如果某个对象在全局渲染图中占据的像素过少，它从 global SDS 获得的梯度信号就会极其微弱。Fig. 10 将全局 frame scale 从 0.3 逐步增大到 0.7，第二行可视化了光线命中局部包围盒的区域（rays hit local frames）。适当放大全局尺度能让局部物体占据更多像素、接收更充分的扩散先验梯度，但过大也会牺牲场景边缘的视野覆盖。
+1. **全局缩放尺度与像素梯度饥饿**（Fig. 10）：在多物体大场景里，如果相机拉得太远（例如全局缩放尺度 Scale = 0.3），像远处的金字塔或小摆件在全局渲染图里只占寥寥十几个像素（看第二行可视化的光线命中区域）。这么小的像素面积投射到 Stable Diffusion 的 $64\times 64$ 潜在特征图上，连两个格子都占不满，拿到的 SDS 梯度微乎其微，导致物体长成一团模糊的泥巴。把全局尺度放大到 0.5～0.7，让物体充分填满视野，几何细节立刻清晰起来；但若放得过大，相机又会频繁截断场景边缘，破坏全局布局感。
 
 ![Fig. 11: recomposition finetuning steps](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig11-recomposition-finetuning.webp)
 
-*Source: Bai et al., arXiv:2303.13843v3, Fig. 11, CC BY 4.0.*
-
-- **重组微调的迭代步数权衡（Fig. 11）**：从 `init` 到 `iter 1000`、`2000` 直至 `5000`，棋盘、酒杯、台灯与桌面之间的光影和接触关系逐渐融合。这呈现出典型的训练步数权衡：步数太少时物体间割裂感强、源场景残留伪影多；步数过多时虽然全局一致性更好，但在罕见组合下全局梯度可能过度改写甚至退化局部对象的原有几何，实践中往往需要结合早停（early stopping）策略。
+2. **重组微调步数的“欠消化”与“过拟合”权衡**（Fig. 11）：看跨场景重组从 `Init` 到 `Iter 1000`、`2000` 直至 `5000` 的演化过程。在刚拼进去的 `Init` 阶段，酒杯、台灯和棋盘只是生硬地摆在木桌上；随着微调推进到 2000～5000 步，木桌纹理自然延伸并与上方物体产生了协调的阴影交互。但这同样是一把双刃剑：如果对一个现实中罕见的怪异组合微调太久，强势的全局 SDS 梯度反而会逐渐腐蚀掉局部组件原本干净的几何轮廓，实践中必须配合早停（Early Stopping）机制。
 
 ![Fig. 12: MLP learning capability 消融](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig12-mlp-learning-capability.webp)
 
-*Source: Bai et al., arXiv:2303.13843v3, Fig. 12, CC BY 4.0.*
+3. **全局校准 MLP 的容量边界**（Fig. 12）：对比 4 层与 6 层 Global MLP 可以看到，面对棋盘格纹理加多枚棋子这类高频复杂交互时，4 层浅网络表达能力捉襟见肘，棋盘表面糊成一片；升级到 6 层后才稳稳撑住局部身份与全局纹理。但全局校准器绝不能无限制加深变宽——它本质上只是一个残差修正层，一旦容量大到足以喧宾夺主，它就会绕过局部 NeRF 直接在全局空间里乱长几何，彻底摧毁组件解耦性。
 
-- **Global MLP 的网络容量（Fig. 12）**：对比 4 层与 6 层 Global MLP 可以看到，当场景包含棋盘格纹理与多个棋子等复杂交互时，过浅的 MLP 表达能力不足，难以同时兼顾局部身份保持与全局环境纹理校准；但容量也不宜无限扩张，否则残差网络容易越界替代局部 NeRF 的角色並增加过拟合风险。
+### 6.3 Janus 多正面畸变与包围盒悬空漂浮的物理边界
 
-### 7.3 多正面问题（Multi-face）与漂浮物体（Fig. 13–14）
-
-Fig. 13 与 Fig. 14 坦诚展示了基于 2D 扩散先验与手工 3D box 布局的两类结构性短板。
+CompoNeRF 并没有掩饰优化式 Text-to-3D 的结构性软肋，Fig. 13 与 Fig. 14 坦诚展示了两类最典型的翻车现场：
 
 ![Fig. 13: multi-face failure 与 mesh guidance](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig13-multiface-mesh-guidance.webp)
 
-*Source: Bai et al., arXiv:2303.13843v3, Fig. 13, CC BY 4.0.*
-
-Fig. 13 讨论了 text-to-3D 领域臭名昭著的 **Multi-face（Janus 多正面）问题**：由于 2D 扩散模型缺乏原生 3D 多视角几何约束，SDS 在不同相机角度下都倾向于驱动 NeRF 渲染出物体最具代表性的“正面”特征，导致物体在环绕视角下长出多个正面或几何坍塌。图右侧展示了引入粗略网格引导（mesh guidance）后可以显著抑制多正面现象，这说明当任务对几何拓扑有严格要求时，仅靠 3D box 边界是不够的，需要引入更强的几何先验或多视角扩散模型。
+- **Janus 多正面问题与网格先验拯救**（Fig. 13）：由于底层的 Stable Diffusion v1-4 只是个单视角 2D 模型，缺乏原生 3D 多视角几何概念，当相机转到汽车侧面或背面时，SDS 依然倾向于逼迫 NeRF 渲染出最具辨识度的“汽车前脸”或对称车头，导致一辆车长出好几个车头（图左）。图右侧展示了一个直接的补救手段：如果在局部包围盒内引入粗糙的三维网格引导（Mesh Guidance）锁死拓扑朝向，多正面畸变就能被有效扼杀——代价则是牺牲了纯文本无中生有的自由度。
 
 ![Fig. 14: layout editing 与 floating object](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig14-layout-floating-objects.webp)
 
-*Source: Bai et al., arXiv:2303.13843v3, Fig. 14, CC BY 4.0.*
+- **包围盒间隙引发的悬空漂浮物**（Fig. 14）：CompoNeRF 的 3D Box 布局只是一个空间采样窗口，背后既没有刚体碰撞检测，也没有重力下沉仿真。看图左侧：如果用户在摆放包围盒时，让上方物体的盒子与下方基座的盒子之间留出了一道空隙（或者接触面太小），由于包围盒外的空白区域根本不参与局部查询，全局校准器也无法凭空跨过真空地带捏造出支撑结构，最终渲染出来就是物体尴尬地悬浮在半空中！只有像图右侧那样，在编辑布局时人为让上下两个包围盒产生适度交叠（Overlap），增加跨盒子的光线采样交互，才能让两个物体真正长在一起。
 
-Fig. 14 则揭示了 **漂浮物体（floating objects）现象**：CompoNeRF 的 3D box 布局只是空间采样窗口，并不包含重力、碰撞检测或刚体支撑仿真。如果给定的两个包围盒在空间上互不接触或间隙过大（图左），光线求交与全局校准无法凭空捏造出物理支撑结构，就会导致上方物体悬空漂浮；只有人工调整布局使相关包围盒产生合理接触或轻微重叠（图右，增加跨盒光线交互），才能消除漂浮感。
+### 6.4 局部身份保持与全局语境融合的权重拉锯战
 
-### 7.4 失败案例与局部/全局权重张力（Fig. 15–16）
-
-Fig. 15 与 Fig. 16 进一步剖析了复杂语义组合下的失败模式以及局部/全局损失权重失衡的后果。
+最后，Fig. 15、Fig. 16 与跨页大图 Fig. 17 展示了极端语义组合下的失败案例、局部/全局权重的拉锯张力以及全量多物体分解效果。
 
 ![Fig. 15: scene reconstruction / scene editing failure cases](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig15-failure-cases.webp)
 
-*Source: Bai et al., arXiv:2303.13843v3, Fig. 15, CC BY 4.0.*
-
 ![Fig. 16: 失败案例和局部 NeRF 组件](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig16-failure-color-labeled-nerfs.webp)
 
-*Source: Bai et al., arXiv:2303.13843v3, Fig. 16, CC BY 4.0.*
+![Fig. 17: 更多多物体结果](/images/blog/componerf-text-guided-compositional-nerf/componerf-fig17-more-qualitative-results.webp)
 
-在 Fig. 15 左侧的电脑桌场景（computer station）中，显示器、键盘、鼠标等细碎附件出现了缺失或几何扭曲；右侧将宇航员重组到床上的反常语义组合中，连底层的 Stable Diffusion 2D 先验自身都难以生成自然合理的图像，导致 3D 优化随之失败。Fig. 16 则直观展现了 $\alpha_l$ 与 $\alpha_g$ 之间的核心张力：
+这三张图把整套方法最底层的训练张力摆在了台面上：
 
 $$
-\text{local identity } (\alpha_l)
-\quad \leftrightarrow \quad
-\text{global coherence } (\alpha_g)
+\text{局部个体身份保持（Local Identity, }\alpha_l\text{）}
+\quad \Longleftrightarrow \quad
+\text{全局场景语境融合（Global Coherence, }\alpha_g\text{）}
 $$
 
-当局部权重 $\alpha_l$ 占主导时，各个局部 NeRF 组件虽能保住自身形状，但组合场景支离破碎；当全局权重 $\alpha_g$ 过强时，整体画面虽连贯，但局部包围盒内部会被迫生长出属于背景或其他物体的冗余几何，使解耦彻底失效。
+- **当 2D 扩散先验自身失灵时**（Fig. 15）：在左侧包含显示器、主机、键盘、鼠标等细碎部件的电脑桌场景中，许多小部件在全局视图里分辨率过低而发育不全；而在右侧“把宇航员重组到卧室床上”的反常组合里，连 Stable Diffusion 自己在生成 2D 图片时都会把宇航员和床单画崩，依赖它提供梯度的 3D 优化自然也独木难支。
+- **当 $\alpha_l$ 与 $\alpha_g$ 比例失调时**（Fig. 16）：对比不同权重配比下的局部颜色标签组件图可以看到，如果局部权重 $\alpha_l$ 太弱、全局权重 $\alpha_g$ 太强，全局长文本就会强行入侵局部包围盒，逼着某个局部 NeRF 在自己的盒子里把周围的桌面甚至邻居物体也长出来，导致拆解出来的局部组件拖泥带水；反之若 $\alpha_l$ 独大，各个组件虽然干净独立，合在一起却格格不入。
 
-## 8. 工程复现清单与生产可用性审视
+---
 
-### 8.1 核心模块复现核对清单
+## 7. 横向技术坐标与总结：在 3D 场景生成版图中的位置
 
-由于官方仓库目前尚未释放源码，若要从零实现或基于开源框架（如 threestudio / nerfstudio）复现一套教学级或研究级 CompoNeRF，必须严格对齐以下核心模块的数据契约：
+如果把 CompoNeRF 放到本站精读过的整个三维场景生成与建模版图中做横向对比，可以非常清晰地看清技术演进的脉络与不同路线的取舍：
 
-| 模块层级 | 复现核对要点 |
-| --- | --- |
-| **输入与布局定义** | 明确全局 prompt $T$ 到对象 subtexts $\{T_{l,j}\}$ 的拆分规则；定义世界坐标系 $[-1,1]^3$ 下的 axis-aligned 3D boxes $\{B_j\}$（中心与三轴缩放）。 |
-| **光线求交与坐标变换** | 实现批量全局光线与多个 3D box 的 AABB 求交算法；准确将交集区间内的全局采样点 $\mathbf{x}_g$ 通过 $\mathcal{T}_{g\to l}^{(j)}$ 变换到局部归一化空间。 |
-| **双分支场查询与校准** | 为每个对象实例化独立的 Instant-NGP 哈希网格 NeRF；局部渲染直接积分 $(\sigma_l,\mathbf{C}_l)$，全局渲染必须经过 4/6 层 Global MLP 计算密度残差（Eq. 4）与颜色残差（Eq. 5），并保留 color-only（Eq. 6）消融开关。 |
-| **全局深度重排与体渲染** | 将同一条全局光线上命中不同 box 的采样点按全局深度 $t$ 严格升序排列，计算跨对象累计透射率 $T_{g,k}$ 后完成体渲染积分（Eq. 2）。 |
-| **双层 SDS 与正则训练** | 接入 Stable Diffusion v1-4 与 SJC perturb-and-average 梯度计算；对齐 $\alpha_g=100,\alpha_l=100,\beta=5\times 10^{-4}$ 权重、半球面相机采样、FOV 动态抖动（$40^\circ\sim 70^\circ$）与方向提示词。 |
-| **组件缓存与重组评估** | 支持将训练完毕的局部 NeRF 参数独立序列化保存；支持加载多个缓存组件到新 box 布局中，并在监控多视角 CLIP Score 与局部/全局视图的同时执行重组微调。 |
+| 系统 / 论文 | 核心任务与输入 | 底层三维表示 | 组合与优化机制 | 相比 CompoNeRF 的核心取舍 |
+| --- | --- | --- | --- | --- |
+| **CompoNeRF** | 文本 + 3D Box 布局生成可重组多物体场景 | 多个局部 Instant-NGP + 全局校准 MLP | 跨盒光线求交深度重排 + 密度残差校准 + 局部/全局双层 SDS | 开创了局部 NeRF 组件拆解与重组，但受限于早期 SD v1-4 SDS 优化耗时久、几何表面偏模糊 |
+| **[Blended-NeRF](/blog/blended-nerf-zero-shot-object-generation-blending-paper-reading/)** | 在已训练好的现有 NeRF 场景中做局部 ROI 编辑 | 冻结的原场景 NeRF + 克隆的可训练生成分支 | 采样点级距离平滑算子 + 激活函数内/外双模式密度混合 + CLIP/BLIP 引导 | 专注于已有隐式场的局部“非破坏性修图”（插入/替换/改材质），而非从布局搭建全新的多物体场景 |
+| **[Layout2Scene](/blog/layout2scene-semantic-layout-guided-scene-generation-paper-reading/)** | 3D 语义布局 + 场景提示词生成室内场景 | 前景对象 2D Gaussians + 背景房间多边形（Polygons） | 先用语义几何扩散（GSDS）修法线/深度，再用三路条件扩散（ISD）刷外观 | 将表示升级为 30 FPS 实时渲染的 2DGS + 显式墙面多边形，并拆分为先几何后外观两阶段，大幅改善了房间结构规整度 |
+| **CasLayout** | 从户型图与关系约束自动生成 3D 室内布局 | 家具三维有向包围盒（3D OBB）参数 | 四阶段级联扩散 + 关系潜在空间建模 | 专门解决 CompoNeRF 留白的“上游 3D 包围盒布局怎么自动生成”，可直接作为 CompoNeRF 的前置规划器 |
+| **Imaginarium / [Diorama](/blog/diorama-zero-shot-single-view-3d-scene-modeling-paper-reading/) / [SUFLECA](/blog/sufleca-cad-to-image-alignment-feature-learning-paper-reading/)** | 单图或文本驱动构建工业级可编辑 3D 场景 | 现成干净的离散三维 CAD / Mesh 资产库 | 视觉解析 + 多模态 CAD 检索 + 9-DoF 几何配准 + 防穿模物理优化 | 放弃从零蒸馏隐式辐射场，直接检索并摆放高质量现成网格资产，拓扑干净且秒级可用，但受限于资产库覆盖度 |
+| **[TRELLIS.2](/blog/trellis2-native-structured-latents-3d-generation-paper-reading/) / AssetGen** | 单物体高保真 3D 网格与 PBR 材质生成 | 结构化稀疏体素潜在空间（O-Voxel）/ SDF | 原生三维流匹配（Flow Matching）前馈生成 | 用秒级前馈生成带完整 PBR 贴图的高清网格，彻底取代了耗时数十分钟的单物体 SDS 迭代优化 |
 
-在调试过程中，最常见的工程误区是只保存最终合成视图 $\hat{\mathbf{X}}_g$——一旦生成质量不佳，根本无法判断是某个局部 NeRF 自身没收敛，还是全局校准网络污染了局部密度。因此必须像 Fig. 6 和 Fig. 16 那样，在每个日志周期同步渲染并保存各个局部组件的独立视图与颜色标签图。
+回望 CompoNeRF 的整套设计，尽管早期基于单视角 2D 扩散先验的 SDS 优化在几何锐利度、优化耗时和物理支撑约束上有着明显的时代局限，但它所提炼出的核心架构思想——**“用显式三维空间槽位隔离个体参数、用局部与全局双层语义信号分治身份与语境、在三维光线积分层校准接触密度、将一次性场景拆解为可复用三维组件”**——依然是今天构建一切组合式 3D Gaussian Splatting 场景生成与交互式三维编辑系统的经典设计范式。
 
-### 8.2 生产环境落地的六大局限与演进方向
+## 参考资料
 
-站在工业级 3D 内容生产的视角审视，CompoNeRF 的能力边界十分明确：
-
-1. **单场景优化耗时过长**：每个场景需要 5,000 至 8,000 步迭代（单卡 RTX 3090 耗时数十分钟至数小时），无法直接用于需要实时反馈的交互式设计软件。
-2. **输出表示非标准工业资产**：隐式 NeRF 辐射场不便直接进入下游游戏或影视引擎管线（缺乏干净的拓扑网格、UV 展开、PBR 材质贴图与独立碰撞体）。
-3. **缺乏原生物理与几何硬约束**：包围盒仅提供空间范围，不含重力、刚体支撑与防穿模约束，布局不当极易产生漂浮物或引发多正面畸变。
-4. **上游文本与布局解析依赖人工**：框架默认子文本与 3D box 布局已由用户给定，未解决从复杂自然语言自动推理空间布局的难题。
-
-正因如此，如果要基于 CompoNeRF 的组合思想做现代技术栈升级，最自然的演进路线是将上游接入 LLM/VLM 或扩散布局模型（如 CasLayout）以自动生成 3D box 与子文本，将底层的单视角 SD v1-4 替换为多视角一致扩散先验（如 MVDream）并结合深度/法线约束消除多正面问题，同时将三维表示从 Instant-NGP 迁移至渲染与编辑效率高出数个数量级的 **3D Gaussian Splatting（3DGS）** 或显式网格微调管线。
-
-### 8.3 论文推荐阅读路径
-
-如果希望快速抓牢原论文脉络，建议按以下顺序阅读：先看 Abstract、Fig. 1 与 Fig. 2，锁定 guidance collapse 的问题诊断与 compose/decompose/recompose 的任务目标；接着精读 Sec. 3 Method、Fig. 3–5、Eq. 1–6 以及附录 Algorithm 1，将跨坐标系求交、深度重排和密度残差校准的数据流彻底对齐；随后结合 Fig. 6–12 与 Table 2 理解多物体定性优势、重组微调动态与各模块消融贡献；最后对照 Fig. 13–16 的多正面、漂浮物体与权重失衡案例，建立对优化式多物体 NeRF 边界的完整认知。
-
-## 9. 结论
-
-CompoNeRF 的长期研究价值在于它用清晰的实验和结构设计证明了一件事：**多物体 text-to-3D 绝不能只靠把提示词写长，然后指望单个全局 SDS 损失自动学会物体数量、属性绑定、空间布局与可编辑结构。**
-
-通过引入可编辑的 3D box 布局作为空间控制句柄、为每个对象分配受子文本监督的独立局部 NeRF、利用全局提示词维持场景整体语境，并在三维体渲染层设计基于密度的残差校准模块，CompoNeRF 成功打通了多物体场景的合成（compose）、拆解（decompose）与跨场景重组（recompose）闭环。尽管它依然背负着早期 SDS 优化方法耗时高、几何细节偏软与缺乏物理引擎约束的历史局限，但它为后续可组合、可编辑的 3D 场景生成（无论是基于 NeRF 还是 3D Gaussian Splatting）提供了一个极具启发性的结构化解耦范本。
-
-## References
-
-- Haotian Bai, Yuanhuiyi Lyu, Lutao Jiang, Sijia Li, Haonan Lu, Xiaodong Lin, Lin Wang. [CompoNeRF: Text-guided Multi-object Compositional NeRF with Editable 3D Scene Layout](https://arxiv.org/abs/2303.13843v3). arXiv:2303.13843v3, 2023.
-- Paper HTML v3: [https://arxiv.org/html/2303.13843v3](https://arxiv.org/html/2303.13843v3)
-- Paper PDF v3: [https://arxiv.org/pdf/2303.13843v3](https://arxiv.org/pdf/2303.13843v3)
-- Project page: [https://vlislab22.github.io/componerf/](https://vlislab22.github.io/componerf/)
-- Official GitHub: [https://github.com/hbai98/Componerf](https://github.com/hbai98/Componerf)
-- Ben Poole et al. DreamFusion: Text-to-3D using 2D Diffusion.
-- Haochen Wang et al. Score Jacobian Chaining: Lifting Pretrained 2D Diffusion Models for 3D Generation.
-- Gal Metzer et al. Latent-NeRF for Shape-Guided Generation of 3D Shapes and Textures.
-- Chen-Hsuan Lin et al. Magic3D: High-Resolution Text-to-3D Content Creation.
-- Yichun Shi et al. MVDream: Multi-view Diffusion for 3D Generation.
-- Holger Caesar et al. Text2Room and related text-guided scene generation work.
+- Haotian Bai, Yuanhuiyi Lyu, Lutao Jiang, Sijia Li, Haonan Lu, Xiaodong Lin, Lin Wang, [CompoNeRF: Text-guided Multi-object Compositional NeRF with Editable 3D Scene Layout](https://arxiv.org/abs/2303.13843v3), arXiv:2303.13843v3.
+- 官方项目页：[vlislab22.github.io/componerf](https://vlislab22.github.io/componerf/)；官方仓库：[hbai98/Componerf](https://github.com/hbai98/Componerf).
+- 相关核心文献：[DreamFusion (ICLR 2023)](https://arxiv.org/abs/2209.14988)、[SJC (CVPR 2023)](https://arxiv.org/abs/2212.00774)、[Latent-NeRF (CVPR 2023)](https://arxiv.org/abs/2211.07600)、[Magic3D (CVPR 2023)](https://arxiv.org/abs/2211.10440)、[Set-the-Scene (ICCV 2023)](https://arxiv.org/abs/2303.13450)、[Text2Room (ICCV 2023)](https://arxiv.org/abs/2303.11989).

@@ -14,150 +14,170 @@ tags:
 draft: false
 ---
 
-在三维内容生成领域，模型参数量的扩张往往受制于底层三维表示的保真度上限：当隐式场（SDF/Occupancy）强行将开放曲面封闭化、或将 PBR 材质拆解为事后多视角贴图烘焙时，生成主干再庞大也难以直接产出结构完整且带物理材质的原生三维资产。Jianfeng Xiang、Xiaoxue Chen、Sicheng Xu、Ruicheng Wang、Zelong Lv、Yu Deng、Hongyuan Zhu、Yue Dong、Hao Zhao、Nicholas Jing Yuan 与 Jiaolong Yang 在技术报告 **Native and Compact Structured Latents for 3D Generation** 中提出的 **TRELLIS.2**，选择从底层三维表示切入重构整套生成栈。
+在二维图像生成领域，无论是扩散模型还是流匹配（Flow Matching），都可以安心地建立在规则的二维像素网格和 VAE Patch Token 之上——因为任何一张自然图像，在拓扑上都只是一个严丝合缝的矩形平面。
 
-该工作提出了一种无需连续场假设（field-free）的稀疏体素结构 **O-Voxel**，在同一套稀疏空间坐标中联合编码任意拓扑几何与 PBR 材质属性；随后利用全稀疏卷积构建的 **Sparse Compression VAE（SC-VAE）** 将高分辨率资产压缩至紧凑的结构化潜空间（SLat）；最终在该潜空间上训练总计约 4B 参数的三阶段 Flow Matching 生成模型，依次生成稀疏结构骨架、几何潜变量与材质潜变量。本文将沿着“原生表示 → 稀疏压缩 → 流匹配生成 → 算子系统 → 实验验证 → 源码实现”的脉络展开精读，并结合官方开源仓库 `microsoft/TRELLIS.2` 进行静态代码对照（本文聚焦论文与源码架构解析，不涉及本地实机训练或推理复现）。
+然而一旦跨入三维世界，艺术家创作的真实三维资产会瞬间击穿这种规则假设：一片植物叶子是没有厚度的**开放曲面**（Open Surface），一套锁子甲包含大量**非流形边**（Non-manifold Edges）与细密孔洞，一台涡轮发动机内部嵌套着数十层看不见的**内部叶片结构**，而角色身上的玻璃护目镜与金属胸甲则同时依赖基础色（Base Color）、金属度（Metallic）、粗糙度（Roughness）和不透明度（Opacity）四套 **PBR 物理材质通道**。如果底层三维表示强行要求“所有网格必须先转成封闭水密（Watertight）的符号距离场 SDF”，或者“先生成白模几何、事后再渲染多视角图片往表面贴图”，那么在训练数据进入生成模型之前，树叶就已经被吹成了鼓包、发动机内部结构就已经被封死、金属高光与阴影也早就糊在了贴图接缝处。表示层一旦失真，后端堆砌再大参数量的 Transformer 也无力回天。
 
-## 1. 问题背景与系统概览
+面对这一根本矛盾，微软亚洲研究院与清华大学等团队在 **[Native and Compact Structured Latents for 3D Generation](https://arxiv.org/abs/2512.14692)**（[PDF](https://arxiv.org/pdf/2512.14692)、[项目主页](https://microsoft.github.io/TRELLIS.2/)、[官方代码 microsoft/TRELLIS.2](https://github.com/microsoft/TRELLIS.2)、[TRELLIS.2-4B 模型权重](https://huggingface.co/microsoft/TRELLIS.2-4B)）中给出了 **TRELLIS.2** 的系统解法。它能够在单张 H100 上以约 3 秒（$512^3$）、17 秒（$1024^3$）与 60 秒（$1536^3$）的速度，直接生成兼具复杂开放拓扑、内部嵌套结构与四通道 PBR 材质的高精度三维资产。
 
-### 1.1 论文信息与核心设计哲学
+透过 4B 参数的表象看本质，TRELLIS.2 的突破建立在**四条环环相扣的设计哲学**之上：
 
-| 项目 | 内容 |
-| --- | --- |
-| 论文标题 | Native and Compact Structured Latents for 3D Generation |
-| 项目名称 | TRELLIS.2 |
-| 预印本链接 | [arXiv:2512.14692v1](https://arxiv.org/abs/2512.14692)（[PDF](https://arxiv.org/pdf/2512.14692)，共 24 页） |
-| 作者团队 | Jianfeng Xiang 等（Microsoft Research 等） |
-| 官方资源 | [项目主页](https://microsoft.github.io/TRELLIS.2/) / [GitHub: microsoft/TRELLIS.2](https://github.com/microsoft/TRELLIS.2) / [HF 权重: TRELLIS.2-4B](https://huggingface.co/microsoft/TRELLIS.2-4B) |
-| 核心关键词 | O-Voxel, Sparse Compression VAE, PBR Materials, Flow Matching, Sparse Convolution |
+1. **抛弃水密连续场假设，用“无场（Field-Free）”稀疏体素原生承载任意拓扑与 PBR 材质**：不再把三维网格塞进连续标量场（SDF/Occupancy）的水平集里，而是提出 **O-Voxel**（Omni-Voxel）——只在表面穿过的有效稀疏体素内，用局部对偶顶点、边相交布尔标志和四边形切分权重直接编码任意开放/非流形表面，并在完全相同的空间体素坐标上绑定四通道 PBR 属性。
+2. **用确定性代数求解替代神经场拟合，实现网格与 O-Voxel 的瞬时双向互转**：从网格转 O-Voxel 不跑任何梯度下降，仅靠求解包含表面平面与开放边界约束的二次误差函数（QEF），单核 CPU 耗时不到 0.2 秒；从 O-Voxel 还原网格也只需连接有效相交边上的对偶顶点，GPU 上不到 10 毫秒即可无损回到显式三角网格。
+3. **先用 16 倍全稀疏卷积 VAE 极限压缩 Token 数，再在紧凑潜空间上扩展 4B 流匹配模型**：$1024^3$ 分辨率的表面体素多达数十万个，直接喂给 Transformer 会让自注意力彻底爆显存。作者设计了约 800M 参数的全稀疏卷积 **SC-VAE**，通过 16 倍空间下采样将完整资产压缩为仅约 **9.6K 个结构化潜空间 Token**（SLat），随后按“稀疏骨架 $\rightarrow$ 几何潜变量 $\rightarrow$ 材质潜变量”的物理因果顺序串联三个 1.3B 参数的 DiT 流模型。
+4. **模型架构与底层稀疏算子协同设计**（Hardware-Aware Co-Design）：全稀疏 VAE 的吞吐量受制于不规则体素邻域的访存碎片。作者为此专门重写了基于掩码隐式 GEMM 与格雷码空间排序的 **FlexGEMM** 算子后端，从底层 CUDA 核函数层面扫清了高分辨率稀疏卷积的算力障碍。
 
-TRELLIS.2 的核心突破在于打通了“原生资产双向转换 — 高倍率稀疏潜空间压缩 — 大规模流匹配生成”的闭环。传统管线常在几何拓扑与材质属性上做出妥协，而 TRELLIS.2 的设计将表示、压缩与生成紧密耦合：O-Voxel 摆脱了水密（watertight）流形假设与连续标量场水平集（level set）提取，直接在稀疏体素上记录局部对偶顶点（dual vertex）、边相交标志与四边形切分权重，同时在同源体素上存储 base color、metallic、roughness 与 opacity 四类 PBR 通道。在此基础上，SC-VAE 将高分辨率稀疏体素压缩为有限数量的稀疏 token，使得 4B 规模的生成模型得以直接学习接近原生三维资产的联合分布。
+下面我们就顺着这四条设计哲学，结合论文推导与开源仓库代码，由浅入深拆解整套系统的来龙去脉。
+
+---
+
+## 1. 为什么三维生成长期卡在表示层？系统边界与路线权衡
+
+### 1.1 主流三维表示的工程死结
+
+要理解 TRELLIS.2 为什么要推翻重做底层表示，只需看看现有三维生成路线在面对“复杂拓扑 + 物理材质 + 潜空间紧凑度”时的两难处境：
+
+| 表示形式 | 代表工作与常见做法 | 核心优势 | 为什么难以支撑原生高保真资产生成？ |
+| --- | --- | --- | --- |
+| **显式三角网格**（Mesh） | PolyGen、MeshGPT 等自回归网格生成 | 渲染管线原生通用，能直接表达锐利边缘与薄片 | 顶点与面片连接关系高度离散，Token 序列随面数剧增，极难扩展到百万面级高细节资产 |
+| **连续隐式场**（SDF / Occupancy） | 3DShape2VecSet、Michelangelo、Craftsman、TripoSG | 连续函数易于神经网络回归，表面平滑 | 依赖内外分明的“水密流形”假设；处理单层薄布料、开放植物叶片或内部镂空结构时必须强行加厚或封孔，导致拓扑严重失真 |
+| **三平面 / 3DGS**（Triplane / Gaussian） | LRM、TripoSR、LGM、前代 TRELLIS 辐射场分支 | 前馈速度极快，新视角合成图像指标高 | 缺乏干净的显式表面拓扑，转出标准网格时容易出现阶梯伪影或表面气泡，且多视角烘焙贴图极易产生接缝与高光污染 |
+| **高密稀疏等值面**（Sparse Iso-surface） | SparseFlex、FlexiCubes 等 | 局部几何还原度高，支持开放结构改写 | 空间压缩率不足——例如 SparseFlex 在 $1024^3$ 下仍需多达 **225K 个 Token**，令后端生成式 Transformer 难以承受 |
+
+可以看到，如果表示层本身要把薄树叶加厚成气球、把纹理材质推迟到生成后再用多视图扩散往模型上“刷漆”，那么生成模型从第一天起学到的就是有损的次生分布。
 
 ![Fig. 1: TRELLIS.2 teaser](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig01-teaser.webp)
 
-*Source: Xiang et al., arXiv:2512.14692v1, Fig. 1, arXiv non-exclusive distribution license.*
+看看 Fig. 1 展示的三组核心能力对比：
+- **左图**（$1536^3$ 涡轮引擎重建）：放大观察叶片边缘、镂空孔洞与层层嵌套的内部转子结构，O-Voxel 在多级分辨率下均没有出现隐式场常见的孔洞粘连或薄片断裂。
+- **中图**（带原生 PBR 通道的机械角色生成）：模型直接输出了与几何严密对齐的 Alpha（透明度）、Roughness（粗糙度）、Metallic（金属度）与 Base Color（基础色）四个物理通道，连玻璃面罩的半透明折射与金属装甲的高光反射都是原生潜变量解码的结果。
+- **右图**（Token 数量 vs. 重建质量曲线）：横轴是每个三维资产占用的潜变量 Token 数量，纵轴是表面重建质量。TRELLIS.2（红线）位于左上角帕累托最优区——在同等甚至更少的 Token 预算下，重建保真度远超 Dora、Direct3D-S2、SparseFlex 与前代 TRELLIS。
 
-Fig. 1 浓缩展示了这套架构的三方面特性。左侧为 $1536^3$ 高分辨率涡轮引擎资产的重建效果，包含完整渲染、法线图与多级分辨率细节预览，直观体现了 O-Voxel 对薄片、孔洞、锐利边缘及复杂内部结构的保留能力。中间展示了复杂机械角色的生成结果及其对应的 alpha、roughness、metallic 和 base color 通道，这些 PBR 属性均由潜空间直接解码产出。右侧对比了潜空间的紧凑度（横轴为 token 数，纵轴为重建指标），由于三维生成的计算瓶颈往往取决于每个资产占用的潜变量 token 数量与特征维度，TRELLIS.2 在更少 token 预算下实现了更高的重建保真度。在运行效率上，官方 README 披露 H100 单卡生成 $512^3$、$1024^3$ 与 $1536^3$ 资产分别约需 3 秒、17 秒与 60 秒（论文实验表格则另行报告了 A100 上的解码耗时，评估硬件边界时需注意区分）。
-
-### 1.2 为什么三维生成长期卡在表示层
-
-在二维图像生成中，规则像素网格与 patch token 提供了天然统一的特征载体；而真实三维资产涵盖开放曲面、非流形网格、薄片结构、嵌套内部结构以及带透光或金属反射的多材质组合，生成系统必须同时兼顾几何、拓扑、UV 纹理、PBR 属性与标准格式导出。下表汇总了主流三维表示的工程权衡：
-
-| 表示形式 | 核心优势 | 主要局限性 |
-| --- | --- | --- |
-| Mesh | 资产管线通用、光栅化渲染直接 | 拓扑离散，直接生成与压缩困难，难以直接进行稠密特征学习 |
-| SDF / Occupancy | 连续场表达清晰，适合隐式曲面重建 | 常依赖水密假设，处理开放曲面、薄壳与非流形结构不自然 |
-| Dense Voxel | 规则网格天然适配三维卷积 | 高分辨率下显存与算力呈立方级爆炸，表面与材质表达粗糙 |
-| Triplane / Neural Field | 空间压缩率高，适合神经渲染 | 转换为显式网格与标准 PBR 资产时依赖复杂的后处理流程 |
-| 3D Gaussian | 实时渲染极快，视角合成视觉质量高 | 缺乏显式表面拓扑，无法直接导出标准网格与 PBR 材质贴图 |
-| FlexiCubes / Dual Contouring | 网格重建质量高，锐利边缘还原较好 | 高分辨率下的潜变量 token 规模控制与材质联合建模仍有挑战 |
-| SLAT / Structured Latent | 面向生成模型友好，兼顾局部几何 | 需平衡极高空间压缩率与原生几何/材质信息的无损保留 |
-
-当表示层被迫先将三维资产转化为水密 SDF 场或延后进行多视角纹理烘焙时，首先会导致拓扑在预处理阶段被简化，开放布料、植物叶片、链甲与机械孔洞等细微结构在场化（field conversion）过程中永久丢失；其次，几何生成后再做多视图重投影或 UV 烘焙，极易引发跨视角接缝、高光烘焙污染以及透光/金属材质失真；最后，若缺乏高压缩率的结构化潜空间，直接在 $1024^3$ 或 $1536^3$ 空间建模会导致 token 序列长度突破 Transformer 的算力上限。
+### 1.2 双向解耦的系统流水线
 
 ![Fig. 2: TRELLIS.2 method overview](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig02-method-overview.webp)
 
-*Source: Xiang et al., arXiv:2512.14692v1, Fig. 2, arXiv non-exclusive distribution license.*
-
-为此，Fig. 2 定义了 TRELLIS.2 的双向系统边界：
+Fig. 2 勾勒出了整套系统的双向闭环：
 
 ```text
-3D assets <---> O-Voxel <---> Sparse Compression VAE <---> SLat <---> Generative Flow Models
+训练方向：原生 3D 资产 (Mesh + PBR) ──[瞬时代数转换]──> O-Voxel ──[SC-VAE 编码]──> 紧凑潜变量 SLat ──> 训练 Flow Models
+推理方向：条件输入图像 ──[三阶段 Flow 采样]──> 预测 SLat ──[SC-VAE 解码]──> 重建 O-Voxel ──[瞬时还原]──> 标准 GLB 资产
 ```
 
-在训练方向上，系统先将带纹理网格快速转换为 O-Voxel，经由 SC-VAE 编码为紧凑的结构化潜变量（SLat），供流匹配模型学习分布；在推理方向上，模型根据条件图像依次生成稀疏结构坐标、形状潜变量与材质潜变量，再经 SC-VAE 解码器与 O-Voxel 后处理还原为带 PBR 材质的网格（如 GLB 格式）。这种设计将“资产保真转换”、“空间特征压缩”与“概率分布生成”解耦为三个各司其职的模块。
+这条流水线最核心的架构智慧，在于**把“三维资产怎么无损表示（O-Voxel）”、“高分辨率体素怎么极限压缩（SC-VAE）”与“条件概率分布怎么学习（Flow Models）”彻底解耦成了三个独立模块**。第一层靠经典计算几何保证零拓扑损失，第二层靠全稀疏卷积解决上下文长度危机，第三层才动用 4B 参数的大规模 Transformer 学习生成先验。
 
-## 2. O-Voxel：兼顾几何拓扑与 PBR 材质的原生稀疏表示
+---
 
-### 2.1 数学定义、Flexible Dual Grid 与 PBR 属性布局
+## 2. 核心设计哲学一：用无场 O-Voxel 统一任意拓扑几何与体素级 PBR
 
-论文将 O-Voxel 定义为定义在有效稀疏体素（active voxels）上的特征元组集合：
+### 2.1 什么是 O-Voxel？为什么不用 SDF 而用 Flexible Dual Grid？
+
+传统的 Marching Cubes 或 Dual Contouring 算法，通常要求先在每个体素的格点（Grid Corners）上定义正负符号距离值（SDF），再寻找正负号跳变的过零点来提取表面。但这立刻带来一个死穴：**一张没有厚度的纸片或树叶穿过体素时，纸片两侧全都是“外部（正号）”，格点根本不发生正负号翻转，基于连续场的算法就会直接无视这片树叶！**
+
+为了彻底摆脱连续标量场（Field-Free），TRELLIS.2 将三维资产定义为仅在表面相交的 $L$ 个**有效稀疏体素**（Active Voxels）上的特征元组集合：
 
 $$
-f=\{(f_i^{\text{shape}}, f_i^{\text{mat}}, p_i)\}_{i=1}^{L},
+f=\{(f_i^{\text{shape}}, f_i^{\text{mat}}, p_i)\}_{i=1}^{L}, \qquad p_i \in \{0,1,\ldots,N-1\}^3.
 $$
 
-其中 $p_i \in \{0,1,\ldots,N-1\}^3$ 表示第 $i$ 个有效体素在 $N \times N \times N$ 空间网格中的离散坐标，$f_i^{\text{shape}}$ 与 $f_i^{\text{mat}}$ 分别记录该体素内的局部几何与局部材质特征，未与资产表面相交的空白体素不占用存储与计算。由于三维表面仅占据体素空间的稀疏壳层，这种定义在天然规避空体素冗余的同时，将几何与材质严格对齐在同一套空间索引下，使后续网络得以直接学习体素对齐的物理材质属性。
+其中 $p_i$ 是第 $i$ 个有效体素在 $N\times N\times N$ 空间中的整数坐标，空白体素完全不占内存。
 
 ![Fig. 3: O-Voxel conversion](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig03-ovoxel-conversion.webp)
 
-*Source: Xiang et al., arXiv:2512.14692v1, Fig. 3, arXiv non-exclusive distribution license.*
+看 Fig. 3 的上下两半部分，在同一个有效体素 $p_i$ 内，O-Voxel 并行存放着几何特征 $f_i^{\text{shape}}$ 与材质特征 $f_i^{\text{mat}}$：
 
-Fig. 3 展示了 O-Voxel 的内部结构拆解。在几何侧（上半部分），O-Voxel 采用 **Flexible Dual Grid** Formulation：它不在体素中心预测占用率或连续 SDF 值，而是在每个原始网格单元（primal cell）内维护一个对偶顶点（dual vertex），并通过相邻体素的有效相交边（active edge）连接局部曲面。其几何特征向量定义为：
-
-$$
-f^{\text{shape}} = (v, \delta, \gamma),
-$$
-
-其中 $v \in \mathbb{R}_{[0,1]}^3$ 为对偶顶点在当前体素内部的相对偏移坐标，$\delta \in \mathbb{B}^3$ 为沿三个坐标轴方向的网格边相交布尔标志，$\gamma \in \mathbb{R}_{>0}$ 则控制对偶四边形面片切分为两个三角形时的对角线分割权重（splitting weight）。
-
-在材质侧（下半部分），O-Voxel 直接在相同稀疏体素坐标上存储体素化的表面 PBR 属性：
+1. **几何侧采用灵活对偶网格**（Flexible Dual Grid）：
+   每个有效体素内部只放 **1 个对偶顶点**（Dual Vertex），其局部相对坐标为 $v \in [0,1]^3$；同时不再记录格点正负号，而是直接用 3 个布尔标志 $\delta \in \{0,1\}^3$ 记录**该体素沿 X、Y、Z 轴的三条正方向网格棱边（Primal Edges）是否被真实网格表面穿过**！只要某条棱边被表面穿过（$\delta=1$），围绕这条棱边的四个相邻体素里的 4 个对偶顶点就会连成一个空间四边形面片；最后再用一个正标量权重 $\gamma \in \mathbb{R}_{>0}$ 决定这个空间四边形应该沿着哪条对角线切分成两个三角形。因此，每个体素的几何特征仅由 7 个数值组成：
 
 $$
-f^{\text{mat}} = (c, m, r, \alpha),
+f^{\text{shape}} = (v, \delta, \gamma) \in \mathbb{R}_{[0,1]}^3 \times \mathbb{B}^3 \times \mathbb{R}_{>0}.
 $$
 
-其中 $c$ 为基础反照率颜色（base color），$m$ 为金属度（metallic），$r$ 为粗糙度（roughness），$\alpha$ 为不透明度（opacity）。通过共享稀疏坐标、分离特征布局（feature layout），O-Voxel 确保了体素化后的特征无需神经场迭代优化即可确定性地还原出显式网格与材质贴图。
+   想想这个设计有多巧妙：不管穿过体素的是封闭实心球、单层开放布料、还是三片面片交汇的非流形 T 型结构，只要它碰到了体素棱边，就会点亮 $\delta=1$ 并把相邻对偶顶点连成面片，从根源上消除了对“内外水密性”的依赖！
 
-### 2.2 网格与 O-Voxel 的双向几何转换（Algorithm 1 & 2）
+2. **材质侧采用同源体素对齐的 PBR 属性**（Volumetric PBR Attributes）：
+   在同一套稀疏体素坐标 $p_i$ 上，直接存放 6 维物理材质向量：
+
+$$
+f^{\text{mat}} = (c, m, r, \alpha) \in \mathbb{R}_{[0,1]}^3 \times \mathbb{R}_{[0,1]} \times \mathbb{R}_{[0,1]} \times \mathbb{R}_{[0,1]},
+$$
+
+   分别对应 RGB 基础色 $c$、金属度 $m$、粗糙度 $r$ 与不透明度 $\alpha$。因为几何特征与材质特征共享完全相同的稀疏体素索引 $p_i$，材质天生就长在几何表面上，绝不会出现多视图贴图投影错位的现象。
+
+### 2.2 网格 ⇄ O-Voxel 的毫秒级几何互转：把开放边界写进 QEF
+
+有了 $f^{\text{shape}}=(v,\delta,\gamma)$ 的定义，怎么把任意一个三角网格瞬间变成 O-Voxel，又怎么瞬间变回来？
 
 ![Algorithm 1: Mesh-to-O-Voxel conversion](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-algorithm01-mesh-to-ovoxel.webp)
 
-*Source: Xiang et al., arXiv:2512.14692v1, Algorithm 1, arXiv non-exclusive distribution license.*
+先看正向转换 **Mesh-to-O-Voxel**（Algorithm 1）。最关键的问题是：**每个体素里的对偶顶点 $v$ 到底该放在哪个位置，才能在还原时保住原网格的刀锋锐角和开放边缘？**
 
-从显式三角网格到 O-Voxel 几何特征的转换依赖二次误差度量（Quadratic Error Function, QEF）最小化，具体流程如 Algorithm 1 所示：
-1. **有效体素初始化**：检测网格三角形与体素网格边的相交关系，仅将表面穿过的局部体素标记为 active voxel 并分配数据结构。
-2. **表面平面 QEF 累积**：当三角形 $T$ 与体素边 $e$ 相交于点 $q$（对应法向为 $n$）时，算法为关联体素构建平面距离 QEF 约束，迫使对偶顶点尽可能落在局部切平面附近以保留锐利边角。
-3. **开放边界 QEF 累积**：针对非封闭曲面的开放边界边（open mesh edge），额外构建边界距离 QEF 约束。这一步专门解决了传统对偶轮廓法（Dual Contouring）在非水密网格开口处顶点漂移失稳的难题。
-4. **正则化与求解**：引入正则化 QEF 项防止病态矩阵或弱约束下的顶点越界，求解线性系统得到最优对偶顶点坐标 $v$，并结合边相交标志 $\delta$ 与四边形切分权重 $\gamma$ 组装出完整的 $f^{\text{shape}}$。
+如果简单把 $v$ 放在体素中心 $(0.5, 0.5, 0.5)$，还原出来的网格就会像打了马赛克一样充满锯齿。经典对偶轮廓法（Dual Contouring）的做法是最小化**二次误差函数**（Quadratic Error Function, QEF）：每当原网格的一个三角形 $T$ 与体素棱边相交于点 $q$（该处三角形单位法向量为 $n$），我们就希望体素里的对偶顶点 $v$ 落在切平面 $(v - q)\cdot n = 0$ 上；把体素周围所有相交点提供的平面距离平方加起来：
+
+$$
+E_{\text{surf}}(v) = \sum_k \left((v - q_k)\cdot n_k\right)^2 = v^\top A_{\text{surf}} v - 2 b_{\text{surf}}^\top v + c_{\text{surf}},
+$$
+
+让总距离平方最小的位置 $v$，就正好处于多个切平面的交界棱线上，从而完美保留锐利边角！
+
+但传统 QEF 一遇到**开放网格边界**（比如一片树叶的边缘，或者衣服领口，即只属于一个三角形的 Open Mesh Edge）就会失控——因为开放边缘停在体素半空中，没有跨过整条体素棱边，或者缺少另一侧平面的夹击约束，导致对偶顶点在边界处乱飞。Algorithm 1 的点睛之笔就在第 11～16 行：**专门针对开放边界边 $e_{\text{open}}$ 构造边界距离 QEF 项**！设开放边界边的方向单位向量为 $d$、边上一点为 $p$，算法构造垂直于边界方向的投影矩阵 $\bar{D} = I - d d^\top$，强迫对偶顶点 $v$ 紧贴在开放边界直线上（最小化点到直线的距离平方 $\| \bar{D}(v - p) \|_2^2$），再加上防止矩阵奇异的微小正则项 $\lambda_{\text{reg}}\|v - \bar{q}\|_2^2$。最后只需解一个 $3\times 3$ 线性方程组 $A_v v = b_v$，就能在单核 CPU 上用不到 0.2 秒算出全图所有体素的对偶顶点！
 
 ![Algorithm 2: O-Voxel-to-Mesh conversion](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-algorithm02-ovoxel-to-mesh.webp)
 
-*Source: Xiang et al., arXiv:2512.14692v1, Algorithm 2, arXiv non-exclusive distribution license.*
+再看反向转换 **O-Voxel-to-Mesh**（Algorithm 2），逻辑更是干净利落：
+1. 把每个有效体素里的局部相对坐标 $v_i$ 加上体素整数偏移 $p_i$，直接生成全局网格顶点；
+2. 遍历所有相交标志 $\delta=1$ 的体素棱边，将环绕该棱边的 4 个相邻有效体素的对偶顶点连成一个四边形 $(w_0, w_1, w_2, w_3)$；
+3. 比较切分权重 $\gamma$，决定是沿着对角线 $(w_0, w_2)$ 还是 $(w_1, w_3)$ 把四边形切成两个三角形，当场输出显式网格（GPU 耗时 $<10\text{ ms}$）。
 
-反向转换（O-Voxel-to-Mesh，Algorithm 2）则更加直接高效：首先将每个有效体素内的局部对偶顶点 $v$ 映射为全局空间中的网格顶点；随后遍历所有相交标志 $\delta$ 为真的体素边，跨相邻四个体素连接对偶顶点构成对偶四边形；若四个邻接体素均有效，则依据切分权重 $\gamma$ 沿误差最小的对角线将四边形剖分为两个三角形，即时输出最终网格。官方 `o-voxel` 库将这一确定性过程封装为 `flexible_dual_grid_to_mesh` 等核心算子，彻底省去了神经隐式场提取网格时的昂贵优化开销。
-
-### 2.3 纹理与 O-Voxel 的双向材质转换（Algorithm 3 & 4）
+### 2.3 纹理 ⇄ O-Voxel 的双向材质对齐
 
 ![Algorithm 3: Texture-to-O-Voxel conversion](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-algorithm03-texture-to-ovoxel.webp)
 
-*Source: Xiang et al., arXiv:2512.14692v1, Algorithm 3, arXiv non-exclusive distribution license.*
-
-为了解决训练数据中“二维 UV 贴图材质”与模型“三维稀疏体素潜变量”之间的空间对齐问题，Algorithm 3 定义了 Texture-to-O-Voxel 转换：针对每个有效体素，算法查询与其相交的网格三角形，将体素中心投影至三角形表面并插值计算对应的 UV 坐标，进而从原始 PBR 贴图中采样材质属性，并按投影距离加权融合多个采样点，生成体素对齐的 $f^{\text{mat}}$。
+同样地，材质转换也做到了完全确定性：
+- **Texture-to-O-Voxel**（Algorithm 3，耗时 $<0.1\text{ s}$）：对于每个有效体素，找出穿过它的原网格三角形，把体素中心正交投影到三角形表面算出重心坐标与对应的二维 UV 坐标，直接从原资产的 PBR 贴图中采样 $(c,m,r,\alpha)$，并按投影距离加权平均写入体素。
 
 ![Algorithm 4: O-Voxel-to-Texture conversion](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-algorithm04-ovoxel-to-texture.webp)
 
-*Source: Xiang et al., arXiv:2512.14692v1, Algorithm 4, arXiv non-exclusive distribution license.*
+- **O-Voxel-to-Texture**（Algorithm 4）：提供两套导出路径——快速预览时直接走 **Vertex Mode**，用三线性插值给每个网格顶点赋予 PBR 属性（耗时 $<10\text{ ms}$）；导出工业标准 GLB 资产时则走 **Map Mode**，先用 `CuMesh` / `xatlas` 对网格做 UV 展开，再把二维贴图上的每个有效纹素（Texel）反查回三维空间坐标，从 O-Voxel 稀疏材质体中做三线性插值烘焙成高清 PBR 贴图。
 
-在导出阶段（O-Voxel-to-Texture，Algorithm 4），系统支持两种模式：一是轻量化的 **顶点着色模式（vertex mode）**，直接对网格顶点在 O-Voxel 材质体中做三线性插值，适合快速预览与调试；二是面向工业管线的 **贴图烘焙模式（map mode）**，先对重建网格执行 UV 参数化展开，再将纹理贴图中的每个纹素（texel）反查至三维表面位置，从稀疏材质体中插值提取 $(c, m, r, \alpha)$ 并写入贴图通道。官方代码中的 `o_voxel.postprocess.to_glb` 正是基于该模式串联了重网格化（remesh）、UV 展开、纹理烘焙与 GLB 打包。
+---
 
-## 3. Sparse Compression VAE（SC-VAE）与稀疏算子后端
+## 3. 核心设计哲学二：用 16 倍下采样 SC-VAE 把数十万体素压进万级潜空间
 
-### 3.1 为什么在 O-Voxel 之上还需要 SC-VAE
+### 3.1 为什么 O-Voxel 已经这么稀疏了，还要再套一层 SC-VAE？
 
-尽管 O-Voxel 已经剔除了空白体素，但一尊 $1024^3$ 分辨率的高精细资产仍包含数十万量级的有效表面体素。若直接在原始 O-Voxel 空间训练扩散或流匹配 Transformer，自注意力的序列长度与显存消耗将难以承受。因此，SC-VAE 的任务是将高分辨率 O-Voxel 进一步压缩为高信息密度的结构化潜变量 $z$：
+既然 O-Voxel 只保留表面体素，我们能不能直接在 O-Voxel 上训练生成式 Transformer？
+
+算一笔账就明白了：在一尊 $1024^3$ 分辨率的精细三维模型中，哪怕只算薄薄一层表面，有效体素的数量依然高达 **30 万～50 万个**。如果把 50 万个 Token 直接送进具有二次方复杂度 $\mathcal{O}(L^2)$ 的全局自注意力层，单次前向传播的激活显存就会突破数百 GB。
+
+因此，TRELLIS.2 的第二条核心设计哲学，是用一个全稀疏卷积构建的 **Sparse Compression VAE**（SC-VAE），在空间三个维度上同时执行 **16 倍下采样**（`f16c32`，即把 $1024^3$ 的 O-Voxel 网格压到 $64^3$ 的稀疏潜空间网格，每个位置保留 32 维潜通道）：
 
 $$
 z = E_\phi(f), \qquad \hat f = D_\theta(z).
 $$
 
-论文采用 **16 倍空间下采样（16x spatial downsampling）** 与 32 维潜通道配置（`f16c32`），使潜空间坐标网格比原始 O-Voxel 粗糙 16 倍，同时依靠解码器恢复局部子体素几何与高频材质。
+经过这 16 倍空间折叠，$1024^3$ 资产的有效 Token 数量被骤降到了大约 **9.6K 个**！9.6K 的序列长度对于现代 FlashAttention 与 DiT 来说如鱼得水。
+
+### 3.2 稀疏残差自编码层：如何防止 16 倍下采样把细节全部吃掉？
 
 ![Fig. 4: SC-VAE architecture](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig04-scvae-architecture.webp)
 
-*Source: Xiang et al., arXiv:2512.14692v1, Fig. 4, arXiv non-exclusive distribution license.*
+这里立刻引出一个棘手的架构挑战：**在三维空间做 16 倍下采样（意味着每 $16\times 16\times 16 = 4096$ 个子体素的空间范围要被缩成 1 个潜空间 Token），普通的步长卷积或平均池化会瞬间把精细的几何棱角和纹理图案抹成一团浆糊！**
 
-如 Fig. 4 所示，SC-VAE 将 $f^{\text{shape}}$ 与 $f^{\text{mat}}$ 分别送入结构对称的全稀疏卷积（fully sparse-convolutional）编码器与解码器，避免在空白区域浪费算力。为了在 16 倍强空间下采样下保留细微特征，架构右侧引入了 **稀疏残差自编码层（Sparse Residual Autoencoding Layer）**：在下采样与上采样分支中融入空间到通道（space-to-channel / channel-to-space）的残差捷径，防止高频几何与纹理信息在层级池化中坍缩。
+看 Fig. 4 右侧的结构图，作者为此专门设计了两点巧思：
+1. **稀疏残差自编码上下采样层**（Sparse Residual Autoencoding Layer）：
+   在下采样时，除了走标准的步长稀疏卷积 + Linear 分支外，旁路专门开辟了一条**无参数的信息直通车**（Space-to-Channel + Channel Averaging）——先把 $2\times 2\times 2$ 局部子块的空间特征重排折叠进通道维度，再按通道分组求平均直接加到输出上；上采样时则对称地执行通道复制（Channel Duplicating）与通道到空间展开（Channel-to-Space），并配合预测出的子体素存在性剪枝掩码（Pruning Mask $\rho$）剔除空白分支。这条残差捷径让编码器在每一级 $2\times$ 缩放时都能直接保留高频空间位置线索（后文 Table 3 消融证明，拿掉这条残差捷径会导致重建误差显著恶化）。
+2. **精简卷积 + 逐点 MLP 的优化残差块**（Optimized Sparse ResBlock）：
+   三维子流形稀疏卷积（SubMConv $3\times 3\times 3$）需要频繁查找 27 个空间邻居的哈希表，访存开销远大于逐点全连接层（Linear）。因此作者将传统 ResBlock 中的两次 $3\times 3\times 3$ 稀疏卷积削减为 **1 次 $3\times 3\times 3$ SubMConv 搭配两层宽通道的逐点 MLP**（SiLU 激活），用高吞吐的矩阵乘法分担了空间邻域聚合后的非线性变换。
 
 ![Table 4: SC-VAE architecture](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table04-scvae-architecture.webp)
 
-*Source: Xiang et al., arXiv:2512.14692v1, Table 4, arXiv non-exclusive distribution license.*
+从 Table 4 的逐层配置表可以看到，SC-VAE 从 `1x`（64 通道）一路经四级下采样（`2x` 128 通道 $\rightarrow$ `4x` 256 通道 $\rightarrow$ `8x` 512 通道 $\rightarrow$ `16x` 1024 通道）映射为 32 维潜变量。整个 SC-VAE 的总参数量高达约 **800M**（编码器约 354M，解码器约 474M）——正是因为前端这颗 800M 的重型稀疏自编码器扛下了“16 倍无损空间压缩与子体素级拓扑重建”的苦活，后端的生成模型才能轻装上阵。
 
-Table 4 给出了 SC-VAE 编码器从 `1x` 到 `16x` 的逐级下采样规格，每级由子流形稀疏卷积（SubMConv）、LayerNorm、Linear、SiLU 及 ResEnc 模块堆叠而成，解码器呈对称拓扑。附录披露整个 SC-VAE 参数量高达约 800M（编码器约 354M，解码器约 474M），可见 TRELLIS.2 的模型规模不仅体现在后端的生成式 DiT，其前端的稀疏表示学习器本身就是一个重量级网络。
+### 3.3 从特征回归到可微渲染感知的两阶段训练
 
-### 3.2 两阶段训练目标
-
-SC-VAE 的训练分为两个阶段推进。第一阶段在较低分辨率数据上直接回归 O-Voxel 特征并施加 KL 正则化：几何分支对对偶顶点偏移 $v$ 采用均方误差（MSE），对边相交标志 $\delta$ 与体素剪枝掩码（pruning mask）$\rho$ 采用二元交叉熵（BCE）；材质分支对 PBR 属性采用 $L_1$ 损失。第一阶段总损失写为：
+为了让 SC-VAE 解码出的网格既在数值上准确、又在人眼视觉上锐利，训练被拆成两个阶段推进：
+- **第一阶段**（低分辨率特征空间回归）：在 $512^3$ 数据上直接监督 O-Voxel 特征还原——对偶顶点偏移 $v$ 用均方误差（MSE），棱边相交标志 $\delta$ 与上采样剪枝掩码 $\rho$ 用二元交叉熵（BCE），PBR 材质属性用 $\ell_1$ 损失，外加潜空间 KL 正则：
 
 $$
 \mathcal{L}_{s1}
@@ -168,50 +188,49 @@ $$
 + \lambda_{\text{KL}}\mathcal{L}_{\text{KL}}.
 $$
 
-第二阶段引入高分辨率可微渲染感知监督（rendering-based perceptual supervision），对解码出的网格与材质渲染蒙版（mask）、深度图（depth）、法线图（normal）与 PBR 着色图，结合 $L_1$、SSIM 与 LPIPS 损失构造渲染项 $\mathcal{L}_{\text{render}}$：
+- **第二阶段**（高分辨率可微渲染感知微调）：由于切分权重 $\gamma$ 以及对偶顶点的微小抖动只有在实际连成网格并打光渲染时才会暴露，第二阶段直接将解码出的 O-Voxel 可微转换为三角网格，渲染多视角轮廓掩码（Mask）、深度图（Depth）、法线图（Normal）与 PBR 着色图，叠加 $\ell_1$、SSIM 与 LPIPS 感知损失：
 
 $$
 \mathcal{L}_{s2}=\mathcal{L}_{s1}+\mathcal{L}_{\text{render}}.
 $$
 
-两阶段策略兼顾了底层特征空间的收敛稳定性与最终三维表面、法线及材质在人眼视觉空间中的感知锐度。
+---
 
-### 3.3 FlexGEMM 高性能稀疏卷积后端
+## 4. 核心设计哲学三：三阶段流匹配级联生成与测试期分辨率扩展
 
-![Fig. 9: FlexGEMM speed comparison](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig09-flexgemm-speed.webp)
+### 4.1 为什么要把生成拆成“骨架 → 几何 → 材质”三个阶段？
 
-*Source: Xiang et al., arXiv:2512.14692v1, Fig. 9, arXiv non-exclusive distribution license.*
+有了 SC-VAE 定义的结构化潜变量（SLat），接下来怎么从单张输入图像生成三维资产？
 
-由于 SC-VAE 的编码与解码完全建立在三维稀疏卷积之上，现有算子库（如 SpConv、TorchSparse、fVDB、WarpConvNet）在高分辨率与大批量下的显存带宽及核函数启动开销成为系统瓶颈。论文在附录中专门设计了 **FlexGEMM** 稀疏卷积后端（见 Fig. 9 速度对比）：其核心为掩码隐式矩阵乘（masked implicit GEMM），将特征收集（feature gathering）与矩阵乘法融合进单一 CUDA kernel 中以减少全局显存读写；同时利用格雷码排序（Gray code ordering）提升空间邻域访问的缓存局部性，并借助 Split-K 并行策略提高 GPU 占用率。这也解释了为何官方环境配置脚本必须显式编译安装 `flex_gemm`、`o-voxel`、`cumesh`、`nvdiffrast` 与 `nvdiffrec` 等底层 CUDA 扩展。
+想一想：每个资产的 SLat 包含两部分——**哪些三维坐标 $p_i$ 是非空的**（稀疏坐标集合），以及**这些坐标上挂着什么特征向量 $z_i$**（32 维几何潜变量与 32 维材质潜变量）。由于不同物体的有效体素坐标千差万别，你不可能在一个还不知道“哪些体素非空”的空白空间里凭空运行稀疏 Transformer！
 
-## 4. 三阶段 Flow Matching 生成架构与测试期分辨率扩展
+因此，TRELLIS.2 顺应三维物体的物理生成逻辑，设计了由三个 **1.3B 参数 DiT**（合计约 4B 参数）串联而成的**三阶段因果级联流水线**：
 
-### 4.1 生成模型主干与三阶段级联设计
+```text
+输入参考图像 (DINOv2 提取特征)
+  ├─> [阶段 1] Sparse Structure Flow (1.3B) ──> 预测 64^3 稠密网格上的有效体素占用骨架 {p_i}
+  ├─> [阶段 2] Shape SLat Flow (1.3B)       ──> 在骨架坐标 {p_i} 上生成几何潜变量 z_shape ──> 解码几何网格
+  └─> [阶段 3] Material SLat Flow (1.3B)    ──> 拼接归一化 z_shape 生成材质潜变量 z_mat   ──> 解码 PBR 通道
+```
+
+这三个阶段的分工极其严密：
+1. **阶段 1**（Sparse Structure Flow）：在低分辨率 $64^3$ 规则空间（经简单 $4\times$ 下采样为 $16^3 = 4096$ 个固定 Token）上运行，专门负责回答“物体的大致三维轮廓占据了哪些格子”，解码输出有效稀疏坐标集合 $\{p_i\}$。
+2. **阶段 2**（Shape SLat Flow）：只在阶段 1 圈定的有效稀疏坐标 $\{p_i\}$ 上初始化噪声 Token，生成 32 维几何潜变量 $z^{\text{shape}}$。
+3. **阶段 3**（Material SLat Flow）：在完全相同的稀疏坐标 $\{p_i\}$ 上，把阶段 2 已经生成好的几何潜变量 $z^{\text{shape}}$ 归一化后直接沿通道维拼接（`concat_cond`，输入投影变为 `Linear(32+32, 1536)`），在明确知道“这里是一块凸起的装甲边缘、那里是一片凹陷的眼窝”的前提下生成 32 维材质潜变量 $z^{\text{mat}}$。
 
 ![Table 5: Generative model architecture](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table05-generative-model-architecture.webp)
 
-*Source: Xiang et al., arXiv:2512.14692v1, Table 5, arXiv non-exclusive distribution license.*
+如 Table 5 所示，三个阶段的流模型共享高度统一的纯编码器 DiT 架构：30 层 Transformer Block、隐藏维度 1536、12 个注意力头（每头 128 维）、前馈层膨胀至 8192 维，并统一采用三维旋转位置编码（3D RoPE）编码体素坐标 $(x,y,z)$，配合 QK-Norm 消除大规模半精度训练时的注意力内积爆炸。
 
-在紧凑的 SLat 空间之上，TRELLIS.2 采用纯编码器架构的稀疏 Transformer（DiT）作为流匹配主干。如 Table 5 所示，单个流模型通过 `Linear(32(+32), 1536)` 将输入潜变量映射至 1536 维隐藏空间，堆叠 30 层 Transformer Block（包含 12 头 128 维自注意力、12 头 128 维图像条件交叉注意力以及 `1536 -> 8192 -> 1536` 的前馈网络），最后经 `LayerNorm + Linear(1536, 32)` 输出速度场预测，并结合三维旋转位置编码（RoPE）与 QK-Norm 保障大规模训练稳定性。单个阶段 DiT 参数量约为 1.3B，三个生成阶段合计构成约 4B 参数的完整体系：
+### 4.2 条件流匹配（CFM）与测试期分辨率级联扩展
 
-```text
-Input Image
-  --> Stage 1: Sparse Structure Flow  (预测粗粒度有效体素坐标骨架)
-  --> Stage 2: Shape SLat Flow        (在稀疏坐标上采样几何潜变量 -> 解码几何网格)
-  --> Stage 3: Material SLat Flow     (以几何潜变量为条件采样材质潜变量 -> 解码 PBR 属性)
-```
-
-这三个阶段顺应了三维资产的内在物理依赖：第一阶段（对应代码中的 `sample_sparse_structure()`）先确立资产在三维空间中的稀疏体素占据骨架；第二阶段（`sample_shape_slat()` 或级联版 `sample_shape_slat_cascade()`）在稀疏坐标上生成形状潜变量；第三阶段（`sample_tex_slat()`）将归一化后的形状潜变量作为 `concat_cond` 拼接到输入端，在已知准确几何表面的前提下生成对齐的 PBR 材质潜变量，从而根除了材质漂浮或几何错位问题。
-
-### 4.2 条件流匹配（Conditional Flow Matching）与测试期扩展
-
-模型训练采用 Rectified Flow / Conditional Flow Matching 范式。设目标数据潜变量为 $x_0$，标准高斯噪声为 $\epsilon \sim \mathcal{N}(0, I)$，时间步 $t \in [0, 1]$ 下的线性插值路径定义为：
+在训练目标上，三个阶段统一采用直线路径的 **条件流匹配**（Conditional Flow Matching / Rectified Flow）。设真实潜变量样本为 $x_0$，标准高斯噪声为 $\epsilon \sim \mathcal{N}(0, I)$，时间步 $t \in [0,1]$ 上的线性插值状态为：
 
 $$
-x(t) = (1-t)x_0 + t\epsilon,\qquad t\in[0,1].
+x(t) = (1-t)x_0 + t\epsilon, \qquad v(x,t)=\nabla_t x=\epsilon-x_0.
 $$
 
-该路径对应的目标速度场（vector field）为常数方向 $v(x,t)=\nabla_t x=\epsilon-x_0$。神经网络 $v_\theta$ 在给定图像条件与时间步 $t$ 下直接回归该速度场：
+网络 $v_\theta$ 在给定图像条件与时间步 $t$ 下直接预测常数速度向量场 $\epsilon - x_0$：
 
 $$
 \mathcal{L}_{\text{CFM}}(\theta)
@@ -219,154 +238,116 @@ $$
 \left\|v_\theta(x(t),t)-(\epsilon-x_0)\right\|_2^2.
 $$
 
-针对高分辨率资产生成，论文进一步设计了测试期分辨率与算力扩展策略（Test-time Resolution Scaling）。
-
 ![Fig. 8: Test-time scaling](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig08-test-time-scaling.webp)
 
-*Source: Xiang et al., arXiv:2512.14692v1, Fig. 8, arXiv non-exclusive distribution license.*
+更妙的是，SC-VAE 的多级稀疏解码结构天然赋予了模型 **测试期分辨率与算力扩展**（Test-time Scaling，见 Fig. 8）的能力。当我们要生成 $1024^3$ 甚至 $1536^3$ 的超高分辨率资产时，不需要从头在一个庞大网格上盲猜结构，而是采用 `1024_cascade` 或 `1536_cascade` 级联策略：
+1. 先用 $512^3$ 几何流模型稳稳生成 $32^3$ 分辨率下的基础几何潜变量，保证整体比例与大结构绝不走形；
+2. 调用解码器的上采样层预测出 $64^3$（或 $96^3$）下的高分辨率有效体素坐标，以此作为空间锚点引导 $1024^3$ 流模型补齐高频几何细节与纹理！
 
-如 Fig. 8 所示，系统既支持在固定架构下增加采样计算步数，也支持通过多分辨率级联（cascade）从 $512^3$ 扩展至 $1024^3$ 乃至 $1536^3$。在官方推理管线中，这体现为 `512`、`1024`、`1024_cascade` 与 `1536_cascade` 四种运行模式：`sample_shape_slat_cascade()` 先由 $512$ 流模型生成基础形状潜变量，随后调用解码器的 `upsample()` 算子生成高分辨率候选稀疏坐标，并通过 `max_num_tokens` 动态监控显存预算——当复杂资产的派生活跃 token 数超出阈值时自动回退目标分辨率，实现了生成精细度与显存安全的自适应平衡。
+---
 
-## 5. 数据构建管线与评估基准
+## 5. 核心设计哲学四：FlexGEMM 稀疏算子后端与百万级 PBR 数据清洗
+
+### 5.1 FlexGEMM：为什么通用稀疏卷积库喂不饱高分辨率 SC-VAE？
+
+在三维深度学习中，大家习惯直接调 `spconv`、`torchsparse` 或 `fvdb` 跑稀疏卷积。但在 $1024^3$ 乃至 $1536^3$ 分辨率的 SC-VAE 中，传统稀疏卷积库的“先收集邻居特征写进临时显存缓冲（Gather）$\rightarrow$ 调 cuBLAS 算矩阵乘（GEMM）$\rightarrow$ 再把结果散射写回输出（Scatter）”三步拆分模式，会产生海量的全局显存读写开销，甚至中间 Gather 缓冲区直接撑爆显存。
+
+![Fig. 9: FlexGEMM speed comparison](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig09-flexgemm-speed.webp)
+
+为此，作者专门用 Triton/CUDA 编写了 **FlexGEMM** 稀疏算子库（见 Fig. 9 在子流形卷积、下采样、上采样与注意力上的全面提速对比），融入了三项硬件级优化：
+1. **掩码隐式矩阵乘**（Masked Implicit GEMM）：彻底取消显式的中间 Gather/Scatter 显存缓冲区，在 GEMM 核函数加载寄存器瓦片（Tile）时直接按预计算的邻域偏移索引读取输入特征，将多次全局显存往返融合成单次核函数执行。
+2. **格雷码空间排序**（Gray Code Ordering）：三维稀疏体素如果按普通行优先顺序排列，空间上相邻的体素在内存地址上可能隔了十万八千里，导致 L2 Cache 命中率极低。FlexGEMM 按三维格雷码（相邻格子的二进制编码仅相差 1 bit）对有效体素重排，使空间相邻体素在显存物理地址上紧密聚拢，大幅提升了瓦片内共享邻域模式的局部性。
+3. **Split-K 并行归约**：针对稀疏度高、有效体素较少导致 GPU 流多处理器（SM）吃不饱的层，沿归约维度切分任务并行计算，榨干 A100/H100 的张量核心算力。
+
+### 5.2 宁缺毋滥的数据清洗：用 Blender 节点树筛出 73.8 万真 PBR 资产
 
 ![Table 6: Dataset composition](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table06-dataset.webp)
 
-*Source: Xiang et al., arXiv:2512.14692v1, Table 6, arXiv non-exclusive distribution license.*
+再好的 O-Voxel 表示，如果喂进去的训练数据本身是已经把高光和阴影画死在漫反射贴图里的“假材质模型”，网络也学不出真正的金属度与粗糙度。
 
-高质量的原生三维表示与 PBR 材质生成极度依赖经过严格清洗的资产数据集。Table 6 详列了 TRELLIS.2 的训练与评估数据构成，汇总自 TexVerse、Objaverse-XL（Sketchfab 与 GitHub 子集）、ABO 与 HSSD，并以 Toys4K（及 Sketchfab Featured）作为评估基准：
+看 Table 6 的数据构成统计，作者从 TexVerse、Objaverse-XL（Sketchfab 与 GitHub 子集）、ABO 和 HSSD 中汇集了 **976,736 个可用几何资产**（Shape available），但其中只有 **737,962 个资产被放行进入材质训练集**（Material available）——中间被淘汰掉的 23.8 万个模型（以及被整库剔除的 3D-FUTURE 数据集）去哪了？
 
-| 数据来源 | 可用几何资产数 (Shape available) | 可用材质资产数 (Material available) |
-| --- | ---: | ---: |
-| TexVerse | 503,387 | 382,996 |
-| ObjaverseXL (Sketchfab) | 168,307 | 141,623 |
-| ObjaverseXL (GitHub) | 293,887 | 202,188 |
-| ABO | 4,485 | 4,485 |
-| HSSD | 6,670 | 6,670 |
-| **SC-VAE 训练集小计** | **473,349** | **354,966** |
-| **全量生成模型训练集** | **976,736** | **737,962** |
-| **Toys4K 评估集** | **3,229** | **2,282** |
+答案是作者写了一套严苛的 **Blender 着色器节点树**（Shader Node Tree）**静态解析脚本**：脚本逐一拆解每个原始三维资产的材质球连接图，只有真正使用了标准 Principled BSDF 金属度-粗糙度工作流（Metallic-Roughness Workflow）、且具备有效物理通道变化的资产，才被标记为“材质可用”并导出 PBR 贴图；凡是只贴了一张烘焙 RGB 照片的模型，只准参与几何分支训练，绝不准污染材质流模型。
 
-表中“几何可用”与“材质可用”的数量差异揭示了数据清洗的关键准则：并非所有三维模型都具备合格的 PBR 材质贴图（例如论文明确剔除了缺乏标准 PBR 材质的 3D-FUTURE 数据集）。在训练材质 VAE 与材质流模型时，作者使用 Blender 解析脚本深入检查原始资产的着色器节点树，仅保留遵循标准金属度-粗糙度（metallic-roughness）PBR 工作流的样本。对应到官方仓库的 `data_toolkit/`，完整的数据预处理流水线依次执行：`build_metadata`（元数据初始化）$\rightarrow$ `download`（多源数据拉取）$\rightarrow$ `dump_mesh` / `dump_pbr`（标准化网格与 PBR 通道解包）$\rightarrow$ `dual_grid` / `voxelize_pbr`（转换 O-Voxel 几何与材质体素）$\rightarrow$ `encode_shape_latent` / `encode_pbr_latent` / `encode_ss_latent`（预编码各级潜变量缓存）$\rightarrow$ `render_cond`（渲染 16 视角条件图像）。
+---
 
-## 6. 实验分析：重建保真度、生成质量与消融验证
+## 6. 实验拆解：重建保真度、单图生成与 SC-VAE 架构消融
 
-### 6.1 几何重建对比（Table 1）与 SC-VAE 消融（Table 3）
+### 6.1 几何重建大考：9.6K Token 如何击败 225K Token 的 SparseFlex？
 
 ![Table 1: Reconstruction comparison](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table01-reconstruction.webp)
 
-*Source: Xiang et al., arXiv:2512.14692v1, Table 1, arXiv non-exclusive distribution license.*
+Table 1 在 Toys4K 与包含大量复杂野外资产的 Sketchfab Featured 基准上，全面对比了主流三维表示自编码器的重建能力（表面距离 `MD`/`CD` 越低越好，严格阈值下的表面重合度 $\text{F1}_{1\text{e-}8}$/$\text{F1}_{1\text{e-}6}$ 越高越好，法线渲染 `PSNR` 越高越好、`LPIPS` 越低越好）。从这张表可以读出两条极具说服力的证据：
 
-Table 1 在 Toys4K 与 Sketchfab Featured 两个测试集上全面评估了不同三维表示与自编码器的几何重建效率与保真度。评价指标涵盖三类：表面几何距离（Mesh Distance `MD` 与 Chamfer Distance `CD`，均按 $\times 10^6$ 缩放，越低越好）、严格距离阈值下的表面重合度（$\text{F1}_{1\text{e-}8}$ 与 $\text{F1}_{1\text{e-}6}$，越高越好），以及多视角法线图渲染质量（PSNR 越高越好、LPIPS 越低越好）。
+1. **紧凑度与保真度的双重碾压**：对比 $1024^3$ 分辨率下的 `SparseFlex 1024`，对方每个资产需要消耗惊人的 **225.0K 个潜空间 Token**，在 Toys4K 上的网格距离 MD 为 `0.90`；而 `TRELLIS.2 (Ours 1024)` 凭借 16 倍空间下采样的 SC-VAE，仅用 **9.6K 个 Token**（不到对方的 $1/23$！）就把 MD 压低到了 **`0.22`**，Sketchfab 上的 $\text{F1}_{1\text{e-}8}$ 从 `54.89` 飙升至 **`65.37`**，且 A100 解码耗时仅需 `0.301 秒`（SparseFlex 需 `0.785 秒`）。
+2. **对比前代 TRELLIS 的代际跃升**：前代 `TRELLIS` 同样使用约 9.5K Token，但因为依赖连续场转换提取网格，在 Toys4K 上的 MD 高达 `3.31`、$\text{F1}_{1\text{e-}8}$ 仅为 `31.49`；升级为无场 O-Voxel 与 SC-VAE 后，TRELLIS.2 在相同 Token 数量下将重建误差降低了超过一个数量级。
 
-对比结果呈现出清晰的量效关系：首先，对比 `Ours 1024` 与前代 `TRELLIS`，两者潜空间 token 数均约为 9.6K，但 TRELLIS.2 凭借 16 倍空间下采样的 O-Voxel SC-VAE（解码耗时 0.301 秒 vs. TRELLIS 的 0.108 秒），在表面距离、F1 分数与法线 PSNR/LPIPS 上取得了全方位大幅领先；其次，对比高保真稀疏基线 `SparseFlex 1024`，后者需要消耗多达 225K 个 token，而 `Ours 1024` 仅用约 1/23 的 token 数量（9.6K）便实现了更优的综合重建指标，有力验证了“紧凑结构化潜空间”的核心主张。
-
-![Table 3: SC-VAE ablation](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table03-scvae-ablation.webp)
-
-*Source: Xiang et al., arXiv:2512.14692v1, Table 3, arXiv non-exclusive distribution license.*
-
-Table 3 进一步对 SC-VAE（主线配置 `f16c32`）展开架构消融。实验表明，一旦移除稀疏残差自编码层（w/o Residual AE），16 倍下采样下的 MD 与 F1 指标出现显著退化，证明强空间压缩必须配合通道间的信息重排捷径才能避免高频几何丢失；同时，采用精简卷积层与逐点 MLP 构成的优化残差块（optimized ResBlock），在降低稀疏卷积计算开销的同时提升了稀疏特征的表达能力。
-
-### 6.2 单图到 3D 资产生成与条件 PBR 纹理生成（Fig. 5–7 & Table 2）
+### 6.2 单图转 3D 资产与条件 PBR 纹理生成对比
 
 ![Fig. 5: Generated assets](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig05-generated-assets.webp)
 
-*Source: Xiang et al., arXiv:2512.14692v1, Fig. 5, arXiv non-exclusive distribution license.*
-
 ![Fig. 6: Generation comparison](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig06-generation-comparison.webp)
-
-*Source: Xiang et al., arXiv:2512.14692v1, Fig. 6, arXiv non-exclusive distribution license.*
-
-在生成任务的定性评估中，Fig. 5 展示了 TRELLIS.2 生成的复杂植物叶片、镂空机械、角色盔甲与蒸汽朋克装置，展现了模型对开放薄曲面、内部嵌套结构以及半透明/高反射金属材质的建模能力。Fig. 6 将 TRELLIS.2 与 Hunyuan3D 2.1、Step1X-3D、TRELLIS、Direct3D-S2 及 Hi3DGen 进行同图对比，并同步列出法线图、最终渲染图以及拆解出的 base color、metallic、roughness 通道（部分基线因不支持原生材质输出被标注为 “No PBR”）。
 
 ![Table 2: Image-to-3D generation results](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table02-generation.webp)
 
-*Source: Xiang et al., arXiv:2512.14692v1, Table 2, arXiv non-exclusive distribution license.*
-
-Table 2 从跨模态对齐度与感知偏好两个维度量化了单图生成性能：TRELLIS.2 在视觉语义相似度 CLIP（`0.894`）、法线几何相似度 CLIP-N（`0.758`）、三维感知嵌入相似度 ULIP-2（`0.477`）与 Uni3D（`0.436`）上全部位居榜首，并在双盲用户偏好测试中取得了 `66.5%` 的整体胜率（Pref%）与 `69.0%` 的几何法线胜率（Pref-N%）。
+看 Fig. 5、Fig. 6 与 Table 2 的单图生成结果：无论是层层叠叠的盆栽叶片、镂空铁艺灯笼，还是玻璃罩内的微缩景观，TRELLIS.2 都能一次性输出锐利的法线几何与分离干净的 Base Color、Metallic、Roughness 及 Alpha 通道。在定量指标（Table 2）中，TRELLIS.2 在图像对齐度 CLIP（`0.894`）、法线几何对齐度 CLIP-N（`0.758`）以及三维原生多模态表征相似度 ULIP-2（`0.477`）和 Uni3D（`0.436`）上全线拔得头筹。
 
 ![Fig. 7: PBR texture generation](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig07-pbr-texture-generation.webp)
 
-*Source: Xiang et al., arXiv:2512.14692v1, Fig. 7, arXiv non-exclusive distribution license.*
+此外，由于阶段 3（Material SLat Flow）天然是以阶段 2 的几何潜变量 $z^{\text{shape}}$ 为条件进行采样的，如果我们手头已经有一尊现成的三维白模网格和一张风格参考图，只需用 SC-VAE 的几何编码器把白模编码成 $z^{\text{shape}}$，就能直接调用阶段 3 为白模生成全套三维原生 PBR 材质（见 Fig. 7）。相比 Hunyuan3D-Paint 和 TEXGen 这类“先在多视角二维图像上画颜色、再往网格上投影拼接”的方案，在 O-Voxel 稀疏潜空间里直接生长出来的材质彻底告别了侧面拉伸模糊与多视图接缝。
 
-此外，得益于第三阶段材质流模型以形状潜变量为条件的解耦设计，TRELLIS.2 天然支持给定现成白模网格与参考图像的 **形状条件 PBR 纹理生成（Shape-conditioned PBR Texture Generation）**。如 Fig. 7 所示，相比 Hunyuan3D-Paint 与 TEXGen 等基于多视图扩散再重投影贴图的方案，直接在三维稀疏潜空间生成 $(c, m, r, \alpha)$ 避免了多视角拼接伪影与高光粘连。
+### 6.3 SC-VAE 核心消融与双盲用户评测
 
-### 6.3 双盲用户研究细节（Fig. 10 & Table 7）
+![Table 3: SC-VAE ablation](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table03-scvae-ablation.webp)
+
+Table 3 的 SC-VAE 架构消融清晰回答了“16 倍强压缩为什么没崩”：
+- 在主线配置 `SC-VAE f16c32`（16 倍下采样、32 通道）上，如果**去掉稀疏残差自编码上下采样捷径**（`w/o Residual AE`），Toys4K 上的网格距离 MD 会从 `0.56` 恶化到 `0.65`，严格重合度 $\text{F1}_{1\text{e-}8}$ 掉下近 4 个百分点——证明在高倍率空间折叠时，Space-to-Channel 的无损残差直通车至关重要。
+- 如果退回传统的双卷积残差块（`w/o Optimized ResBlock`），不仅稀疏卷积访存变慢，重建指标同样全面退步。
+- 对比不同压缩率档位（`f8c16` 需 26.8K Token、`f16c32` 需 6.2K Token、`f32c64` 仅 1.5K Token 但距离误差升至 `1.44`），`f16c32` 正好卡在“Token 数量足够喂给 Transformer”与“局部几何几乎无损”的黄金甜点位上。
 
 ![Fig. 10: User study interface](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-fig10-user-study-interface.webp)
 
-*Source: Xiang et al., arXiv:2512.14692v1, Fig. 10, arXiv non-exclusive distribution license.*
-
 ![Table 7: User study statistics](/images/blog/trellis2-native-structured-latents-3d-generation/trellis2-table07-user-study.webp)
 
-*Source: Xiang et al., arXiv:2512.14692v1, Table 7, arXiv non-exclusive distribution license.*
+而在由 40 名受试者对 100 组提示词进行的双盲人类偏好测试中（Fig. 10 与 Table 7），受试者分别对完整 PBR 渲染图（Overall Quality）和纯几何法线图（Shape Quality）进行盲选投票，TRELLIS.2 分别拿下了 **`66.5%`** 与 **`69.0%`** 的压倒性胜率，远超 Hunyuan3D 2.1（`16.3% / 12.2%`）与 Step1X-3D（`7.4% / 5.2%`）。
 
-为了弥补自动指标对三维结构与材质真实感评估的盲区，Fig. 10 与 Table 7 展示了包含约 40 名参与者、100 组 AI 生成图像提示词的用户研究设置与统计明细。评估界面要求受试者分别基于完整 PBR 渲染视图评价“整体资产质量（Overall Quality）”，以及基于纯法线渲染视图评价“几何形状质量（Shape Quality）”以排除色彩纹理的视觉干扰。在共计 203 次整体评估与 213 次几何评估的统计中，TRELLIS.2 分别赢得了 135 次（`66.5%`）与 147 次（`69.0%`）首选。
+---
 
-## 7. 官方源码剖析与推理训练链路
+## 7. 源码深挖：从 O-Voxel 算子库到三阶段推理管线
 
-官方开源仓库 `microsoft/TRELLIS.2` 完整公开了推理管线、纹理生成、O-Voxel 核心库、数据准备工具链与训练配置。下表梳理了论文核心模块与源码路径的映射关系：
+对照官方开源仓库 [`microsoft/TRELLIS.2`](https://github.com/microsoft/TRELLIS.2)，整套系统的工程实现划分得非常清晰：
 
-| 论文核心模块 | 源码路径 | 核心职责与实现说明 |
-| --- | --- | --- |
-| Image-to-3D 管线 | `trellis2/pipelines/trellis2_image_to_3d.py` | 封装 `Trellis2ImageTo3DPipeline`，串联三阶段流模型采样与解码 |
-| 形状条件贴图管线 | `trellis2/pipelines/trellis2_texturing.py` | 封装 `Trellis2TexturingPipeline`，将输入网格编码后采样 PBR 材质 |
-| O-Voxel 核心算子库 | `o-voxel/` | 独立子包，提供网格/O-Voxel 双向转换、Morton/Hilbert 序列化及 GLB 导出 |
-| SC-VAE 模型定义 | `trellis2/models/sc_vaes/*` | 实现形状与材质的全稀疏卷积变分自编码器 |
-| 流匹配生成网络 | `trellis2/models/sparse_structure_flow.py`, `structured_latent_flow.py` | 实现稀疏结构 DiT 与结构化潜变量 DiT |
-| 稀疏张量与注意力 | `trellis2/modules/sparse/*` | 封装 `SparseTensor`、稀疏卷积及稀疏感知 Transformer 组件 |
-| 数据构建工具集 | `data_toolkit/` | 实现多源数据下载、网格/PBR 解包、体素化、潜变量预编码与条件图渲染 |
-| 训练入口与配置 | `train.py`, `configs/scvae/*`, `configs/gen/*` | 提供 SC-VAE 两阶段训练及 1.3B 级流模型训练/高分微调配置 |
-| 交互式演示与示例 | `app.py`, `app_texturing.py`, `example.py`, `example_texturing.py` | Gradio 界面与最小化命令行推理脚本 |
+- **独立的原生表示算子库 [`o-voxel/`](https://github.com/microsoft/TRELLIS.2/tree/main/o-voxel)**：
+  作者没有把 O-Voxel 写死在模型脚本里，而是将其封装成了独立的 Python/C++/CUDA 包。其中 `mesh_to_flexible_dual_grid` 与 `flexible_dual_grid_to_mesh` 对应 Algorithm 1 与 Algorithm 2 的双向几何转换；`textured_mesh_to_volumetric_attr` 对应 Algorithm 3 的纹理体素化；`o_voxel.serialize.encode_seq` 负责空间填充曲线序列化；而 `o_voxel.postprocess.to_glb` 则一条龙打包了网格清理、基于 `CuMesh` 的减面、UV 展开、从体素材质场插值烘焙贴图以及 GLB 文件封装。
+- **三阶段主推理管线 [`trellis2/pipelines/trellis2_image_to_3d.py`](https://github.com/microsoft/TRELLIS.2/blob/main/trellis2/pipelines/trellis2_image_to_3d.py)**：
+  在 `Trellis2ImageTo3DPipeline.run()` 中，代码严格按照三阶段顺序推进：
+  ```text
+  preprocess_image (裁剪居中与背景处理)
+    -> get_cond (提取 512 / 1024 分辨率视觉条件特征)
+    -> sample_sparse_structure (阶段 1：采样并解码稀疏体素坐标 coords)
+    -> sample_shape_slat / sample_shape_slat_cascade (阶段 2：采样或级联生成几何潜变量)
+    -> sample_tex_slat (阶段 3：将归一化 shape_slat 作为 concat_cond 拼接，采样材质潜变量)
+    -> decode_latent (SC-VAE 解码出网格与 6 通道 PBR 属性体)
+  ```
+- **两个极具实用价值的工程边界保护**：
+  1. **动态 Token 预算护栏**（`max_num_tokens`）：在 [`sample_shape_slat_cascade()`](https://github.com/microsoft/TRELLIS.2/blob/main/trellis2/pipelines/trellis2_image_to_3d.py) 执行 $512^3 \rightarrow 1024^3 / 1536^3$ 级联上采样时，如果遇到表面极其繁复的物体（如茂密的灌木丛），上采样派生出的候选有效体素数量可能会突然暴增。源码在这里设置了一道显存安全阀：实时统计派生坐标的 Token 数量，一旦超出 `max_num_tokens` 阈值，自动回退降低目标网格分辨率，从而在根源上杜绝了线上服务的 OOM（显存溢出）崩溃。
+  2. **光栅化面数上限与 GLB 透明通道约定**：在官方 [`example.py`](https://github.com/microsoft/TRELLIS.2/blob/main/example.py) 中，渲染或导出前会调用 `mesh.simplify(16777216)` 将三角面数控制在 `nvdiffrast` 硬件光栅化器的上限之内；同时，导出的 GLB 默认将材质模式设为 `OPAQUE`（不透明）以防止普通查看器出现半透明排序伪影——而模型预测的 `alpha` 透明度通道其实已经完整烘焙进了纹理贴图的第 4 通道中，导入 Blender 或 Unreal/Unity 时只需将贴图的 Alpha 输出连上材质节点的 Opacity 输入即可激活半透明效果。
 
-在 `Trellis2ImageTo3DPipeline` 中，`model_names_to_load` 清晰列出了运行期加载的八个子模型权重：`sparse_structure_flow_model`、`sparse_structure_decoder`、`shape_slat_flow_model_512`、`shape_slat_flow_model_1024`、`shape_slat_decoder`、`tex_slat_flow_model_512`、`tex_slat_flow_model_1024` 与 `tex_slat_decoder`。调用 `pipeline.run(image)` 时，代码依次执行图像前处理（`preprocess_image`）、提取 512/1024 视觉条件特征（`get_cond`）、采样稀疏体素骨架（`sample_sparse_structure`）、采样或级联生成形状潜变量（`sample_shape_slat` / `sample_shape_slat_cascade`）、拼接归一化形状潜变量采样材质潜变量（`sample_tex_slat`），最后调用 `decode_latent` 还原出三维资产。而在 `Trellis2TexturingPipeline` 中，材质通道切片被显式定义为：
+---
 
-```python
-{
-    "base_color": slice(0, 3),
-    "metallic": slice(3, 4),
-    "roughness": slice(4, 5),
-    "alpha": slice(5, 6),
-}
-```
+## 8. 横向生态对比与总结：在 3D 视觉版图中的位置
 
-对于希望深入底层的读者，`o-voxel/` 子库中的 `mesh_to_flexible_dual_grid`、`flexible_dual_grid_to_mesh`、`textured_mesh_to_volumetric_attr` 与 `o_voxel.postprocess.to_glb`（参见 `o-voxel/examples/` 下的 `mesh2ovox.py`、`ovox2mesh.py`、`ovox2glb.py`）是最值得优先阅读的源码。而在训练配置侧，`configs/scvae/` 区分了基础训练（`*_f16c32_fp16.json`）与渲染感知微调（`*_ft_512.json`），`configs/gen/` 则对应 `ss_flow_img_dit_1_3B_64_bf16.json`、`slat_flow_img2shape_dit_1_3B_512_bf16(_ft1024).json` 与 `slat_flow_imgshape2tex_dit_1_3B_512_bf16(_ft1024).json`，完整映射了论文的分阶段训练方案。
+如果把 TRELLIS.2 放到本站精读过的整个三维生成与场景理解版图中，我们可以清晰看清各条技术路线的设计取舍：
 
-在推理与导出的工程细节上，官方 `example.py` 展示了两个值得注意的后处理约束：一是调用 `mesh.simplify(16777216)` 将三角面数限制在 `nvdiffrast` 光栅化器的硬件上限之内；二是 GLB 导出默认采用 `OPAQUE`（不透明）材质模式——尽管预测的 `alpha` 通道已完整烘焙进纹理贴图，但在导入 Blender 或游戏引擎时需由用户手动将 alpha 通道挂载至材质节点的透明度输入端。
+- **对比连续 SDF 潜空间流匹配模型 [TripoSG](/blog/triposg-high-fidelity-3d-shape-synthesis-paper-reading/)**：TripoSG 采用无序点集潜向量（VecSet 路线）配合连续 SDF + 表面法线梯度 + Eikonal 正则化，在封闭流形几何与锐利边缘上表现优异；而 TRELLIS.2 选择显式空间对齐的稀疏体素 O-Voxel，不仅打破了 SDF 的水密假设以原生支持单层薄片与非流形结构，还将四通道 PBR 材质直接并入了同一套三维潜空间。
+- **对比面向实时引擎交付与极速重建的 [AssetGen](/blog/assetgen-deployable-3d-asset-generation-paper-reading/) 与 [SF3D](/blog/sf3d-stable-fast-3d-mesh-reconstruction-paper-reading/)**：TRELLIS.2 的首要目标是**推高原生三维几何与物理材质生成的质量天花板**，其原始解码网格往往高达数十万至上百万面，依赖重型 `o_voxel.postprocess.to_glb` 做后续减面与烘焙；而 AssetGen 通过蒸馏与全 GPU 几何管线专注于在 14～30 秒内交付严守 23K 面数预算、带切线法线贴图的运行时低模，SF3D 则专注于 0.5 秒内的单次前向快速重建与箱体投影 UV 导出。
+- **对比检索配准与场景级装配系统**（[SUFLECA](/blog/sufleca-cad-to-image-alignment-feature-learning-paper-reading/)、[Diorama](/blog/diorama-zero-shot-single-view-3d-scene-modeling-paper-reading/)）：SUFLECA 和 Diorama 解决的是“如何从现有资产库里检索标准 CAD 模型并以精确的 9D 位姿摆进房间”；而当资产库里根本找不到匹配的个性化物体时，TRELLIS.2 正好作为底层的原生三维资产制造机，直接从单张裁剪图中把带 PBR 材质的 GLB 资产无中生有地造出来。
 
-## 8. 方法横向对比与工程复现指南
+总而言之，TRELLIS.2 最具启发性的地方，在于它清醒地认识到“**三维生成大模型的上限首先由表示层决定**”。通过用无场 O-Voxel 解决拓扑与 PBR 原生表达、用 16 倍下采样 SC-VAE 与 FlexGEMM 解决稀疏潜空间压缩与算子吞吐、再用 4B 三阶段流模型学习分布，它为下一代原生三维基础模型立下了一座极具参考价值的工程路标。
 
-### 8.1 与主流 3D 生成系统及本站相关论文的坐标对比
+## 参考资料
 
-将 TRELLIS.2 置于当前单图 3D 生成与三维场景建模的技术谱系中，可以清晰界定其优势与适用边界：
-
-| 对比维度 / 代表工作 | 核心技术路线 | 相较于 TRELLIS.2 的定位差异 |
-| --- | --- | --- |
-| **TRELLIS (v1)** | 结构化潜空间（SLAT）三维生成 | TRELLIS.2 引入无场 O-Voxel、16x 高压缩 SC-VAE 与原生体素级 PBR 材质建模 |
-| **Hunyuan3D 2.1 / Step1X-3D** | 几何生成 + 多视角扩散纹理烘焙两阶段系统 | TRELLIS.2 在统一稀疏体素潜空间内直接生成 PBR 通道，规避多视图贴图拼接伪影 |
-| **SparseFlex / Direct3D-S2** | 稀疏体素/网格高保真重建与高效生成 | TRELLIS.2 在仅约 9.6K token 的紧凑预算下兼顾开放拓扑重建与完整 PBR 输出 |
-| **SF3D / AssetGen** | 面向低延迟或可部署管线的网格、UV 与材质优化 | SF3D 主打 0.5s 前馈重建，AssetGen 强调低面数预算与法线烘焙管线；TRELLIS.2 侧重高保真原生表示与生成上限 |
-| **CompoNeRF / Blended-NeRF / Layout2Scene / CasLayout / Imaginarium** | 场景级 NeRF 编辑、三维语义布局扩散或资产检索摆放 | 这些工作聚焦多物体空间布局与场景级一致性，而 TRELLIS.2 专注于单体资产的高质量几何与材质生成底座 |
-
-### 8.2 工程复现清单与客观局限性
-
-若需在工程环境中部署或复现 TRELLIS.2，建议遵循以下核对清单：
-1. **软硬件环境准备**：配置 Linux 系统与至少 24GB 显存的 NVIDIA GPU（官方基准基于 A100/H100 与 CUDA 12.4），通过 `. ./setup.sh --new-env --basic --flash-attn --nvdiffrast --nvdiffrec --cumesh --o-voxel --flexgemm` 编译全套自定义算子。
-2. **分步验证路径**：先运行 `o-voxel/examples/` 脚本验证网格与 O-Voxel/GLB 的无损互转；再下载 `microsoft/TRELLIS.2-4B` 运行 `example.py` 与 `example_texturing.py`，测试 `512`、`1024_cascade` 与 `1536_cascade` 模式并观察 `max_num_tokens` 触发的分辨率回退行为；最后在 Blender 中检查导出的 GLB 法线、金属度、粗糙度与透明通道连接。
-
-同时，在将 TRELLIS.2 引入实际生产管线前，需清醒认识其工程局限性：
-- **算力与编译门槛高昂**：全套系统重度依赖自定义 CUDA 扩展（FlexGEMM、CuMesh 等）与大显存 GPU，在高分辨率级联模式下仍受 `max_num_tokens` 预算制约，难以在消费级轻薄设备上低延迟运行。
-- **训练高度依赖高纯度 PBR 数据**：SC-VAE 与材质流模型的表现建立在近百万级经过 Blender 节点严格筛选的标准化 PBR 资产之上，迁移至缺乏干净 PBR 标注的垂直领域时数据清洗成本极高。
-- **感知指标与工业级拓扑规范仍存代沟**：CLIP、ULIP-2、PSNR 与用户偏好主要反映视觉渲染质量，而游戏与影视生产还要求艺术家友好的四边形布线（edge flow）、合理的 UV 岛利用率、多级 LOD、骨骼绑定（rigging）兼容性以及碰撞体规范，模型导出的高面数三角网格仍需下游资产化后处理。
-
-## 9. 结论与参考资料
-
-TRELLIS.2 的核心启示在于：三维生成大模型的规模化（Scaling）必须以高保真、高紧凑度的原生三维表示为基础。通过提出支持任意非流形/开放拓扑与体素级 PBR 属性的 **O-Voxel**，配合 16 倍空间压缩的 **SC-VAE** 与高性能 **FlexGEMM** 稀疏算子后端，TRELLIS.2 将 4B 参数的三阶段流匹配模型建立在真正能够无损还原三维资产的潜空间之上。对于研究者与工程师而言，建议先精读论文第 3 节（Fig. 2–4）与附录 A（Algorithm 1–4）掌握 O-Voxel 与 SC-VAE 的数学构造，再对照 `o-voxel/` 与 `trellis2/pipelines/` 源码理解其从稀疏潜变量到标准 GLB 资产的完整工程闭环。
-
-### References
-
-- [Native and Compact Structured Latents for 3D Generation, arXiv:2512.14692](https://arxiv.org/abs/2512.14692)
-- [PDF: Native and Compact Structured Latents for 3D Generation](https://arxiv.org/pdf/2512.14692)
-- [TRELLIS.2 Project Page](https://microsoft.github.io/TRELLIS.2/)
-- [Official GitHub: microsoft/TRELLIS.2](https://github.com/microsoft/TRELLIS.2)
-- [Hugging Face Model: microsoft/TRELLIS.2-4B](https://huggingface.co/microsoft/TRELLIS.2-4B)
-- [Hugging Face Demo: TRELLIS.2](https://huggingface.co/spaces/microsoft/TRELLIS.2)
+- Jianfeng Xiang, Xiaoxue Chen, Sicheng Xu, Ruicheng Wang, Zelong Lv, Yu Deng, Hongyuan Zhu, Yue Dong, Hao Zhao, Nicholas Jing Yuan, Jiaolong Yang, [Native and Compact Structured Latents for 3D Generation](https://arxiv.org/abs/2512.14692), arXiv:2512.14692.
+- 官方项目主页与代码仓库：[TRELLIS.2 Project Page](https://microsoft.github.io/TRELLIS.2/)、[microsoft/TRELLIS.2](https://github.com/microsoft/TRELLIS.2)
+- 预训练模型与在线演示：[Hugging Face Model (TRELLIS.2-4B)](https://huggingface.co/microsoft/TRELLIS.2-4B)、[Hugging Face Space Demo](https://huggingface.co/spaces/microsoft/TRELLIS.2)
+- 前代基线与关联文献：[TRELLIS (CVPR 2025)](https://arxiv.org/abs/2412.01506)、[Dual Contouring (SIGGRAPH 2002)](https://dl.acm.org/doi/10.1145/566570.566586)、[FlexiCubes (SIGGRAPH 2023)](https://arxiv.org/abs/2308.05371)

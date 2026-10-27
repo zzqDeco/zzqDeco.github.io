@@ -14,64 +14,66 @@ tags:
 draft: false
 ---
 
-[Imaginarium: Vision-guided High-Quality 3D Scene Layout Generation](https://arxiv.org/abs/2510.15564) 由 Xiaoming Zhu、Xu Huang、Qinghongbing Xie、Zhi Deng、Junsheng Yu、Yirui Guan、Zhongyuan Liu、Lin Zhu、Qijun Zhao、Ligang Liu、Long Zeng 撰写（arXiv 提交日期 2025 年 10 月 17 日，DOI `10.48550/arXiv.2510.15564`）。该工作发表于 **SIGGRAPH Asia 2025 & ACM Transactions on Graphics (TOG)**，官方提供了[项目主页](https://ydove0324.github.io/Imaginarium/)、[开源代码仓库](https://github.com/HiHiAllen/Imaginarium)（基于 `main` 分支）、[Hugging Face 核心数据集](https://huggingface.co/datasets/HiHiAllen/Imaginarium-Dataset)以及[预计算派生数据集](https://huggingface.co/datasets/binicey/Imaginarium-3D-Derived-Dataset)。
+打开任何一款基于传统 3D 室内数据集（如 3D-FRONT / 3D-FUTURE）训练的场景生成模型，你往往会看到一种相似的“样板间空旷感”：房间里孤零零地摆着一张床、两个床头柜和一把椅子，桌面与书架隔层空无一物，单场景平均只有 `5.09` 个大件家具。然而在真实的游戏关卡搭建、影视虚拟制片或专业室内设计中，一位资深 3D 美术师耗费 2.5 小时搭建的房间平均包含超过 **31 个独立物体**——书架隔层里错落塞满书籍与花瓶，沙发上自然倚靠着抱枕，茶几上摆放着托盘、台灯与茶具，墙面则挂着成组的装饰画。
 
-Imaginarium 的核心思路是将 **2D 图像生成模型的审美、构图与多物体组合先验** 转译为 **可复用、可编辑的 3D 资产布局**：
+为什么端到端 3D 布局生成模型难以企及这种视觉丰富度与陈设密度？根本矛盾在于 **3D 布局真值数据的极度稀缺与高维几何约束的严苛性**。全行业公开的高质量 3D 室内布局数据集仅有数千个房间，远不足以让模型学会几十个大小物件的审美构图与多层支撑关系；反观 2D 图像生成领域，在数十亿张图像上预训练的扩散模型（如 `FLUX.1-dev`）早已对光影构图、材质搭配、局部摆件密度与空间层次了如指掌。
+
+那么，能否借用 2D 图像生成模型的“审美大脑”先画出一张高水准的室内效果图，再将其逆向解析并组装成一套由工业级 3D 资产构成的真实三维场景？由清华大学、腾讯等机构团队（Xiaoming Zhu、Xu Huang、Qinghongbing Xie、Zhi Deng、Junsheng Yu、Yirui Guan、Zhongyuan Liu、Lin Zhu、Qijun Zhao、Ligang Liu、Long Zeng）发表于 **SIGGRAPH Asia 2025 & ACM Transactions on Graphics (TOG)** 的 [Imaginarium: Vision-guided High-Quality 3D Scene Layout Generation](https://arxiv.org/abs/2510.15564)（[项目主页](https://ydove0324.github.io/Imaginarium/)、[开源代码仓库](https://github.com/HiHiAllen/Imaginarium)、[核心数据集](https://huggingface.co/datasets/HiHiAllen/Imaginarium-Dataset)、[预计算派生数据集](https://huggingface.co/datasets/binicey/Imaginarium-3D-Derived-Dataset)），正是将这一设想推向工业级落地的代表作。
+
+结合原论文与官方 `main` 分支源码，我们可以提炼出 Imaginarium 贯穿算法与系统工程的 **4 个核心设计哲学**：
+
+1. **以域对齐 2D 引导图弥合 3D 数据荒漠**（Domain-Aligned 2D Visual Guide over Direct 3D Generation）：放弃在稀缺的 3D 布局数据上直接拟合复杂陈设分布，改为利用自有高质量 3D 资产库的多视角渲染图对 `FLUX.1-dev` 进行 LoRA 微调（`r=16`）。这一步既借用了 2D 基础模型的审美与构图先验，又将生成画面的家具几何形态拉回自有资产库的分布域内，使下游 3D 资产检索的 Top-1 命中率从微调前的 `48.57%` 大幅跃升至 **`68.70%`**。
+2. **受控词表 VLM 抽取离散拓扑与成套分组**（Constrained VLM Scene Graph & Grouping over Coordinate Regression）：视觉语言模型（VLM）擅长理解语义关系，却对连续三维坐标极不敏感。系统通过三层层级遍历提示词（`Area -> Parent -> Child`）强制 VLM 在预定义资产类别表内输出离散支撑树（$\text{obj}_a \prec \text{obj}_b$）、靠墙/吊挂属性、正面朝向与成套家具分组（Groups），并硬性规定同组实例（如围绕餐桌的多把餐椅）复用同一检索资产，从源头杜绝风格杂乱。
+3. **视觉局部特征与三维点云 OBB 互补的三阶姿态估计**（Coarse-to-Fine 162-View Matching + Homography SVD + OBB Geometry Fusion）：单目图像恢复 3D 旋转时，纯视觉特征极易在对称家具上发生 $180^\circ$ 正反翻转，且难以卡准 $5^\circ$ 以内的精细朝向。系统串联了 162 视角 AENet 局部特征粗选、RANSAC 单应性矩阵奇异值正交旋转精排（$\lVert U_v V_v^T - I \rVert_F^2$）与单目点云 OBB 主轴夹角对齐（阈值 $\tau=\pi/5$，小物体自动触发视觉回退），将高精度指标 `mAP@5°` 从单独使用 AENet 的 `4.30%` 推升至 **`66.57%`**。
+4. **容器内部子空间、体素模拟退火与 Blender 刚体物理协同落位**（Internal Subspaces, Voxel Simulated Annealing & Rigid-Body Drop）：突破传统布局方法只能在父物体包围盒顶面堆叠物体的限制，利用预标注的容器内部可放置子空间（Internal Placement Spaces）将书籍与摆件精准嵌入书架隔层；再以预计算体素代理（Precomputed Voxels）加速模拟退火消除全局穿模，最后在独立 Blender 进程中执行重力刚体下落仿真，使支撑正确率从初始估计的 `62.45%` 跃升至 **`91.34%`**。
 
 ```text
-文本提示
-  -> 微调 Flux 生成 2D guide image
-  -> VLM / 检测 / 分割 / 深度估计解析图像
-  -> 从高质量资产库检索 3D asset
-  -> 估计旋转、平移、缩放
-  -> 用 scene graph、优化和 Blender physics 修正布局
-  -> 输出可渲染的 3D scene layout
+文本提示 (Prompt)
+  -> [T2I] 微调 Flux LoRA 生成 1024x1024 2D 引导图像 (Guide Image)
+  -> [S0 Geometry] Depth Anything V2 单目度量深度 + 30/36mm 相机反投影点云
+  -> [S1 Parsing] 受控词表 VLM + Grounding-DINO / SAM 掩码 + RANSAC 墙地平面 + 层级场景图
+  -> [S2 Retrieval] 点云 OBB 与 VLM 尺寸校准 + DINOv2 视觉与尺寸联合检索 + 背景材质贴图匹配
+  -> [S3 Pose] 162 视角 AENet 粗匹配 + 单应性 SVD 正交精排 + OBB 几何方向融合与小物体回退
+  -> [S4 Layout] 容器内部子空间对齐 + 预计算体素模拟退火 + Blender 刚体物理下落仿真
 ```
 
-下文结合原论文与官方 `main` 分支源码，从问题定义、全局架构与中间文件契约、Flux 引导图像生成、S0–S4 五阶段核心算法、实验消融到工程复现链路进行系统拆解。
+---
 
-## 1. 任务边界与问题形式化：以 2D 视觉先验驱动 3D 资产布局
+## 1. 任务边界与问题形式化：如何将一句文本转化为 30+ 物体的 3D 场景？
 
-### 1.1 四层决策架构与核心概念边界
+### 1.1 四层递进决策与数学形式化
 
-面向游戏场景搭建、CGI 制作、虚拟拍摄与室内外设计等工业场景，3D 场景布局生成（3D scene layout generation）需要输出由独立资产、空间变换、支撑层级与物理约束共同构成的可交互场景。Imaginarium 将这一目标拆解为四个递进层级：
+面向游戏美术资产摆放、影视布景与室内外数字孪生，一个真正可用的 3D 场景布局生成系统必须依次回答四个层级的问题：
 
-| 层级 | 问题 | Imaginarium 的做法 |
+| 决策层级 | 核心技术问题 | Imaginarium 的解法路径 |
 | --- | --- | --- |
-| 内容层 | 这个场景应该有什么物体 | 用文本提示和 2D 图像生成扩展场景内容 |
-| 资产层 | 用哪个 3D 模型表示物体 | 从预定义高质量 asset library 检索 |
-| 几何层 | 资产如何摆放 | 从图像分割、深度、OBB、姿态匹配估计变换 |
-| 逻辑层 | 布局是否合理 | 用 scene graph、support tree、wall constraints、physics 修正 |
+| **内容层（Content）** | 场景里应当出现哪些主家具与小摆件？ | 用 LoRA 微调后的 Flux 将简短文本扩展为高密度 2D 引导图 |
+| **资产层（Asset）** | 用哪个具体的 3D 网格与贴图表示每个物体？ | 从预定义专业资产库中联合视觉相似度、尺寸兼容性与成组约束检索 |
+| **几何层（Geometry）** | 每个资产在三维空间中如何旋转、平移与缩放？ | 结合实例掩码、单目深度点云 OBB 与 162 视角模板匹配恢复 9-DoF 姿态 |
+| **逻辑与物理层（Physics）** | 如何消除悬空、穿模与靠墙歪斜，并把书放进隔层？ | 依托支撑树、靠墙约束、容器内部子空间、体素模拟退火与 Blender 刚体仿真修正 |
 
-由于 3D 场景布局真值数据稀缺，直接训练端到端 3D 布局生成器的泛化能力受限；而大规模 2D 图像生成模型已经具备成熟的构图、光影、材质与局部细节密度先验。Imaginarium 因此将 2D 引导图像（guide image）作为核心桥梁：先由微调后的图像生成模型产出构图合理、风格统一的参考画面，再通过视觉解析、资产检索与几何物理优化将其还原至 3D 资产空间。
-
-理解这套管线需明确以下核心概念的任务边界：
-- **预定义资产库（Predefined asset library）与资产检索（Asset retrieval）**：系统在包含网格、材质、尺寸、类别、多视角渲染图、特征嵌入及容器内部可放置空间的有限资产库中选择模型。检索过程同时考量类别匹配、视觉特征相似度、尺寸兼容性与成套家具风格一致性。
-- **姿态估计（Pose estimation）与带朝向包围盒（OBB）**：给定生成图像与候选 3D 资产，利用单目深度与实例掩码提取前景点云并拟合 OBB，结合多视角模板匹配估计资产在场景中的三维旋转、平移与尺度。
-- **场景图（Scene graph）与物理合理性（Physical plausibility）**：场景图将物体间的支撑层级、靠墙/吊挂属性、朝向与成套分组抽象为可执行约束；物理合理性则要求消除无支撑悬空与严重穿模，并对抱枕、堆叠书本等对象执行刚体物理仿真。
-
-### 1.2 数学形式化与两阶段代码映射
-
-论文将场景生成形式化为给定文本提示 $prompt$ 与预定义资产库 $A$ 下，到场景对象集合 $O$ 的映射：
+论文将整套生成任务形式化为：在给定文本提示 $prompt$ 与预定义三维资产库 $A$ 的条件下，求解包含 $n$ 个场景对象的有序配置集合 $O$：
 
 $$
 G(O \mid prompt, A)=\{o_1,o_2,o_3,\dots,o_n\}, \quad o_i=\{\text{obj}_i,R_i,t_i,s_i\}.
 $$
 
-各符号的数学定义与源码载体对应如下：
+式中每个符号在算法逻辑与开源代码中的落地载体一一对应：
 
-| 符号 | 含义 | 代码侧对应 |
+| 数学符号 | 物理与几何含义 | 官方源码中的载体与中间文件字段 |
 | --- | --- | --- |
-| $\text{obj}_i$ | 从资产库选中的 3D asset | `retrieval_results_final.json` 中的 asset id/name |
-| $R_i$ | asset 旋转矩阵或姿态 | `S3_pose_inference` 生成的 pose matrix |
-| $t_i$ | 3D translation | `placement_info.json` 中的位置字段 |
-| $s_i$ | scale | S3/S4 根据 OBB、资产尺寸、容器空间修正 |
-| $A$ | asset library | `asset_data/imaginarium_assets/` 与 `imaginarium_asset_info.csv` |
-| $O$ | 输出 object set | S4 后的 refined placement info 与 Blender scene |
+| $\text{obj}_i$ | 从资产库 $A$ 中检索选定的 3D 资产模型 | `retrieval_results_final.json` 中的 `asset_id` / `asset_name` |
+| $R_i$ | 资产在世界坐标系下的三维旋转矩阵 | `S3_pose_inference/{scene}_placement_info.json` 中的旋转矩阵 |
+| $t_i$ | 资产在世界坐标系下的三维平移向量 | `{scene}_placement_info.json` 与 S4 优化后的位置字段 |
+| $s_i$ | 资产的三维各向异性缩放比例 | S3 根据点云 OBB 初始化、S4 根据容器内部子空间微调的尺度因子 |
+| $A$ | 预定义高质量三维资产库与派生缓存 | `asset_data/imaginarium_assets/` 与 `imaginarium_asset_info.csv` |
+| $O$ | 最终物理合理的 3D 场景对象集合 | `S4_layout_refinement/{scene}_placement_info_s4.json` 与 `.blend` 场景 |
 
-这一形式化背后包含两重挑战：其一，$prompt \to O$ 是典型的一对多映射（一句 “cozy living room” 对应无数种合法布局），系统通过 2D 引导图像将开放文本收敛为单一确定的视觉构图；其二，$\text{obj}_i$ 必须严格取自有限资产库 $A$，若 2D 图像生成了资产库中不存在的新奇混合拓扑（如开放书架与封闭衣柜的混合体），检索只能退而求其次选择近似资产，进而影响下游子物体的支撑放置。
+审视这一数学表达，立即可以发现两个工程核心矛盾：
+1. **一对多歧义的收敛**：从简短文本 $prompt$ 到包含三十余个物体的精确三维场景 $O$ 是高度病态的一对多映射。Imaginarium 通过引入 2D 引导图像作为确定性的中间控制面，将发散的语义空间锚定为单一具体的视觉构图。
+2. **闭集资产库与开放生成图像的张力**：输出资产 $\text{obj}_i$ 必须严格取自有限集合 $A$。倘若 2D 扩散模型自由发挥画出了资产库中根本不存在的奇异家具拓扑（例如把开放式博古架与封闭式衣柜融合成一体），下游检索就只能退而求其次找一个近似柜体，进而导致原本摆在开放隔层里的小物件发生严重穿模。这正是系统必须在前端微调 Flux、在后端引入容器子空间与体素退火的根本原因。
 
-在开源实现中，公式中的 $G$ 被拆分为两个独立的命令行入口：
+在开源实现中，映射函数 $G$ 被清晰解耦为两个独立的命令行阶段：
 
 $$
 G(O \mid prompt,A)
@@ -79,66 +81,63 @@ G(O \mid prompt,A)
 \text{I2Layout}(\text{T2I}(prompt;A),A).
 $$
 
-其中 `run_imaginarium_T2I.py` 通过在 Flux 上挂载经资产库渲染图微调的 LoRA 权重生成 2D 引导图像，`run_imaginarium_I2Layout.py` 则调用 `ImaginariumPipeline.run()` 依次执行 `GeometryModule`、`SemanticParsingModule`、`RetrievalModule`、`PoseModule` 与 `LayoutModule` 五个阶段。
+第一阶段 `run_imaginarium_T2I.py` 负责调用挂载了资产库风格 LoRA 的 Flux 模型生成 2D 引导图；第二阶段 `run_imaginarium_I2Layout.py` 则接收该图像，顺序拉起 `S0` 至 `S4` 五个子模块完成三维场景重建与物理优化。
 
-## 2. 全局管线与源码架构：从论文模块到 S0–S4 文件契约
+---
+
+## 2. 全局管线架构：从论文四模块到源码 S0–S4 数据契约
 
 ### 2.1 论文模块、代码阶段与中间文件契约总表
 
-原论文 Fig. 2 按方法贡献将系统划分为提示扩展（Prompt Expander）、场景图像分析（Scene Image Analysis）、场景布局重建（Scene Layout Reconstruction）与布局优化（Layout Refinement）；而在开源工程中，为支持长耗时任务的断点恢复与中间结果审查，I2Layout 内部细分为 `S0` 至 `S4` 五个阶段。
+原论文按方法论贡献将系统划分为提示扩展（Prompt Expander）、场景图像分析（Scene Image Analysis）、场景布局重建（Scene Layout Reconstruction）与布局优化（Layout Refinement）四大模块；而在开源工程中，为了支持长耗时任务的断点恢复（Resume）与逐阶段白盒审查，`I2Layout` 管线被拆解为 `S0` 至 `S4` 五个独立阶段。
 
-下表汇总了论文模块、源码文件入口、核心函数、中间文件契约及常见失败信号的完整对应关系：
+下表完整梳理了从 T2I 到 S4 的源码入口、核心函数、磁盘文件契约与异常信号：
 
-| 阶段 / 论文模块 | 源码入口与核心实现 | 关键中间文件或 `Context` 字段 | 下游消费方式与关键检查点 | 常见失败信号 |
+| 阶段 / 论文模块 | 源码入口与核心实现文件 | 关键落盘文件或内存 `Context` 字段 | 下游阶段消费方式 | 典型异常信号与失效模式 |
 | --- | --- | --- | --- | --- |
-| **T2I Prompt Expander**<br>（Flux 引导图像生成） | `run_imaginarium_T2I.py`<br>`scripts/flux/train.py` | `generated_images/*.png` | 作为 I2Layout 的视觉输入；检查 1024 分辨率、视角稳定性与资产库风格契合度 | 物体严重遮挡、透视畸变、生成资产库缺失的新奇拓扑 |
-| **S0 Geometry**<br>（单目深度与点云构建） | `modules/geometry.py`<br>（`GeometryModule.run()`、`estimate_focal_length()`、`create_point_cloud()`） | `S0_geometry_pred_results/depth.png`<br>`Context`: `depth_image`、`ori_image_numpy`、`intrinsics`、debug `pcd.ply` | S1 地面/墙面 RANSAC 拟合、S2 物体 OBB 估计、S3 深度对齐 | 深度尺度漂移、墙地交界模糊、固定焦距近似导致点云拉伸 |
-| **S1 Semantic Parsing**<br>（VLM 语义、检测分割与场景图） | `modules/parsing.py`<br>`modules/_s1_legacy_functions.py`<br>`utils/ransac.py`<br>`prompts/used_prompts.py` | `S1_scene_parsing_results/` 下：<br>`masks.pkl`、`final_detect_items.pkl`、`floor_walls_pose.json`、`scene_graph_result_final.json` | S2 按 mask 裁剪图像检索资产；S3/S4 依据场景图执行支撑、靠墙、朝向与成套分组约束 | 漏检小物体、重复框未去重、RANSAC 墙地平面颠倒、VLM 父子支撑幻觉 |
-| **S2 Asset Retrieval**<br>（OBB、尺寸修正与资产/贴图检索） | `modules/retrieval.py`<br>`modules/_s2_legacy_functions.py`<br>`utils/obb.py`（`TextureRetrieval`） | `S2_3d_retrieval_results/` 下：<br>`pcd_obb_data.json`、`retrieval_results_final.json`、`texture_retrieval_results.json` | S3 读取候选资产与 OBB 估计 6D/9D 姿态；S4 加载对应网格与背景墙地贴图 | 类别正确但外观/风格错配、单目点云导致 OBB 尺寸失真、成套椅子检索不一致 |
-| **S3 Pose Estimation**<br>（162 视角匹配、单应性重排与几何增强） | `modules/pose.py`<br>`modules/_s3_legacy_functions.py`<br>`utils/view_matching.py`<br>`models/ae_net/` | `S3_pose_inference/` 下：<br>`{scene}_placement_info.json`、`pose_prediction_stitched.png` | S4 的初始旋转、平移、尺度与截断标记；通过拼接对比图审查模板视角与裁剪图是否对齐 | 对称物体 180° 翻转、边缘截断物体平移漂移、小物体 OBB 退化 |
-| **S4 Layout Refinement**<br>（局部对齐、体素模拟退火与 Blender 物理） | `modules/layout.py`<br>`modules/S4_blender_layout_and_corr.py`<br>`scripts/drop_sim_script.py` | `S4_layout_refinement/` 下：<br>`{scene}_placement_info_s4.json`、`{scene}_render_simu.png` | 最终 3D 场景文件与渲染图；依赖预计算体素与容器内部可放置空间修正穿模与悬空 | 残留穿模、悬空、靠墙方向反向、刚体掉落后偏离视觉位置 |
+| **T2I Prompt Expander**<br>（Flux 引导图生成） | `run_imaginarium_T2I.py`<br>`scripts/flux/train.py` | `generated_images/*.png` | 作为 `I2Layout` 的唯一视觉输入；提供全局构图、局部纹理与相对位置基准 | 透视畸变严重、前景家具重度遮挡、生成资产库缺失的复合拓扑 |
+| **S0 Geometry**<br>（单目深度与点云反投影） | `modules/geometry.py`<br>（`GeometryModule.run()`、`estimate_focal_length()`、`create_point_cloud()`） | `S0_geometry_pred_results/depth.png`<br>`Context`: `depth_image`、`ori_image_numpy`、`intrinsics`、调试 `pcd.ply` | S1 地面/墙面 RANSAC 拟合、S2 实例点云 OBB 估计、S3 深度平移对齐 | 单目深度尺度非线性漂移、墙地交界糊成曲面、焦距先验失配导致点云拉伸 |
+| **S1 Semantic Parsing**<br>（VLM 解析、分割与场景图） | `modules/parsing.py`<br>`modules/_s1_legacy_functions.py`<br>`utils/ransac.py`<br>`prompts/used_prompts.py` | `S1_scene_parsing_results/` 下：<br>`masks.pkl`、`final_detect_items.pkl`、`floor_walls_pose.json`、`scene_graph_result_final.json` | S2 按实例掩码裁剪图像检索资产；S3/S4 依据场景图执行支撑、靠墙、朝向与成套分组约束 | 小摆件漏检、重叠框未去重、RANSAC 墙地平面法线翻转、VLM 父子支撑幻觉 |
+| **S2 Asset Retrieval**<br>（OBB、尺寸校准与资产/贴图检索） | `modules/retrieval.py`<br>`modules/_s2_legacy_functions.py`<br>`utils/obb.py`（`TextureRetrieval`） | `S2_3d_retrieval_results/` 下：<br>`pcd_obb_data.json`、`retrieval_results_final.json`、`texture_retrieval_results.json` | S3 读取候选资产与 OBB 估计三维位姿；S4 加载对应网格与背景墙地贴图 | 类别正确但风格错配、边缘深度飞点拉大 OBB 尺寸、未开分组导致餐椅款式不一 |
+| **S3 Pose Estimation**<br>（162 视角匹配、单应性重排与几何融合） | `modules/pose.py`<br>`modules/_s3_legacy_functions.py`<br>`utils/view_matching.py`<br>`models/ae_net/` | `S3_pose_inference/` 下：<br>`{scene}_placement_info.json`、`pose_prediction_stitched.png` | 为 S4 提供初始旋转、平移、尺度与截断标记；通过拼接图直观对比模板与原图朝向 | 对称沙发/柜体 $180^\circ$ 前后翻转、画幅边缘截断物体平移漂移、小物体 OBB 主轴退化 |
+| **S4 Layout Refinement**<br>（局部对齐、体素退火与刚体物理） | `modules/layout.py`<br>`modules/S4_blender_layout_and_corr.py`<br>`scripts/drop_sim_script.py` | `S4_layout_refinement/` 下：<br>`{scene}_placement_info_s4.json`、`{scene}_render_simu.png` | 最终可渲染 `.blend` 场景与多视角结果；依赖预计算体素与内部子空间消除穿模 | 隔层摆件穿出隔板、靠墙家具背朝内、刚体自由落体弹飞或偏离视觉锚点 |
 
-> **贯穿全程的视觉引导**：图像信息在管线中被四次深度消费——T2I 生成引导图，S1 解析物体掩码与场景图，S2 基于物体裁剪图检索 3D 资产与背景贴图，S3 则通过裁剪图与 162 个渲染模板做局部特征匹配估计姿态。
+值得注意的是，**2D 引导图像在整条管线中被四次深度消费**：T2I 阶段产出图像，S1 阶段从中解析实例掩码与场景图拓扑，S2 阶段利用掩码裁剪图提取 DINOv2 特征检索 3D 资产与墙地材质贴图，S3 阶段则再次拿裁剪图与 162 个渲染模板做像素级局部特征匹配以恢复三维姿态。
 
-### 2.2 调用栈、Context 数据总线与 Wrapper/Legacy 分层
+### 2.2 源码工程架构：Context 数据总线、Wrapper/Legacy 分层与进程隔离
 
-从命令行到 Blender 子进程的完整调用链如下：
+打开 `run_imaginarium_I2Layout.py` 与 `core/pipeline.py`，其主干调用栈清晰展现了工业级长链路管线的组织方式：
 
 ```text
 run_imaginarium_I2Layout.py
   -> ImaginariumPipeline(...)
-    -> Context(...)
-    -> GeometryModule.run()
-    -> SemanticParsingModule.run()
-    -> RetrievalModule.run()
-    -> PoseModule.run()
-    -> LayoutModule.run()
+    -> Context(...)                        # 全局状态、路径契约、模型生命周期与日志管理
+    -> GeometryModule.run()                # S0: 单目深度与相机点云
+    -> SemanticParsingModule.run()         # S1: VLM + Grounding-DINO + SAM + RANSAC + Scene Graph
+    -> RetrievalModule.run()               # S2: 点云 OBB + VLM 尺寸修正 + DINOv2 资产与贴图检索
+    -> PoseModule.run()                    # S3: 162 视角 AENet + 单应性 SVD + OBB 几何增强
+    -> LayoutModule.run()                  # S4: 释放主进程显存 -> 拉起独立 Blender 子进程
       -> blender --background --python modules/S4_blender_layout_and_corr.py
 ```
 
-源码在系统工程层面做出了四项关键设计：
+为了保证这套横跨十余个深度学习模型与图形学引擎的复杂系统稳定运行，官方代码库在工程架构上做出了四项关键取舍：
 
-1. **延迟导入（Lazy Import）与 `Context` 全局数据总线**：`pipeline.py` 移除了顶层重型库导入以加快启动速度；`core/context.py` 统一管理输出目录（`saved_results/{image_name}_result/`）、阶段日志（`pipeline.log` 与 `stage_logs/`）、中间内存字典（`set_data()` / `get_data()`）以及 DINOv2、AENet、VLM 客户端的按需加载与显存释放。
-2. **断点恢复（Resume）、清理（`--clean`）与调试（`--debug`）模式**：默认情况下，各阶段检测到目标输出文件已存在即自动跳过，避免因网络波动或单阶段报错而重跑数分钟的前置流程；`--clean` 强制清空历史缓存从头执行；`--debug` 则额外导出点云、掩码叠加与姿态拼接图（如 `pose_prediction_stitched.png`），便于将失败原因精准定界到具体阶段。
-3. **Wrapper 层与 Legacy 实现层分离**：`modules/parsing.py`、`modules/retrieval.py`、`modules/pose.py` 主要承担目录准备、缓存检查与 `Context` 读写；核心算法逻辑则封装在 `_s1_legacy_functions.py`、`_s2_legacy_functions.py` 与 `_s3_legacy_functions.py` 中。二次开发时可优先在 Wrapper 层插入校验与可视化钩子，无需侵入底层复杂函数。
-4. **独立 Blender 运行时与仓库演进差异**：`LayoutModule.run()` 在启动前主动释放主进程 PyTorch 模型显存，随后通过子进程调用 Blender Python 环境执行网格加载、体素碰撞、模拟退火与刚体物理。此外，当前开源仓库相比原论文还包含多项后续工程增强：LLM/VLM 接口通过 `utils/llm_api.py` 与 `config-example.yaml` 改为可配置端点（支持 GPT-4o 或 Claude Sonnet 4.5 等模型），并新增了背景墙地贴图检索（Background Texture Support）与场景图成套物体分组（Scene Graph Groups）。
+1. **延迟导入**（Lazy Import）与 **`Context` 全局数据总线**：`core/pipeline.py` 刻意移除了顶部的重型深度学习库导入，避免解析命令行参数或检查缓存时产生十余秒的无效等待。`core/context.py` 中的 `Context` 类充当全局数据总线，统一接管输出目录树（`saved_results/{image_name}_result/`）、分级日志（`pipeline.log` 与 `stage_logs/`）、跨阶段内存字典（`set_data()` / `get_data()`）以及 DINOv2、AENet、VLM 客户端的按需懒加载与显存回收。
+2. **文件级断点恢复与 `--clean` / `--debug` 模式**：在默认模式下，每个阶段启动前会先检查磁盘上是否已存在该阶段的目标产物文件（如 `retrieval_results_final.json`）；若已存在则直接读取并跳过计算。由于整条管线耗时约 4 分钟且依赖外部 VLM API 调用，这种基于文件契约的幂等恢复机制极大降低了开发调试成本。加上 `--clean` 可强制清空缓存重跑，加上 `--debug` 则会额外导出 `pcd.ply` 点云与 `pose_prediction_stitched.png` 姿态对比拼接图。
+3. **Wrapper 调度层与 Legacy 算法层解耦**：细读 `modules/` 目录可以发现，`parsing.py`、`retrieval.py`、`pose.py` 三个类文件非常轻量，主要负责目录初始化、缓存存在性检查与 `Context` 读写；真正的重型算法逻辑则被封装在同目录的 `_s1_legacy_functions.py`、`_s2_legacy_functions.py` 与 `_s3_legacy_functions.py` 中。这种分层让开发者可以在外层 Wrapper 中轻松挂载性能计时、异常捕获或自定义校验钩子，而无需改动几千行的底层几何计算代码。
+4. **主进程显存清空与 Blender 独立子进程隔离**：Blender 4.3.2 自带独立的嵌入式 Python 环境，与外部 PyTorch 2.4 / CUDA 环境极易发生 C++ 动态库冲突或显存争抢。因此，`LayoutModule.run()` 在进入 S4 前会主动清空并释放主进程中所有视觉模型的 GPU 显存，随后通过 `subprocess` 启动 `blender --background --python modules/S4_blender_layout_and_corr.py`，依靠磁盘上的 JSON 文件完成跨进程数据交接。此外，当前开源仓库相比原论文还增加了多项实用增强：通过 `utils/llm_api.py` 支持可配置的 OpenAI 兼容端点（如切换 GPT-4o 或 Claude Sonnet 4.5），并新增了背景墙地材质贴图检索（`TextureRetrieval`）与场景图成套物体分组（Scene Graph Groups）。
 
-## 3. 文本扩展与高质量资产库：Flux 微调（T2I）与数据集构建
+---
 
-### 3.1 Flux LoRA 引导图像生成（Prompt Expander）
+## 3. 域对齐引导图生成（T2I）与高密度专业资产库
 
-为了将简短的文本提示转化为兼具审美构图且贴合自有资产库风格的 2D 引导图像，论文在 `black-forest-labs/FLUX.1-dev` 的 Transformer 模块上引入 LoRA 适配器（秩 `r=16`，`lora_alpha=16`），使用资产库的多视角场景渲染图进行 DreamBooth/LoRA 微调。
+### 3.1 为什么要对 Flux 进行资产库 LoRA 微调？
 
-`run_imaginarium_T2I.py` 的核心配置与推理逻辑如下：
+如果直接拿原版 `FLUX.1-dev` 生成室内图像，画面固然精美，但其中出现的家具款式天马行空——当下游 S2 阶段拿着裁剪图去有限的 3D 资产库里检索时，经常找不到几何结构匹配的模型（论文消融实验显示，未微调 Vanilla Flux 的 Top-1 检索命中率仅为 `48.57%`）。
 
-| 参数 | 默认值或含义 | 解释 |
-| --- | --- | --- |
-| `--base_model` | `black-forest-labs/FLUX.1-dev` | 基础 Flux 模型 |
-| `--lora_path` | `weights/imaginarium_finetuned_flux.pth` | 资产库风格微调权重 |
-| `--guidance_scale` | `7.5` | 文本引导强度 |
-| `--num_inference_steps` | `50` | 采样步数 |
-| `--resolution` | `1024` | 输出图像分辨率 |
-| `--num` | 生成张数 | 可一次生成多个候选 guide image |
+为了在不牺牲 2D 扩散模型构图多样性的前提下缩小“生成图像”与“自有 3D 资产库”之间的域间隙，作者利用专业 3D 艺术家搭建的场景渲染图，在 `black-forest-labs/FLUX.1-dev` 的双流/单流 Transformer 模块上挂载低秩适配器（LoRA，秩 `r=16`，缩放系数 `lora_alpha=16`）进行了 DreamBooth 风格微调。
+
+在 `run_imaginarium_T2I.py` 中，模型加载与推理的核心实现如下：
 
 ```python
 transformer = FluxTransformer2DModel.from_pretrained(...)
@@ -148,91 +147,112 @@ pipeline = FluxPipeline.from_pretrained(..., transformer=transformer)
 image = pipeline(prompt, height=1024, width=1024, ...).images[0]
 ```
 
-将 T2I 独立于 I2Layout 之外具有明确的工程价值：用户既可以从单次生成的 4 张候选图中挑选构图最佳、遮挡最少的一张送入下游，也可以结合 Canny 边缘控制或局部重绘（inpainting）对引导图进行交互编辑后再触发 3D 重建。微调后的 Flux 显著缩小了生成图像与 3D 资产库之间的域间隙，从源头降低了下游检索错配与姿态估计失败的概率。
+其关键运行参数与工程作用如下表所示：
 
-### 3.2 高质量资产库与预计算派生数据集
-
-Imaginarium 的场景表现力很大程度上建立在其构建的高密度、专业级 3D 资产与场景数据集之上。由 20 位具有三年以上经验的专业 3D 艺术家使用定制模型、开源精品资产与商用授权资产搭建而成，其核心规模指标远超传统室内数据集 3D-FUTURE：
-
-| 统计维度 | Imaginarium 数据集 | 3D-FUTURE 对比 |
+| 命令行参数 | 默认配置值 | 工程作用与调参权衡 |
 | --- | --- | --- |
-| 3D 场景资产总数（Scene Assets） | `2,037` | — |
-| 专业手工设计场景布局（Layouts） | `147` | — |
-| 细粒度资产类别（Asset Classes / Categories） | `500` 类 / `237` 大类 | `34` 类 |
-| 覆盖场景类型（Scene Types） | 正文约 `20` 类（附录统计 `21` 类） | 集中于常规室内房型 |
-| 单场景平均物体数量（Objects / Scene） | **31.86** | `5.09` |
+| `--base_model` | `black-forest-labs/FLUX.1-dev` | 提供强大的基础文本理解、透视构图与复杂多物体组合先验 |
+| `--lora_path` | `weights/imaginarium_finetuned_flux.pth` | 注入自有 3D 资产库的几何形态、材质质感与相机透视分布 |
+| `--guidance_scale` | `7.5` | 控制文本提示遵循强度，确保生成的房间包含指定的核心功能家具 |
+| `--num_inference_steps` | `50` | 保证 1024 分辨率下小摆件边缘与家具轮廓清晰，利于下游 SAM 分割 |
+| `--resolution` | `1024` | 生成 `1024x1024` 方形引导图，与 S0 深度估计及相机焦距假设对齐 |
+| `--num` | 候选生成张数（如 `4`） | 支持一次生成多张候选图，供人工或自动筛选遮挡最少、透视最稳的一张 |
 
-在 `config/config-example.yaml` 中，系统运行依赖两大类数据包与预计算缓存：
-- **基础数据包（`HiHiAllen/Imaginarium-Dataset`）**：包含推理用 3D 资产模型（`imaginarium_assets.tar.gz`）、资产元数据表（`imaginarium_asset_info.csv`）、容器内部可放置空间标注（`imaginarium_assets_internal_placement_space.tar.gz`）、背景墙地贴图库（`background_texture_dataset.tar.gz`）、Flux 微调训练集（`flux_train_data.tar.gz`）以及含 `.blend` 源文件、RGB、深度、包围盒与掩码的完整研究数据集（Part 1–4）。
-- **派生预计算包（`binicey/Imaginarium-3D-Derived-Dataset`）**：包含每个资产在 162 个视角下的渲染模板图（`imaginarium_assets_render_results_part[1-4].tar.gz`）、DINOv2 图像块特征嵌入（`imaginarium_assets_patch_embedding.tar.gz`）、用于 S4 快速碰撞检测的预计算体素（`imaginarium_assets_voxels.tar.gz`），以及 Depth Anything V2、DINOv2 ViT-L/14、AENet 的预训练权重与预配置 Blender 4.3.2 运行包。
+将 `T2I` 独立拆分为前置脚本带来了极佳的交互灵活性：用户既可以在生成的候选图中挑选视角最理想的一张送入 `I2Layout`，也可以利用 Canny 边缘控制或局部重绘（Inpainting）对引导图某块区域进行微调后，再触发三维重建。
 
-## 4. 几何与语义解析（S0–S1）：深度点云、平面拟合与场景图构建
+### 3.2 高密度 3D 资产库与预计算派生数据体系
 
-### 4.1 S0 Geometry：单目度量深度与相机内参近似
+巧妇难为无米之炊。Imaginarium 之所以能生成远超传统方法的丰富场景，离不开由 20 位具备三年以上行业经验的专业 3D 美术师历时数月打造的 **Imaginarium Dataset**。将其与学术界最常用的 3D-FUTURE 数据集横向对比，可以直观感受到资产密度的代际跨越：
 
-`modules/geometry.py` 中的 `GeometryModule` 负责将 2D 引导图像提升至 3D 相机坐标系。系统加载 `depth_anything_v2_metric_hypersim_vitl.pth` 预测单目度量深度图 `depth.png`，并根据图像宽度采用固定画幅比例近似估计相机焦距：
+| 核心统计维度 | Imaginarium 数据集 | 3D-FUTURE 数据集 | 工程影响 |
+| --- | --- | --- | --- |
+| **独立 3D 资产总数** | `2,037` 个精模资产 | 集中于基础大家具 | 涵盖大量台灯、书籍、花瓶、餐具、挂画等精细陈设品 |
+| **细粒度资产类别数** | **`500` 个细类 / `237` 个大类** | 仅 `34` 类 | 支撑高细粒度的受控词表 VLM 识别与精准同类别检索 |
+| **覆盖场景功能类型** | 约 **`20–21` 类室内外场景** | 仅限卧室/客厅/餐厅等常规房型 | 扩展至书房、咖啡厅、展厅、露台等多元空间 |
+| **专业手工搭建布局数** | `147` 套完整艺术级场景 | — | 提供微调 Flux 与评测重建保真度的黄金真值基准 |
+| **单场景平均物体数** | **`31.86` 个物体 / 场景** | 仅 `5.09` 个物体 / 场景 | **物体密度提升逾 6 倍**，直接对标工业级游戏与影视布景需求 |
+
+在工程部署（`config/config-example.yaml`）中，为了避免每次推理都重新渲染上千个 3D 模型或实时计算高面数网格碰撞，系统将数据划分为两大仓库：
+- **核心资产仓库**（[`HiHiAllen/Imaginarium-Dataset`](https://huggingface.co/datasets/HiHiAllen/Imaginarium-Dataset)）：除了包含 `.fbx/.blend` 网格模型（`imaginarium_assets.tar.gz`）、尺寸与类别元数据表（`imaginarium_asset_info.csv`）和背景材质贴图库（`background_texture_dataset.tar.gz`）外，最独特的是提供了**容器内部可放置子空间标注**（`imaginarium_assets_internal_placement_space.tar.gz`）——预先为每个书架、敞开式柜体标注了内部隔层的三维包围盒范围，使 S4 阶段能够将子物体塞进柜体内部。
+- **预计算派生仓库**（[`binicey/Imaginarium-3D-Derived-Dataset`](https://huggingface.co/datasets/binicey/Imaginarium-3D-Derived-Dataset)）：用空间换时间，预先离线算好了每个资产在 **162 个均匀球面视角下的渲染模板图**（`imaginarium_assets_render_results_part[1-4].tar.gz`）、用于 S2 快速检索的 **DINOv2 Patch 特征嵌入**（`imaginarium_assets_patch_embedding.tar.gz`）以及用于 S4 毫秒级碰撞检测的**预计算体素网格**（`imaginarium_assets_voxels.tar.gz`）。若没有这套离线派生包，仅在本地重新渲染 2,037 个资产的 162 视角模板就需要耗费 1–2 天时间。
+
+---
+
+## 4. 几何反投影与语义场景图解析（S0–S1）
+
+拿到一张 `1024x1024` 的 2D 引导图像后，`I2Layout` 首先要解决的问题是：**如何从一张没有任何相机元数据（EXIF）的合成图像中，恢复出三维房间平面与结构化的物体支撑关系？**
+
+### 4.1 S0 Geometry：单目度量深度与 30/36mm 相机内参近似
+
+在 `modules/geometry.py` 中，`GeometryModule.run()` 首先调用在室内数据集 Hypersim 上微调过的单目度量深度模型 `depth_anything_v2_metric_hypersim_vitl.pth`，预测出每个像素的绝对深度值 `depth.png`。
+
+但只有深度图还无法反投影出三维点云，还缺少相机内参矩阵 $K$。源码中采用了一个非常干脆的图形学工程近似：
 
 ```python
 def estimate_focal_length(width):
     return int(30 / 36 * width)
 ```
 
-该实现假设输入引导图近似对应 Unreal Engine 5 的标准相机设置（30mm 焦距、36mm 传感器画幅），令 $f_x=f_y=\frac{30}{36}W$、主点 $(c_x,c_y)=(W/2,H/2)$，进而通过 `create_point_cloud` 将像素反投影为三维点云。这一相机先验直接决定了后续 S1 墙地平面拟合、S2 物体 OBB 尺度以及 S3 平移初值的全局度量基准。
+为什么要写死 `30 / 36 * width`？因为在构建微调 Flux 的训练渲染图时，美术师与渲染管线统一采用了接近 Unreal Engine 5 标准广角镜头（焦距 `30mm`、全画幅传感器宽度 `36mm`）的透视设定。因此，微调后的 Flux 生成的引导图像天然继承了这一透视场角（FOV）。系统据此设定焦距 $f_x=f_y=\frac{30}{36}W$、光学中心 $(c_x,c_y)=(W/2,H/2)$，随即调用 `create_point_cloud()` 将二维像素反投影为相机坐标系下的稠密三维点云 `pcd.ply`，为后续所有几何计算确立全局度量基准。
 
-### 4.2 S1 Parsing：VLM 物体识别、Grounding-DINO + SAM 与 RANSAC 平面提取
+### 4.2 S1 Semantic Parsing：受控词表检测分割与 RANSAC 墙地平面重建
 
-`SemanticParsingModule.run()`（底层调用 `modules/_s1_legacy_functions.py` 中的 `run_scene_parsing_pipeline`）串联了视觉语言解析、开放词汇检测分割与背景几何重建：
-
-```text
-image + depth
-  -> VLM object parsing
-  -> Grounding-DINO detection
-  -> SAM segmentation
-  -> secondary inspection / dedup
-  -> floor / wall / ceiling parsing
-  -> RANSAC plane fitting
-  -> scene graph construction
-  -> masks.pkl / final_detect_items.pkl / scene_graph_result.json / floor_walls_pose.json
-```
-
-1. **受控词表 VLM 解析与检测分割**：首先由 VLM 在资产库预定义类别集合内识别图像中的物体清单，经过二次核查与去重后，将物体名称输入 Grounding-DINO 预测 2D 检测框，再由 SAM 提取像素级实例掩码 `masks.pkl`。受限于单图分辨率与遮挡，小尺寸装饰物的检测恢复难度明显高于主家具（论文 Table 3 中次要物体恢复率为 `70.41%`，主要物体达 `92.31%`）。
-2. **RANSAC 背景墙地平面拟合**：`utils/ransac.py`（含 `fit_floor_pcd`、`fit_walls_pcd_and_pred_xyz`、`find_floor`、`find_walls`、`estimate_floor_and_walls`）结合背景掩码与 S0 点云，拟合地面、墙面与天花板平面方程并导出 `floor_walls_pose.json`，建立整个房间的世界坐标系基准。
-
-### 4.3 VLM 提示工程与可执行场景图构建
-
-Imaginarium 并未让 VLM 直接猜测三维坐标，而是通过 `prompts/used_prompts.py` 中的结构化提示词，引导 VLM 输出稳定的离散拓扑关系，再结合几何重叠度转化为 S4 优化器的硬约束：
-
-- **三层层级遍历（`SCENE_HIERARCHICAL_TRAVERSAL_PROMPT`）**：要求 VLM 按“功能区域（area）$\to$ 父物体（parent object）$\to$ 子物体（child objects）”三级结构输出 JSON，且物体类别必须严格落在预定义资产类别表内，从源头将桌面书本、床上抱枕、柜内摆件归入支撑树（support tree）的子节点。
-- **支撑、靠墙与吊挂判定（`GENERATE_SCENE_GRAPH_PROMPT_S1` & `FLOOR_WALL`）**：结合 `generate_scene_graph_geometry`、`verify_floor_parent_with_vlm`、`supported_generate` 与 `against_wall_generate_top_down` 等函数，为每个物体判定支撑父节点 `parent`（记作 $\text{obj}_a \prec \text{obj}_b$，附录评测地面支撑树准确率达 `91.95%`）、是否靠墙 `isAgainstWall`、是否落地 `isOnFloor`、是否天花板吊挂 `isHangingFromCeiling`（如吊灯）以及是否墙面挂载 `isHangingOnWall`（如挂画）。
-- **成套分组与朝向关系（`GENERATE_SEMANTIC_RELATIONSHIPS_PROMPT`）**：调用 `analyze_groups_and_facing_relations` 识别桌椅围合的正面朝向（`directlyFacing`）以及视觉外观完全一致的成套家具组（Groups）。同组对象（如围绕餐桌的多把餐椅）在后续 S2 阶段将强制共享同一个检索到的 3D 资产，有效避免了同类物体各自检索导致风格杂乱的问题。
-
-## 5. 资产检索与尺寸修正（S2）：DINOv2 匹配与背景贴图
-
-`RetrievalModule.run()` 负责将 S1 切分出的每个前景实例掩码映射为资产库中的具体 3D 模型，并输出 `pcd_obb_data.json`、`retrieval_results_final.json` 与 `texture_retrieval_results.json`：
+进入 `modules/parsing.py`（底层调用 `modules/_s1_legacy_functions.py` 中的 `run_scene_parsing_pipeline`），系统需要将一张完整图像拆解为独立的物体实例掩码与房间背景平面：
 
 ```text
-S1 masks + depth
-  -> compute OBB data (cal_pcd_obb_data)
-  -> VLM refine dimensions (refine_dimensions_with_vlm)
-  -> DINOv2 asset retrieval (visual similarity + size compatibility)
-  -> background texture retrieval
+Guide Image + Metric Depth Point Cloud
+  -> VLM 受控词表物体识别 + 二次核查去重
+  -> Grounding-DINO 开放词汇检测框 -> SAM 像素级实例分割 (masks.pkl)
+  -> 背景掩码提取 -> RANSAC 拟合地面/墙面/天花板平面方程 (floor_walls_pose.json)
+  -> VLM + 几何重叠启发式联合构建层级场景图 (scene_graph_result_final.json)
 ```
 
-1. **点云 OBB 估计与 VLM 尺寸修正**：`cal_pcd_obb_data` 先根据实例掩码与深度点云拟合初始 OBB。由于单目深度在物体边缘、遮挡区或薄壁结构上常出现尺度失真，`_s2_legacy_functions.py` 中的 `refine_dimensions_with_vlm`（配合 `VLM_SIZE_CORRECTION_PROMPT`）利用 VLM 的视觉常识对异常的 OBB 长宽高比例进行提前校准。
-2. **兼顾视觉特征与尺寸兼容性的 DINOv2 检索**：系统使用 `dinov2_vitl14.pth` 提取目标裁剪图的图像特征，与同类别候选资产的多视角预计算特征进行比对，并融合尺寸差异惩罚项对候选资产排序（`_process_and_sort_candidates`、`calculate_size_difference`）：
-   $$
-   score = \text{visual\_similarity} - \alpha \cdot \text{size\_difference}, \quad (\alpha = 0.1).
-   $$
-   同时，成套分组（Group）内的实例统一复用组内最优资产 ID。
-3. **背景材质贴图检索**：`TextureRetrieval` 结合图像块特征与颜色直方图，将墙面、地面和天花板匹配到 `background_texture_dataset` 中的具体材质贴图。这一开源仓库新增模块显著提升了最终 Blender 渲染图的视觉完整度。
+1. **受控词表识别与两阶段分割**：系统首先引导 VLM 识别图像中出现的所有物体，但严格限制其输出的类别名称必须选自资产库的预定义类别表。经二次核查与同义词去重后，将类别词送入 **Grounding-DINO** 定位 2D 边界框，再交由 **SAM（Segment Anything）** 抠出精细的实例像素掩码 `masks.pkl`。由于单张 `1024` 图像中远景小摆件占用的像素极少且常被遮挡，次要小物体（Secondary Objects）在此阶段的检测恢复率（`70.41%`）明显低于大件主家具（Primary Objects，达 `92.31%`）。
+2. **RANSAC 背景墙地平面拟合**：在分离出地面、墙面与天花板的背景掩码后，`utils/ransac.py`（通过 `fit_floor_pcd`、`fit_walls_pcd_and_pred_xyz`、`estimate_floor_and_walls` 等函数）在对应的背景点云上运行随机抽样一致（RANSAC）平面拟合算法，提取出正交的地面与左右后墙面方程并持久化为 `floor_walls_pose.json`。这一步至关重要：它不仅将相机坐标系旋转对齐到了以地面为水平面（$XY$ 平面）、竖直向上为 $+Z$ 轴的世界坐标系，还为后续靠墙家具提供了精确的墙面法向量。
 
-## 6. 姿态、位置与尺度估计（S3）：多视角匹配、单应性重排与几何增强
+### 4.3 提示工程巧思：如何让 VLM 产出零幻觉的可执行场景图？
 
-拿到候选 3D 资产后，`PoseModule.run()`（核心逻辑位于 `_s3_legacy_functions.py` 的 `inference_obj_pose()` 及 `utils/view_matching.py`）需估计每个资产在场景中的三维旋转 $R_i$、平移 $t_i$ 与尺度 $s_i$，输出 `{scene_name}_placement_info.json`。
+如果直接问 VLM：“请给出图里每个物体的三维坐标和场景图”，输出结果往往漏洞百出。打开 `prompts/used_prompts.py` 与 `_s1_legacy_functions.py` 可以看到，Imaginarium 通过**结构化提示词约束 + 几何投影二次校验**，将 VLM 的职责严格限制在它最擅长的离散拓扑推理上：
 
-### 6.1 162 视角模板局部特征匹配（AENet）
+- **三层层级遍历提示词**（`SCENE_HIERARCHICAL_TRAVERSAL_PROMPT`）：提示词强制要求 VLM 按照 **`功能区域（Area） -> 父物体（Parent Object） -> 子物体（Child Objects）`** 的三级树状 JSON 格式遍历画面。例如，先定位“会客区”，再识别父物体“咖啡桌”，最后列出咖啡桌表面承载的“托盘、花瓶、艺术画册”。这种自顶向下的思维链设计，天然把桌面摆件、床上抱枕、书架隔层书籍锁定在支撑树（Support Tree）的叶节点上。
+- **支撑树、靠墙与吊挂属性的几何-语义双重验证**（`GENERATE_SCENE_GRAPH_PROMPT_S1` & `FLOOR_WALL`）：在判定“物体 $b$ 是否由物体 $a$ 支撑”（记作 $\text{obj}_a \prec \text{obj}_b$）时，源码中的 `generate_scene_graph_geometry`、`supported_generate` 与 `verify_floor_parent_with_vlm` 结合了三维点云高度关系（$b$ 的底面高于 $a$ 且水平投影包围盒高度重叠）与 VLM 视觉确认，使地面支撑树的准确率达到 **`91.95%`**（全局场景图准确率达 **`93.26%`**）。同时，`against_wall_generate_top_down` 等函数为每个物体打上五个关键布尔标签：是否落地（`isOnFloor`）、是否靠墙（`isAgainstWall`）、靠哪一面墙、是否天花板吊挂（`isHangingFromCeiling`，如吊灯）以及是否墙面挂载（`isHangingOnWall`，如装饰画与壁灯）。
+- **成套家具分组与正面朝向**（`GENERATE_SEMANTIC_RELATIONSHIPS_PROMPT`）：`analyze_groups_and_facing_relations` 函数进一步识别两个关键高层语义：一是**正面相对关系**（`directlyFacing`，例如餐椅必须正对餐桌中心、单人扶手椅正对茶几）；二是**视觉同款成套分组**（`Groups`）。在真实房间里，围绕餐桌的四把餐椅或床头两侧的一对床头柜通常是完全相同的款式；源码将它们归入同一个 Group ID，并在下一阶段强制赋予相同的检索资产，彻底根除了传统逐实例独立检索导致的“四把餐椅四个样”的拼凑感。
 
-系统预先为资产库中的每个模型在球面均匀采样的 `162` 个视角下渲染模板图与掩码，并提取形状为 `[N, 162, 1024, 16, 16]` 的姿态敏感特征（`parallel_extract_template_ae_features`）。推理时，借鉴 GigaPose 思路，使用 AENet 与 `LocalSimilarity` 计算待测物体掩码区域 $I_{\mathbf{m}_i}$ 与资产第 $v_k$ 个视角渲染图 $I_{\mathbf{m}_i,v_k}^{A}$ 在有效匹配点集 $\mathcal{K}^{v_k}$ 上的局部余弦相似度之和：
+---
+
+## 5. 兼顾视觉与尺度的资产检索（S2）
+
+进入 `modules/retrieval.py`（核心逻辑位于 `modules/_s2_legacy_functions.py`），`RetrievalModule.run()` 需要为 S1 分割出的每个实例挑选最匹配的 3D 模型与背景贴图，生成 `pcd_obb_data.json`、`retrieval_results_final.json` 与 `texture_retrieval_results.json`。
+
+### 5.1 点云 OBB 拟合与 VLM 常识尺寸校准
+
+第一步是确定图像中每个物体的真实物理尺寸。`cal_pcd_obb_data` 根据实例掩码抠出对应的单目深度点云，拟合并计算出初始的带朝向三维包围盒（OBB）。
+
+然而，单目深度估计在物体边缘常出现“飞点”（Flying Pixels）或深度拖尾，或者因为物体被前景遮挡一半而导致点云残缺——这会让拟合出的初始 OBB 变成扁平片状或细长条状。为了拦截这一几何噪声，源码在检索前专门插入了 `refine_dimensions_with_vlm`（配合 `VLM_SIZE_CORRECTION_PROMPT`）：将点云测算出的初始长宽高连同物体图像一起发给 VLM，利用大模型内化的日常物品物理尺度常识（例如一把标准餐椅长宽高约为 $0.5\text{m}\times 0.5\text{m}\times 0.85\text{m}$），自动修正因遮挡或深度失真导致的异常长宽高比例。
+
+### 5.2 DINOv2 视觉相似度与三维尺寸兼容性联合打分
+
+如果只按图像外观相似度检索 3D 模型，很容易选出一个外观很像但长宽高比例相差甚远的资产（例如把双人位短沙发匹配成三人位超长沙发，放到场景里必然穿模）。因此，Imaginarium 采用 `dinov2_vitl14.pth` 提取目标裁剪图的视觉特征，与同类别候选资产预计算的 162 视角 DINOv2 特征库比对，并在打分公式中显式引入**三维尺寸差异惩罚项**（对应源码 `_process_and_sort_candidates` 与 `calculate_size_difference`）：
+
+$$
+score = \text{visual\_similarity} - \alpha \cdot \text{size\_difference}, \quad (\alpha = 0.1).
+$$
+
+上式在保证材质、款式高度吻合（$\text{visual\_similarity}$ 主导）的同时，以权重 $\alpha=0.1$ 筛除长宽高比例不兼容的候选模型。对于被 S1 标记为同一成套分组（Group）的多个实例，系统汇总组内得分后统一指派同一个最优资产 ID。此外，源码中的 `TextureRetrieval` 类（位于 `utils/obb.py`）结合图像块特征与颜色直方图，自动从 `background_texture_dataset` 中检索匹配的地板木纹与墙面材质贴图，让最终渲染告别单调的白模背景。
+
+---
+
+## 6. 姿态、位置与尺度估计（S3）：为什么需要三阶混合匹配？
+
+选定了 3D 资产模型 $\text{obj}_i$ 后，整条管线迎来了几何难度最高的挑战——`PoseModule.run()`（核心实现位于 `modules/_s3_legacy_functions.py` 的 `inference_obj_pose()` 与 `utils/view_matching.py`）：**如何仅凭一张受遮挡的单视角裁剪图和单目深度点云，把三维资产精确旋转对齐到误差 $5^\circ$ 以内？**
+
+如果直接用点云配准（如 ICP），单目点云只有迎向相机的一个侧面且充满深度畸变，配准极易发散；如果只用 2D 视觉模板匹配（如 GigaPose），无纹理或对称家具又经常发生 $180^\circ$ 前后颠倒，且离散视角采样无法卡准连续的精确朝向。为此，Imaginarium 设计了一套层层递进的**三阶姿态估计机制**。
+
+### 6.1 第一阶：162 视角 AENet 局部特征粗匹配
+
+系统离线在单位球面上均匀采样了 `162` 个相机视角，为每个资产渲染出模板图像与掩码，并用姿态敏感编码器 **AENet** 预提取了形状为 `[N, 162, 1024, 16, 16]` 的密集局部特征图（`parallel_extract_template_ae_features`）。
+
+在线推理时，借鉴 [GigaPose](https://arxiv.org/abs/2311.14155) 的密集对应思路，系统通过 `LocalSimilarity` 计算待测物体裁剪图 $I_{\mathbf{m}_i}$ 与候选资产第 $v_k$ 个视角渲染图 $I_{\mathbf{m}_i,v_k}^{A}$ 在前景有效匹配点集 $\mathcal{K}^{v_k}$ 上的局部余弦相似度之和：
 
 $$
 \text{sim}_{img}(I_{\mathbf{m}_i,v_k}^{A}, I_{\mathbf{m}_i})
@@ -245,11 +265,13 @@ F_{ae}(I_{\mathbf{m}_i})_{img}(j)
 \right\rangle.
 $$
 
-在源码实现中，这一计算由特征批处理、掩码裁剪（mask crop）、模板加载、视角排序（view 排序）与多候选合并协同完成，筛选出粗粒度候选视角集合 $V_{can}$。
+通过对 162 个视角的相似度得分排序，系统快速锁定排名靠前的粗粒度候选视角集合 $V_{can}$。但正如消融实验（Table 7）所揭示的：仅靠这一步 AENet 粗匹配，虽然粗略方向（`mAP@45°` 达 `67.92%`）尚可，但在严苛的 `mAP@15°`（仅 `15.34%`）和 `mAP@5°`（仅 `4.30%`）上几乎完全失效。
 
-### 6.2 单应性矩阵精细重排（Homography Fine Selection）
+### 6.2 第二阶：单应性矩阵 SVD 正交旋转精排
 
-仅靠局部特征相似度容易在对称家具上产生正反面翻转歧义。论文对粗选视角集 $V_{can}$ 中的匹配点对利用 RANSAC 估计单应性变换（`compute_homography`），对其奇异值分解结果 $U_v, V_v^T$ 计算与单位阵 $I$ 的 Frobenius 范数距离（对应 `extract_rotation`、`homography_rotation_distance`、`cal_homography_rotation_difference`），选出几何形变最小的前 $k$ 个视觉候选视角：
+为什么 AENet 粗匹配在 $15^\circ$ 内表现不佳？因为式（4）只是把每个局部 Patch 的特征相似度简单相加，忽略了这些匹配点对在二维空间上是否符合刚体透视几何一致性！
+
+为了筛除几何错位的伪匹配视角，源码在粗选集 $V_{can}$ 上调用 `compute_homography`，利用 RANSAC 从密集匹配点对中估计从模板视角到真实图像的二维单应性变换矩阵 $H_v$。接着，对分解出的矩阵做奇异值分解（SVD）得到正交矩阵因子 $U_v, V_v^T$，并计算乘积 $U_v V_v^T$ 与标准单位矩阵 $I$ 之间的 Frobenius 范数距离（对应源码中的 `extract_rotation`、`homography_rotation_distance` 与 `cal_homography_rotation_difference`），从中选出距离最小的前 $k$ 个视觉精排视角 $\{v_i^{vis}\}_{i=1}^k$：
 
 $$
 \{v_i^{vis}\}_{i=1}^{k}
@@ -258,11 +280,13 @@ $$
 \left\lVert U_vV_v^T-I \right\rVert_F^2.
 $$
 
-单应性变换越接近刚体正交旋转，说明模板视角与图像中物体的真实朝向越吻合。
+这个公式背后的几何直觉非常漂亮：如果某个模板视角 $v$ 的三维朝向与图像中物体的真实朝向完全一致，那么它们之间的平面映射应当极其接近纯刚体恒等变换（即正交旋转部分 $U_v V_v^T$ 趋近于单位阵 $I$，距离趋近于 $0$）；反之，若视角偏转较大或前后颠倒，匹配点对就会发生剧烈的非刚性扭曲。仅凭这一项单应性 SVD 精排，消融实验中的 `mAP@15°` 就从 `15.34%` **暴涨近 4 倍至 `59.42%`**！
 
-### 6.3 OBB 几何方向增强与小物体回退策略
+### 6.3 第三阶：OBB 几何主轴融合与小物体自适应回退
 
-为进一步提升低角度误差阈值（如 5° 以内）的旋转精度，`find_view_best_match_obb` 将单目点云拟合出的 OBB 方向候选集 $\{v^{obb}\}$ 与视觉候选集 $\{v^{vis}\}$ 进行旋转矩阵夹角比对：
+单应性精排解决了 $15^\circ$ 级别的朝向选择，但由于球面模板总共只有 162 个离散采样点，视角间隔本身就有十余度，单靠检索离散模板永远无法突破 $5^\circ$ 以内的亚视角精度（加上单应性后 `mAP@5°` 仍只有 `5.21%`）。另一方面，单目深度点云拟合出的三维包围盒（OBB）虽然分不清家具的“正脸”和“后背”（存在 $90^\circ/180^\circ$ 对称歧义），但它的主轴方向对于长方体家具（如贴墙长沙发、长餐桌）却能提供极高精度的连续几何切线角！
+
+于是，`find_view_best_match_obb` 将视觉精排候选集 $\{v^{vis}\}$（知道哪面是正脸，但角度不够细）与点云 OBB 的对称方向候选集 $\{v^{obb}\}$（角度很准，但分不清正反面）结合起来，计算两者三维旋转矩阵 $R^{v^{vis}}$ 与 $R^{v^{obb}}$ 之间的测地线夹角 $\theta$：
 
 $$
 (v_*^{obb},v_*^{vis})
@@ -274,7 +298,7 @@ $$
 \right),
 $$
 
-并根据角度阈值 $\tau=\pi/5$ 决定最终最佳视角：
+并根据预设的角度容差阈值 $\tau=\pi/5$（即 $36^\circ$）执行自适应融合与回退（Fallback）：
 
 $$
 v_{best}
@@ -285,20 +309,28 @@ v_1^{vis}, & \theta > \tau.
 \end{cases}
 $$
 
-当视觉候选与 OBB 几何主轴夹角不超过 $\pi/5$ 时，采纳几何约束更精确的 $v_*^{obb}$；若两者偏差过大，或者目标属于点云稀疏、OBB 朝向不可靠的小物体时，则触发回退策略（fallback），直接采用视觉匹配排名第一的 $v_1^{vis}$。随后通过 `convert_camera_pose_of_render_view_to_obj_pose_to_blender_coordinates` 将视角姿态转换至 Blender 场景坐标系（如深度轴到 `x, z, -y` 的映射），并结合 OBB 中心、资产原始包围盒与边缘截断标记（mask truncation）初始化平移 $t_i$ 与尺度 $s_i$。
+这一分段决策完美兼顾了大件家具的精度与小物件的鲁棒性：
+- **当最小夹角 $\theta \le \pi/5$ 时**：说明点云 OBB 拟合正常，系统用视觉候选 $v_*^{vis}$ 消除 OBB 的正反面歧义，最终采纳角度更精准的几何朝向 $v_*^{obb}$。这一步直接让 `mAP@5°` 从 `5.21%` **飙升逾 12 倍至 `66.57%`**！
+- **当 $\theta > \pi/5$ 或目标属于点云稀疏的小摆件时**：说明单目点云受到遮挡或深度噪声污染导致 OBB 主轴严重歪斜，系统立即触发安全回退，丢弃不可靠的 OBB 角度，直接采纳视觉精排第一名 $v_1^{vis}$。
 
-## 7. 布局优化与物理仿真（S4）：局部对齐、体素退火与 Blender 刚体下落
+最后，源码调用 `convert_camera_pose_of_render_view_to_obj_pose_to_blender_coordinates` 完成相机坐标系到 Blender 世界坐标系的轴向映射（如深度轴到 `x, z, -y` 的变换），并针对画幅边缘被截断的物体（Mask Truncation）做平移补偿，输出初始布局文件 `{scene_name}_placement_info.json` 与可视化诊断图 `pose_prediction_stitched.png`。
 
-S3 产出的逐物体独立估计不可避免地存在悬空、穿模与墙面夹角偏差。`LayoutModule.run()` 启动独立后台进程执行 `modules/S4_blender_layout_and_corr.py`（内含 `BlenderManager`、`VoxelManager`、`ObjManager`、`RelativePoseManager` 四大管理器），通过四步优化将初始放置转化为物理合理的最终场景。
+---
 
-### 7.1 局部几何修正与容器内部子空间（Internal Placement Spaces）
+## 7. 布局优化与物理仿真（S4）：从独立估计到无穿模物理世界
 
-1. **墙面与朝向局部对齐**：调用 `process_rotation_against_wall_hierarchical`、`process_translation_against_wall`、`process_wall` 与 `process_directly_facing`，强制靠墙物体的背面法线与墙面平齐并贴合墙面，同时修正成对桌椅的相对朝向。
-2. **容器内部可放置子空间**：针对书架、敞开式储物柜、托盘等容器类父物体，传统方法仅将子物体简单堆叠在父物体 OBB 顶面。Imaginarium 利用预标注的内部子空间数据，通过 `get_closest_subspace`、`align_obj_to_closest_subspace`、`scale_obj_to_fit_subspace` 与 `resolve_collisions_in_subspace` 将书籍、花瓶与摆件精准嵌入书架隔层或柜体内腔，并自动微调尺度以防穿出隔板。
+由于 S3 对三十多个物体是逐个独立估计的，直接把它们放进同一个三维空间必然会出现三类物理瑕疵：靠墙柜体与墙面留有夹角缝隙、书架上的书籍悬浮或切入隔板、相邻家具边缘发生局部穿模。
 
-### 7.2 全局体素碰撞优化（Simulated Annealing）
+为此，`LayoutModule.run()` 拉起独立 Blender 进程运行 `modules/S4_blender_layout_and_corr.py`。该脚本内部构建了 `BlenderManager`、`VoxelManager`、`ObjManager` 与 `RelativePoseManager` 四大管理器，通过四步流水线完成从几何对齐到刚体物理落位的蜕变。
 
-为同时消除物体穿模、维持支撑接触并尽量保留 2D 引导图中的视觉位置，论文构建了全局平移优化目标：
+### 7.1 局部几何对齐与容器内部可放置子空间（Internal Placement Spaces）
+
+1. **墙面法线对齐与成对朝向修正**：脚本首先调用 `process_rotation_against_wall_hierarchical`、`process_translation_against_wall` 与 `process_wall`，将所有带有 `isAgainstWall` 标记的家具背面法向量强制旋转对齐至 S1 拟合出的墙面法线，并将其背面平移贴紧墙面；同时调用 `process_directly_facing` 微调桌椅组合，确保餐椅正面严格朝向餐桌。
+2. **容器内部可放置子空间匹配**：这是 Imaginarium 区别于以往室内生成方法的一大亮点。传统的支撑树优化只会把子物体的底面高度 $z_{\min}$ 设为父物体包围盒的顶面高度 $z_{\max}$——这意味着书架里的所有书和摆件都会被一股脑地扔到书架最顶盖上！为了把子物体真正放进书架隔层、敞开式柜体或托盘内部，源码加载了预标注的内部子空间（Internal Placement Spaces），依次调用 `get_closest_subspace`、`align_obj_to_closest_subspace`、`scale_obj_to_fit_subspace` 与 `resolve_collisions_in_subspace`：先根据 S3 初始三维位置找到距离最近的内部隔层子空间，将子物体吸附对齐到隔层底板，若子物体高度略超隔层净高则自动微调缩放比例 $s_i$，并在隔层内部消解横向碰撞。
+
+### 7.2 预计算体素代理与全局模拟退火优化
+
+在完成了局部对齐后，为了在不破坏 2D 引导图视觉构图的前提下彻底消除全局穿模与悬空，论文建立了带硬性物理约束的全局平移优化目标：
 
 $$
 \min_{\{t_i^{update}\}}
@@ -309,10 +341,10 @@ $$
 \left\lVert
 \mathbf{m}_i-
 \mathcal{R}_{\mathbf{m}}(\text{obj}_{\mathbf{m}_i},v_{ref})
-\right\rVert_2^2, \quad (\lambda_1 = 0.1),
+\right\rVert_2^2, \quad (\lambda_1 = 0.1).
 $$
 
-并施加四项硬性空间约束（互不穿模、天花板吊挂高度对齐 $t^c$、靠墙距离为零、被支撑物体底面高度贴合支撑物顶面 $z(\text{obj}_{\mathbf{m}_i})^*$）：
+上式第一项约束优化后的三维位置 $t_i^{update}$ 不要偏离初始位置 $t_i$ 太远（权重 $\lambda_1=0.1$）；第二项则要求物体在参考相机视角 $v_{ref}$ 下的渲染掩码 $\mathcal{R}_{\mathbf{m}}(\text{obj}_{\mathbf{m}_i},v_{ref})$ 与原图分割掩码 $\mathbf{m}_i$ 保持高度重合，从而在二维视觉投影上锁死构图一致性。与此同时，解空间必须同时满足四项硬性物理约束：
 
 $$
 \text{obj}_{\mathbf{m}_i}\cap \text{obj}_{\mathbf{m}_j}=\emptyset,
@@ -324,64 +356,61 @@ d(\text{obj}_{\mathbf{m}_i},\text{obj}_w)=0,
 z(\text{obj}_{\mathbf{m}_j})_{min}=z(\text{obj}_{\mathbf{m}_i})^*.
 $$
 
-由于直接计算高分辨率三角网格的精确交集开销极大，`VoxelManager` 加载预计算的资产体素表示（precomputed voxels）作为几何代理；`ObjManager` 则通过 `calc_overlap_area`、`calc_constraints`、`try_perturb_random_obj` 与模拟退火算法（`simulated_annealing`）迭代搜索无碰撞且满足支撑树的全局最优位置。
+这四个等式分别对应：**任意两物体三维体积互不穿模**、**吊挂物体顶面贴合天花板高度 $t^c$**、**靠墙物体到目标墙面 $\text{obj}_w$ 的距离为零**，以及**被支撑子物体的底面高度 $z_{\min}$ 严格贴合父物体的有效支撑面高度 $z(\text{obj}_{\mathbf{m}_i})^*$**。
 
-### 7.3 Blender 刚体物理下落仿真
+在工程实现中，如果每次随机扰动位置都去计算两个数万面三角网格的精确布尔交集并可微渲染掩码，耗时将高达数小时。`VoxelManager` 与 `ObjManager` 因此采用**预计算体素网格**（Precomputed Voxels）作为快速几何碰撞代理，通过 `calc_overlap_area`、`calc_constraints` 与 `try_perturb_random_obj` 在体素空间内毫秒级评估碰撞体积与约束违背度，并利用**模拟退火算法**（`simulated_annealing`）跳出局部极小值，搜索全局无穿模配置。消融实验（Table 8）表明，这一步全局体素退火将场景支撑正确率从局部修正后的 `72.86%` 大幅提升至 **`90.80%`**，并将平均穿模物体对数从 `4.43` 对腰斩至 **`2.21` 对**。
 
-在优化的最后阶段，脚本通过 `add_rigid_body` 为场景对象配置刚体碰撞属性，并调用 `scripts.drop_sim_script.run_drop_simulation` 执行重力下落物理仿真。这使得沙发上的抱枕、床上织物以及堆叠的小物件能够自然沉降贴合支撑表面，最终导出优化后的布局文件 `{scene}_placement_info_s4.json` 与渲染图 `{scene}_render_simu.png`。
+### 7.3 Blender 刚体物理重力下落仿真
 
-## 8. 实验评估与消融分析
+对于沙发上的软体抱枕、床上的靠垫或斜靠堆叠的书本，仅靠轴对齐包围盒或体素底面贴合仍显僵硬。在 S4 的最后一步，脚本调用 `add_rigid_body` 为场景中的父支撑物挂载被动刚体（Passive Rigid Body）碰撞网格，为子物体挂载受重力驱动的主动刚体（Active Rigid Body），随后执行 `scripts.drop_sim_script.run_drop_simulation` 推进物理步进。在重力与碰撞响应的作用下，微小悬空的物件自然沉降并严丝合缝地贴合在支撑曲面上，最终将支撑正确率推升至 **`91.34%`**，导出 `{scene}_placement_info_s4.json` 与仿真渲染图 `{scene}_render_simu.png`。
 
-### 8.1 运行开销与主观/专家评估（Table 1 – Table 2）
+---
 
-**1. 阶段运行耗时分解**
+## 8. 实验评估、消融分析与多模块逆向诊断
 
-在单张 NVIDIA A100 GPU 上，生成一个完整复杂场景的端到端耗时约为 `240 秒`（对比专业 3D 美术师手工搭建同类场景平均耗时约 `2.5 小时`）：
+### 8.1 运行效率、审美偏好与 3DF-CLAPE 姿态基准
 
-| 阶段 | 单场景耗时 | 硬件建议与离线预处理成本 |
+**1. 单场景 4 分钟生成效率 vs. 专业美术师 2.5 小时**
+
+在单张 NVIDIA A100 GPU 上，Imaginarium 生成一套包含三十余个物体的复杂三维场景总耗时约为 **240 秒**（4 分钟），相比专业 3D 美术师手工搭建同类场景平均耗费的 `2.5 小时` 提速近 40 倍：
+
+| 管线执行阶段 | 单场景推理耗时 | 硬件门槛与离线派生数据说明 |
 | --- | ---: | --- |
-| Text-to-Image Generation (T2I) | `10s` | 推荐 A100；I2Layout 阶段可在 RTX 3090 及以上运行 |
-| Scene Image Analysis (S0 + S1) | `110s` | 若自行从头生成派生数据：多视角模板渲染约需 `1–2 天` |
-| Scene Layout Reconstruction (S2 + S3) | `60s` | AENet 特征本地提取约需 `2 小时`，FBX 转 Blend 约需 `20 分钟` |
-| Layout Refinement (S4) | `60s` | 直接下载官方 Hugging Face 派生数据包可跳过上述离线预处理 |
+| **Text-to-Image (T2I Flux LoRA)** | `10 s` | 推荐 A100；I2Layout 阶段在 RTX 3090 (24GB) 上即可流畅运行 |
+| **Scene Image Analysis (S0 + S1)** | `110 s` | 主要耗时于多轮 VLM API 结构化推理、Grounding-DINO/SAM 与 RANSAC |
+| **Scene Layout Reconstruction (S2 + S3)** | `60 s` | 直接读取 Hugging Face 预计算 162 视角模板与 AENet 特征（省去本地 2 天渲染） |
+| **Layout Refinement (S4 Blender)** | `60 s` | 含容器子空间对齐、预计算体素模拟退火与 Blender 刚体下落仿真 |
 
-**2. 艺术专业学生偏好研究（Table 1）与专家/GPT-4o 评分（Table 2）**
+**2. 100 名艺术生双盲偏好与 20 位资深 3D 艺术家评分**
 
-论文邀请 `100` 名高年级艺术专业学生，在餐厅、客厅、卧室三类场景上对 Imaginarium 与四大基线进行双盲成对比较（评估合理真实性 Q1 Reasonable/Realistic 与审美连贯性 Q2 Coherent/Aesthetic），表内数值为相比基线选择 Imaginarium 的偏好百分比：
+由于传统 FID 指标难以衡量高密度陈设的物理合理性与艺术美感，作者组织了高规格的人类专业评测。第一项实验邀请了 `100` 名高年级艺术专业学生，在餐厅、客厅、卧室三类场景上将 Imaginarium 与四大主流基线进行双盲成对比较，表内数字为受试者判定 Imaginarium 优于基线的胜率百分比：
 
-| 对比基线 | Reasonable Dining | Reasonable Living | Reasonable Bedroom | Reasonable 平均 | Aesthetic Dining | Aesthetic Living | Aesthetic Bedroom | Aesthetic 平均 |
+| 对比基线方法 | 合理真实性 (Reasonable) 餐厅 | 合理真实性 客厅 | 合理真实性 卧室 | **合理真实性 平均胜率** | 审美连贯性 (Aesthetic) 餐厅 | 审美连贯性 客厅 | 审美连贯性 卧室 | **审美连贯性 平均胜率** |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | DiffuScene | 75.69% | 82.59% | 79.37% | **79.22%** | 74.86% | 85.57% | 80.72% | **80.38%** |
 | HOLODECK | 79.27% | 77.08% | 76.79% | **77.71%** | 82.72% | 72.92% | 74.55% | **76.73%** |
 | LayoutGPT | N/A | 76.69% | 76.50% | **76.60%** | N/A | 77.54% | 81.11% | **79.33%** |
 | InstructScene | 66.33% | 68.46% | 61.29% | **65.36%** | 69.39% | 75.17% | 72.90% | **72.49%** |
 
-同时，论文邀请 `20` 位具有三年以上经验的专业 3D 艺术家与 GPT-4o 对 `60` 个生成场景从构图（Composition）、语义逻辑（Semantic）与审美吸引力（Aesthetic）三个维度打分（5 分制，格式为 `专家评分 / GPT-4o 评分`）：
+第二项实验邀请了 `20` 位拥有三年以上从业经验的专业 3D 艺术家与 GPT-4o，对 `60` 个生成场景从构图层次（Composition）、语义合理性（Semantic）与审美吸引力（Aesthetic）三个维度进行 5 分制独立打分（格式为 `人类专家评分 / GPT-4o 评分`）：
 
-| Method | Composition | Semantic | Aesthetic | Overall |
-| --- | --- | --- | --- | --- |
+| 生成方法 | Composition ↑ | Semantic ↑ | Aesthetic ↑ | **Overall 综合得分 ↑** |
+| --- | :---: | :---: | :---: | :---: |
 | **Imaginarium (Ours)** | **3.35 / 3.16** | **3.29 / 2.86** | **3.37 / 3.16** | **3.34 / 3.06** |
 | InstructScene | 2.91 / 3.07 | 2.75 / 2.83 | 2.89 / 3.08 | 2.85 / 2.99 |
 | DiffuScene | 2.86 / 3.07 | 2.80 / 2.78 | 2.83 / 3.07 | 2.83 / 2.97 |
 | HOLODECK | 2.71 / 2.91 | 2.56 / 2.55 | 2.80 / 2.86 | 2.69 / 2.77 |
 | LayoutGPT | 2.42 / 2.97 | 2.26 / 2.83 | 2.35 / 2.97 | 2.34 / 2.92 |
 
-专业人类评审在各维度上拉开了比 GPT-4o 自动评分更显著的差距，印证了 2D 视觉引导结合高质量资产库在构图层次与陈设丰富度上的优势。
+一个颇具玩味的细节是：GPT-4o 给所有方法的打分都集中在 `2.77–3.06` 的狭窄区间内，对穿模和缺少小摆件相对宽容；而眼光挑剔的专业 3D 艺术家则给 LayoutGPT（`2.34`）、HOLODECK（`2.69`）打出了低分，唯独对兼具丰富小摆件与物理接触真实感的 Imaginarium 给出了 **`3.34`** 的最高评价。
 
-### 8.2 重建保真度与 3DF-CLAPE 旋转估计基准（Table 3 – Table 4）
+**3. 图像到 3D 重建保真度与 3DF-CLAPE 旋转基准**
 
-在随机抽取的 `30` 个数据集真值场景渲染图上，Table 3 分别统计了结构关键的主要物体（Primary，如地面/天花板支撑及靠墙家具）与次要装饰小物体（Secondary）的恢复保真度：
+在随机抽取的 `30` 个数据集真值渲染图上，系统对结构关键的主家具（Primary）实现了 **`92.31%`** 的物体恢复率、**`95.83%`** 的类别保持率、**`74.83%`** 的旋转精度（AUC@60°）与 **`84.32%`** 的平移精度（AUC@0.5m）；即便是像素占比极小的次要装饰物（Secondary），类别保持率与平移精度也分别达到 `91.67%` 与 `80.40%`。
 
-| 评估指标 | Primary（主要物体） | Secondary（次要物体） | 全局综合指标 |
-| --- | ---: | ---: | --- |
-| Object Recovery（物体恢复率） | 92.31% | 70.41% | Scene Graph Accuracy：`93.26%` |
-| Category Preservation（类别保持率） | 95.83% | 91.67% | CLIP Score（Guide / Render）：`27.03` / `25.83` |
-| Rotation AUC@60°（旋转精度） | 74.83% | 71.51% | GPT-4o 综合评分：`8.29 / 10` |
-| Translation AUC@0.5m（平移精度） | 84.32% | 80.40% | — |
+为了专门检验 S3 三阶姿态估计算法的实力，作者还构建了单图三维旋转估计基准 **3DF-CLAPE**，分为跨实例的类别级（Category-level）与已知精确 CAD 模型的实例级（Instance-level）两个赛道：
 
-针对单图三维旋转估计，作者构建了包含类别级（Category-level）与实例级（Instance-level）两个子集的 **3DF-CLAPE** 基准（Table 4，指标为 AUC@60°）：
-
-| Method | Category-level AUC@60° ↑ | Instance-level AUC@60° ↑ |
+| 姿态估计方法 | Category-level AUC@60° ↑ | Instance-level AUC@60° ↑ |
 | --- | ---: | ---: |
 | DiffCAD | 26.45% | 25.44% |
 | DINOv2 | 31.68% | 31.38% |
@@ -391,132 +420,56 @@ $$
 | Orient Anything | 56.07% | 56.24% |
 | **Imaginarium (Ours)** | **70.06%** | **81.44%** |
 
-融合 162 视角 AENet 匹配、单应性重排与 OBB 几何方向增强后，旋转估计精度相比单独使用 GigaPose 或 AENet 提升了近 20 个百分点。
+相比单独使用 GigaPose（`57.43%`）或 Orient Anything（`56.24%`），Imaginarium 的三阶混合估计在实例级与类别级赛道上分别取得了 **`81.44%`** 与 **`70.06%`** 的断层式领先。
 
-### 8.3 核心模块消融实验（Table 5 – Table 8）
+### 8.2 三组核心消融：验证三大算法支柱
 
-**1. Flux 微调对资产检索精度与多样性的影响（Table 5 & Table 6）**
+1. **Flux LoRA 微调消融**：在 `100` 张生成场景图的人工标注评测中，对 Flux 进行资产库渲染图 LoRA 微调后，下游 3D 资产检索的 **Top-1 准确率从 `48.57%` 跃升至 `68.70%`**，**Top-3 准确率从 `68.57%` 提升至 `83.21%`**。与此同时，衡量生成图像内部多样性的 `DIV LPIPS` 反而从 `0.5782` 微升至 `0.5901`，证明 LoRA 微调只对齐了家具的局部艺术风格与几何先验，并未让模型退化为死记硬背那 147 个训练房间构图的过拟合机器。
+2. **S3 三阶姿态估计子模块消融**：
 
-在 `100` 张生成场景图的人工标注检索评测中，微调 Flux 显著提升了下游资产匹配的命中率，同时保持了良好的生成多样性（并未退化为死记硬背训练集布局）：
-
-| 模型变体 | 检索 Top-1 ↑ | 检索 Top-3 ↑ | NN LPIPS ↑ | 训练集场景相似度 ↓ | DIV LPIPS ↑ | 集合内场景相似度 ↓ |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Vanilla Flux（未微调） | 48.57% | 68.57% | 0.6375 | 0.3665 | 0.5782 | 0.2974 |
-| **Finetuned Flux（LoRA 微调）** | **68.70%** | **83.21%** | 0.5981 | 0.3899 | **0.5901** | 0.3178 |
-
-**2. S3 旋转估计子模块消融（Table 7）**
-
-| AENet 粗匹配 | 单应性重排（Homography） | OBB 几何增强（Geometry） | mAP@5° ↑ | mAP@15° ↑ | mAP@45° ↑ |
+| AENet 162 视角粗匹配 | 单应性 SVD 正交精排 | 点云 OBB 几何方向融合 | mAP@5° ↑ | mAP@15° ↑ | mAP@45° ↑ |
 | :---: | :---: | :---: | ---: | ---: | ---: |
 | ✓ | ✗ | ✗ | 4.30% | 15.34% | 67.92% |
 | ✓ | ✓ | ✗ | 5.21% | 59.42% | 76.07% |
 | ✓ | ✗ | ✓ | 36.22% | 71.73% | 77.16% |
 | **✓** | **✓** | **✓** | **66.57%** | **75.28%** | **80.61%** |
 
-仅用 AENet 时 `mAP@5°` 仅为 `4.30%`；引入单应性重排使 `mAP@15°` 从 `15.34%` 跃升至 `59.42%`；叠加 OBB 几何方向增强后，高精度阈值 `mAP@5°` 大幅提升至 **66.57%**，证实了视觉局部特征与三维点云几何的强互补性。
+这组对比将视觉特征与三维点云几何的互补机理展现得淋漓尽致：单应性 SVD 精排专治 $15^\circ$ 级别的离散视角错选（将 `mAP@15°` 从 `15.34%` 提至 `59.42%`），而点云 OBB 几何主轴则专攻 $5^\circ$ 以内的亚视角连续对齐（将 `mAP@5°` 最终推至 **`66.57%`**）。
+3. **S4 物理优化递进消融**：从 S3 初始独立输出（支撑正确率 `62.45%`、平均穿模 `5.43` 对），到加入墙面/朝向局部修正（`72.86%`、`4.43` 对），再到加入预计算体素全局模拟退火（`90.80%`、`2.21` 对），最后叠加 Blender 刚体物理下落（**`91.34%`**、**`2.20` 对**），清晰验证了“局部几何对齐 $\to$ 全局体素退火 $\to$ 刚体动力学微调”三步走的必要性。
 
-**3. S4 布局优化阶段递进消融（Table 8）**
+### 8.3 多模块串联系统的故障边界与因果逆向诊断
 
-| 优化阶段 | 支撑正确率（Support Correctness）↑ | 平均穿模对数（Intersection Pairs）↓ | GPT-4o 评分 ↑ |
-| --- | ---: | ---: | ---: |
-| Initial Estimation（S3 初始输出） | 62.45% | 5.43 | 2.83 |
-| + Local Refinement（局部墙面/朝向修正） | 72.86% | 4.43 | 3.07 |
-| + Global Optimization（体素模拟退火） | 90.80% | 2.21 | 3.26 |
-| **+ Physical Constraints（Blender 物理下落）** | **91.34%** | **2.20** | **3.29** |
+由于 Imaginarium 串联了 `Flux -> Depth Anything V2 -> VLM -> Grounding-DINO -> SAM -> RANSAC -> DINOv2 -> AENet -> Blender` 九大环节，且支持基于 2D 局部重绘（Inpainting）的增量场景编辑，在实际运行开源代码（`python run_imaginarium_I2Layout.py demo/demo_0.png --clean --debug`）时，一旦最终渲染图 `{scene}_render_simu.png` 出现异常，切忌盲目重跑整条管线。利用 `Context` 落盘的中间文件契约，可以按以下因果链路进行精准逆向定位：
 
-全局模拟退火优化贡献了最大的物理可用性跃升（支撑正确率提升近 18 个百分点，穿模对数减半），随后的刚体物理仿真则进一步消除了细微悬空。
+| 最终 3D 场景观测到的异常症状 | 根因所属阶段与落盘文件 | 算法与源码级失效机理分析 |
+| --- | --- | --- |
+| **整个房间地板倾斜，或所有靠墙家具贴向空气** | **S0 / S1**：`depth.png` 与 `floor_walls_pose.json` | 引导图视角过于极端或前景占满画面，导致背景墙地面像素过少，RANSAC 拟合出的平面法线发生翻转 |
+| **引导图里清晰可见的某件家具在 3D 场景中消失** | **S1**：`masks.pkl` 与 `final_detect_items.pkl` | VLM 未将该物体归入受控类别词表，或 Grounding-DINO 检测置信度低于阈值被过滤 |
+| **桌面摆件掉到地上，或同套四把餐椅长相各异** | **S1**：`scene_graph_result_final.json` | VLM 支撑树漏判了 `parent` 关系将其误标为 `isOnFloor`，或 `analyze_groups_and_facing_relations` 未将餐椅归入同一 Group |
+| **物体位置大体正确，但模型款式怪异或被拉得极扁** | **S2**：`retrieval_results_final.json` 与 `pcd_obb_data.json` | Flux 画出了资产库缺失的复合拓扑（Novel Topology Mismatch），或遮挡导致点云 OBB 尺寸畸变且未被 VLM 尺寸校准完全纠正 |
+| **沙发、书架或柜体发生 $180^\circ$ 前后背颠倒** | **S3**：`pose_prediction_stitched.png` | 物体正背面纹理高度对称导致 AENet 与单应性精排选错半空间，而点云 OBB 夹角恰好落在 $\tau=\pi/5$ 容差内保留了翻转朝向 |
+| **书架隔层里的书籍穿出隔板或悬浮在半空** | **S4**：`{scene}_placement_info_s4.json` | 检索到的书架资产内部子空间（Internal Placement Space）净高小于子物体，或体素模拟退火步数不足陷入局部碰撞极小值 |
 
-## 9. 交互编辑、横向对比与系统局限
+---
 
-### 9.1 基于 2D 局部重绘的 3D 场景交互编辑
+## 9. 3D 场景生成与感知对齐的技术生态横向对比
 
-由于 2D 引导图是系统的核心控制面，Imaginarium 天然支持“渲染回 2D $\to$ 图像局部重绘 $\to$ 增量更新 3D 布局”的交互编辑工作流：
+将 Imaginarium 置于当前三维场景生成与单图三维重建的技术光谱中，与本博客精读过的另外四篇代表作横向对照，可以洞察不同技术路线在**先验来源、资产表征与物理约束**上的深层分野：
 
-```text
-已有 3D scene
-  -> render global/local image
-  -> mask target region
-  -> Flux repaint/inpaint (or Canny control)
-  -> parse edited region
-  -> re-retrieve assets & re-estimate pose
-  -> merge back into fixed scene
-```
+| 代表工作 | 核心驱动范式 | 视觉引导与多模态角色 | 3D 资产来源与几何表示 | 物理与空间关系求解器 | 核心优势与适用边界 |
+| --- | --- | --- | --- | --- | --- |
+| **Imaginarium** | 文本 $\to$ 微调 Flux 2D 引导图 $\to$ 检索与物理优化 | 2D 引导图充当全局构图与局部纹理锚点；VLM 抽取三级支撑树与成套分组 | 自建 **2,037 个精模资产库**（500 类，含容器内部子空间与预计算体素） | 162 视角 AENet + 单应性 SVD + OBB 融合 $\to$ 体素模拟退火 + Blender 刚体下落 | 单场景平均 **31.86 个物体**，陈设密度与艺术美感极高；受限于闭集资产库拓扑与单视角遮挡 |
+| **CasLayout** | 建筑户型 / 文本 $\to$ 四阶段级联扩散 $\to$ CAD 检索 | 户型图全程交叉注意力；LLM/VLM 可选接入 Stage 1（物体清单）与 Stage 3（稀疏图） | 从 3D-FUTURE 检索工业 CAD 网格（Stage 2 VQ-VAE 离散码本索引，向后截断） | 功能区稀疏关系图 $\to$ 双向 Relation VAE 线性节点潜变量 + $\mathcal{L}_{rc}$ 建筑重建 | 严格遵守异形户型与门窗净空，UniPC 采样仅需 **25 ms**；主要摆放主家具，缺乏隔层小摆件 |
+| **Layout2Scene** | 3D 语义包围盒布局 + 文本 $\to$ 两阶段扩散蒸馏 | 3D 布局透视投影为 2D 语义图；驱动语义几何扩散与三路 ControlNet 外观扩散 | **混合神经表示**：前景物体规范空间 **2DGS** + 背景墙地显式多边形与哈希纹理场 | Stage 1 几何分数蒸馏（GSDS）修正形状 $\to$ Stage 2 间隔分数蒸馏（ISD）生成外观 | **无需任何预定义 CAD 资产库**，渲染达 **30 FPS** 且支持单物体独立编辑；单场景蒸馏需 1.5 小时 |
+| **Diorama** | 单张野外 RGB 图像 $\to$ 零样本开放世界 3D 场景 | Grounded-SAM2 + 深度法线聚类建背景平面；VLM 构建局部接地支撑与 5 类成对约束图 | **即时单图 3D 生成**：调用 Trellis 将每个裁剪物体实时生成为带纹理 3D 网格 | 渲染深度/掩码对齐 + ICP 细化 + 支撑平面投影与符号距离场（SDFS）防碰撞优化 | **零样本泛化至任意开放世界照片**，自带刚体可动关节先验；受单图生成网格背面几何质量制约 |
+| **SUFLECA** | 单张真实 RGB 图像 $\to$ 端到端 CAD 检索与 9-DoF 对齐 | 冻结 DINOv2 视觉特征在训练期作为教师，向三维点云几何编码器做跨模态特征蒸馏 | 从 ScanNet25k / 预定义 CAD 库中直接基于混合特征余弦相似度检索网格 | 端到端可微网络直接回归 9-DoF 位姿（6D 连续旋转 + 中心偏移 + 尺度），无后处理优化 | 前向推理一步完成检索与位姿对齐，消除几何与像素域鸿沟；专注于感知对齐而非从无到有生成 |
 
-用户可通过掩码指定局部区域并结合文本提示完成全局场景补全（global scene completion）、单物体替换（object replacement）或局部新增摆件（local object addition），未编辑区域的 3D 资产则保持锁定。
+纵观这五项工作，我们可以总结出一条清晰的系统架构演进脉络：
+- 当业务场景追求**户型门窗强约束与毫秒级布局推演**时，`CasLayout` 的四阶段级联扩散与线性节点关系潜变量是最高效的纯三维数学解法；
+- 当业务场景追求**无 CAD 资产库依赖的自由风格漫游或开放世界照片重建**时，`Layout2Scene`（基于 2DGS 双先验蒸馏）与 `Diorama`（基于单图 3D 生成器 Trellis）展示了生成式神经表征的潜力；
+- 而当业务场景面向**工业级游戏美术、影视虚拟制片等对网格拓扑质量、成套陈设密度（30+ 物体）与物理接触真实感有着严苛要求的生产管线**时，`Imaginarium` 所确立的“**域对齐 2D 视觉引导 + 受控词表 VLM 场景图 + 视觉/几何混合姿态匹配 + 容器子空间与体素/刚体物理优化**”无疑提供了一套极具工程落地价值的标杆范式。
 
-### 9.2 与 CasLayout 及相关工作的技术谱系对比
-
-将 Imaginarium 与同领域的代表性室内场景生成方法置于同一维度对比：
-
-| 方法 | 主要生成范式 | 使用 2D 引导图 | 资产库依赖 | 显式场景图 | 核心局限 |
-| --- | --- | :---: | :---: | :---: | --- |
-| [ATISS](https://arxiv.org/abs/2110.03675) | 自回归室内布局生成 | 否 | 强依赖 | 否 | 受限于训练集房型，缺乏细粒度摆件与视觉引导 |
-| [DiffuScene](https://arxiv.org/abs/2303.14207) | 单阶段扩散布局生成 | 否 | 强依赖 | 弱 | 联合分布学习难度高，陈设密度与资产类别有限 |
-| [InstructScene](https://openreview.net/forum?id=ELrEzO9DEq) | 文本指令 + 语义图先验扩散 | 否 | 强依赖 | 是 | 文本到复杂几何与小物体层级的映射受限 |
-| [LayoutGPT](https://arxiv.org/abs/2305.15393) | LLM 直接规划坐标 | 否 | 强依赖 | 隐式 | 连续几何精度不足，易发生穿模或越界 |
-| [HOLODECK](https://arxiv.org/abs/2312.09067) | LLM + 规则约束求解 | 否 | 强依赖 | 规则约束 | 审美构图与复杂多层支撑物的匹配能力有限 |
-| SceneCraft | LLM 生成 Blender 脚本 | 否 | 视配置而定 | 隐式 | 脚本执行稳定性与复杂几何控制受限 |
-| LayoutVLM | VLM + 可微优化 | 部分支持 | 强依赖 | 部分支持 | 强依赖初始布局与可微渲染优化收敛性 |
-| CAST | 单图对象生成 + 姿态对齐 | 是 | 生成式资产 | 否 | 生成网格的拓扑规范性与工业资产复用性不足 |
-| [CasLayout](https://arxiv.org/abs/2604.27361) | 四阶段级联扩散 + Relation VAE | 否（可选输入） | CAD 检索 | 稀疏功能图 | 依赖 3D-FRONT 训练分布，小物件层级覆盖较少 |
-| **Imaginarium** | **2D 视觉引导 + 检索姿态 + 物理优化** | **是** | **强依赖（高质量库）** | **是（支撑/靠墙/成组）** | **单图遮挡歧义、有限资产库拓扑边界、管线较重** |
-
-对比可见，**CasLayout** 代表了“在 3D 布局空间内通过级联扩散与隐式关系潜变量进行生成建模”的路线，强项在于户型门窗约束与毫秒级采样；而 **Imaginarium** 则代表了“利用 2D 扩散模型生产高审美构图，再通过视觉解析、6D/9D 姿态匹配与 Blender 物理引擎落地为高密度 3D 资产”的图形系统工程路线，单场景平均物体数（`31.86`）与视觉丰富度显著面向工业内容生产。
-
-### 9.3 系统局限与失败边界
-
-1. **有限资产库带来的新拓扑失配（Novel Topology Mismatch）**：如论文附录失败案例所示，当 Flux 生成了资产库未收录的复合结构（如开放书架与封闭衣柜的结合体）时，S2 只能检索普通封闭衣柜，导致原本应放置在开放隔层中的子物体失去合法内部子空间。
-2. **单视角严重遮挡下的姿态不适定性**：当物体仅露出局部边缘或无纹理背面时，162 视角匹配与单应性重排仍存在多解歧义；引入多视角一致生成是未来的自然延伸方向。
-3. **长链路误差传播与计算/环境成本**：从 `Flux -> VLM -> Grounding-DINO -> SAM -> Depth Anything V2 -> RANSAC -> DINOv2 -> AENet -> Blender` 的超长管线意味着上游的漏检或平面拟合翻转会直接传递至下游；同时，单场景约 4 分钟的耗时及多套外部 API、预计算缓存与 Blender 依赖也构成了较高的部署门槛。
-
-## 10. 工程复现指南与总结
-
-### 10.1 环境准备与两阶段运行命令
-
-完整复现或部署开源管线需准备 Python `3.10`、Blender `4.3.2`（`4.0+` 兼容）、LLM/VLM API 密钥与 Grounding-DINO Token，从 `config/config-example.yaml` 复制生成 `config/config.yaml`，并按第 3.2 节目录结构解压基础资产包、派生数据包与四个核心预训练权重（Flux LoRA、DINOv2、AENet、Depth Anything V2）。
-
-推理分两步执行：
-
-```bash
-# Stage 1: Text-to-Image 生成 2D 引导图
-python run_imaginarium_T2I.py \
-  --prompt 'A cozy living room featuring comfortable armchairs, a gallery wall, and a stylish coffee table.' \
-  --num 4
-
-# Stage 2: Image-to-3D Layout 解析与重建（支持默认断点恢复、--clean 重跑与 --debug 导出诊断图）
-python run_imaginarium_I2Layout.py demo/demo_0.png --clean --debug
-```
-
-### 10.2 G0–G7 阶段式质量门禁与逆向排错法
-
-面对多模块串联系统，建议按以下 8 个检查门禁（Gates）逐步核验中间产物，一旦最终渲染出现异常即可按因果链逆向定位：
-
-| Gate | 检查对象 | 通过标准 | 异常表现与优先排查位置 |
-| --- | --- | --- | --- |
-| **G0** | 输入引导图 | 1024 分辨率、透视稳定、核心家具清晰可见 | 若构图杂乱或视角极端，重新采样 T2I 或更换引导图 |
-| **G1** | `depth.png` (S0) | 地面、墙面与前景家具深度层次合理 | 若整个房间尺度畸变，检查 Depth 权重与 `estimate_focal_length` 焦距假设 |
-| **G2** | `masks.pkl` (S1) | 核心家具无漏检，掩码未大面积吞并背景 | **最终场景缺失某物体**时优先查此处：检查 VLM 物体列表、Grounding-DINO 阈值与 SAM 掩码 |
-| **G3** | `floor_walls_pose.json` (S1) | 地面水平、墙面法线与图像透视一致 | **房间整体倾斜或靠墙方向全错**时优先查此处：检查 RANSAC 点云输入与背景掩码过滤 |
-| **G4** | `scene_graph_result_final.json` (S1) | `parent`、`isAgainstWall`、`directlyFacing` 与 `group` 合理 | 若椅子未围桌或子物体未归属桌面，检查 `used_prompts.py` 输出与二次核查逻辑 |
-| **G5** | `retrieval_results_final.json` (S2) | Top-k 候选的类别、风格与尺寸与裁剪图契合 | **物体类别对但外观/尺寸怪异**时优先查此处：检查 DINOv2 特征、资产分类粒度与 VLM 尺寸修正 |
-| **G6** | `pose_prediction_stitched.png` (S3) | 渲染模板视角与裁剪图对齐，无 180° 翻转 | **物体外观对但朝向反向**时优先查此处：检查单应性重排、OBB 角度阈值 $\tau$ 与小物体回退逻辑 |
-| **G7** | `{scene}_render_simu.png` (S4) | 无明显穿模与悬空，墙地贴图与内部空间放置自然 | **位置大体正确但局部穿模/悬空**时查此处：检查预计算体素、内部子空间与刚体下落参数 |
-
-### 10.3 总结
-
-Imaginarium 展示了一条极具工程实用价值的 3D 场景生成路径：
-
-```text
-高质量 asset library
-+ fine-tuned Flux guide image
-+ VLM semantic parsing & scene graph
-+ Grounding-DINO / SAM masks
-+ Depth Anything V2 / RANSAC geometry
-+ DINOv2 / AENet retrieval and 162-view pose matching
-+ voxel simulated annealing & Blender rigid-body physics
-```
-
-在 3D 场景真值数据稀缺而 2D 视觉生成模型高度成熟的当下，将微调后的 2D 引导图像作为中间视觉控制面，再通过视觉基础模型解析、多视角几何姿态匹配与图形学物理优化落地为高质量 3D 资产布局，为兼顾视觉审美丰富度与工业级资产可控复用提供了清晰的范本。
+---
 
 ## 参考文献
 

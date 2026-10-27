@@ -14,37 +14,26 @@ tags:
 draft: false
 ---
 
-从单张室内照片恢复三维场景，落到工程实现中需要协同求解一连串紧密耦合的子问题：识别图中的开放类别物体及其支撑层级，重建房间的墙面、地面与开口边界，从大规模资产库中检索匹配的 CAD 模型，估计每个模型的三维旋转、平移与尺度（9-DoF 位姿），并消除多物体组合时的悬空、穿模与越界。任何一个环节的偏差都会沿着管线向下游传递。
+给你一张日常书房的照片——角落里有斜向交汇的两面墙，书桌上摆着显示器、笔记本电脑、一摞书和马克杯，地上放着双肩包与转椅——怎么把这张扁平的二维图像，变成一个每个物体都能单独拎出来挪动、连被挡住的椅子背面也有完整几何、而且杯子和书本稳稳贴在桌面上的三维可编辑场景？
 
-**Diorama: Unleashing Zero-shot Single-view 3D Scene Modeling** 采用模块化组装思路，将单图三维场景建模拆解为开放词汇感知、建筑平面恢复（PlainRecon）、场景图推理、多模态资产检索、零样本 9-DoF 位姿估计与分阶段语义布局优化六个子模块，借助现成视觉基础模型与几何优化算法构建完整场景。系统直接输出一组带有语义类别、CAD 资产标识、三维位姿和支撑层级关系的可编辑对象集合。
+这件事如果交给传统的单目深度估计或神经表面重建，你只能拿到一层像石膏外壳一样的“2.5D 前表面”：稍微转个视角，书桌背面和被挡住的墙角全是大黑洞，而且所有物体粘成一张大网格，根本没法单独拖动那台笔记本电脑。反过来，如果交给 Scan2CAD、ROCA 这类传统的端到端室内 CAD 对齐网络，它们受限于封闭的训练词表，眼里只有“床、沙发、大桌子”这八九类大件家具，桌上的电脑、书本、台灯和墙上的挂画统统会被当成背景噪点无视掉；更糟糕的是，逐个物体独立预测出的三维位姿一旦拼进同一个房间，立刻会出现桌子悬空、椅子腿插进地板、书本飘在半空的穿模灾难。
 
-这一设计的核心价值在于重塑了单图场景建模的输出契约：**承认单张 RGB 图像对三维世界的欠约束性，转而生成若干语义合理、结构清晰、支持交互编辑的 CAD 场景假设**。通过 CAD 检索，系统以牺牲逐像素几何与纹理细节为代价，换取了完整的背面几何、干净的网格拓扑与对象级可操作性；通过模块化拼装，系统无需端到端联合训练即可支持开放词汇类别与组件灵活替换。
+面对这一连串棘手的系统级耦合难题，西蒙菲莎大学（SFU）与布朗大学团队提出的 **[Diorama: Unleashing Zero-shot Single-view 3D Scene Modeling](https://arxiv.org/abs/2411.19492v1)**（入选 ICCV 2025 Highlight，[项目主页](https://3dlg-hcvc.github.io/diorama/) / [官方代码](https://github.com/3dlg-hcvc/diorama)）交出了一份极具工程穿透力的答卷。透过繁复的六个子模块看本质，Diorama 的整套架构建立在**四条核心设计哲学**之上：
 
-本文以 arXiv [`2411.19492v1`](https://arxiv.org/abs/2411.19492v1) 为论文基准（该工作后续更新为 v2 并以 **Diorama: Unleashing Zero-shot Single-view 3D Indoor Scene Modeling** 入选 ICCV 2025 Highlight），源码分析固定在官方仓库 commit [`ec54d826`](https://github.com/3dlg-hcvc/diorama/tree/ec54d826cf6b39c6daf88947da897ff9626e5d61)。
+1. **承认单视角欠约束，用“分析即合成”的多假设 CAD 装配替代病态像素重建**（Analysis-by-Synthesis with Multi-Hypothesis CAD Assembly）：单张照片本质上不可能唯一决定被遮挡背面的真实几何与绝对尺度。Diorama 果断放弃逐像素捏网格的路线，转而将输出契约定义为结构化的 `SceneSpec`（有界建筑平面 + 带 9-DoF 位姿与支撑父节点的 CAD 资产集合），并保留多个检索候选生成多组合理的场景装配假设（Arrangements）——主动牺牲像素级表面花纹的精确复刻，换取 100% 完整的三维拓扑与开箱即用的对象级交互编辑能力。
+2. **先擦除家具再拟合房间，用“空房修复 + 法线聚类”攻克非曼哈顿建筑外壳**（Foreground Erasing before Plane Fitting in PlainRecon）：在塞满家具的室内点云里直接跑平面拟合，大书柜、桌面与墙面的点云法线几乎平行，算法根本分不清哪块是墙、哪块是柜子。PlainRecon 采取了绝妙的逆向拆解：先用高召回率前景分割配合图像修复（Inpainting）把照片里的家具统统“搬空”，还原出干净的毛坯空房图像，再在单目几何上做迭代法线聚类与旋转卡壳边界提取，无需正交长方体（Manhattan）假设即可实现 100% 稳定的房间外壳重建。
+3. **让多模态大模型推理“谁撑着谁”，让稠密块特征配准“摆在哪儿”**（VLM for Topological Support Tree, Patch Correspondence for Metric Pose）：严守不同基础模型的能力边界——GPT-4o 直接报三维米制坐标极不靠谱，但配合图像上的数字标签（Set-of-Mark），它极其擅长看图推理出“书本放在书桌上、显示器架在支架上、挂画挂在右墙上”的有向无环支撑树；而定量的 9-DoF 初始位姿，则交给 DINOv2 在 180 个预渲染视图上的双向循环块匹配、Umeyama-RANSAC 与 GigaPose 尺度回归网络协同求解。
+4. **用四阶段课程优化解开“贴合支撑面”与“防穿模排斥”的梯度死锁**（Stage-Wise Curriculum over All-in-One Layout Optimization）：如果把法线朝向对齐、贴合支撑面和三维包围盒（OBB）防碰撞损失一锅端同时放开优化（All-in-One），物体还没转正就被非光滑的碰撞排斥梯度推飞了，整体布局合格率只有惨淡的 `0.15`。Diorama 通过选择性梯度截断（`detach`），严格按照“先掰正接触面朝向（Orientation）$\rightarrow$ 再垂直拉向支撑平面（Placement）$\rightarrow$ 接着在支撑面内推开穿模物体（Space）$\rightarrow$ 最后回补高度与贴墙粘附（Refinement）”的四步课程推进，将布局合格率一举拉升至 `0.92`。
 
-> **核心结论**：Diorama 将开放世界视觉基础模型的语义理解能力与传统 CAD 场景表示及分阶段几何优化有机结合；其代价则在于长管线的误差级联、对多套预训练模型与资产库的依赖，以及“语义合理的可编辑场景”与“像素级物理精确复原”之间的固有差距。
+下面我们就顺着这四条设计哲学，结合论文推导与开源仓库（基线提交 [`ec54d826`](https://github.com/3dlg-hcvc/diorama/tree/ec54d826cf6b39c6daf88947da897ff9626e5d61)）的实现细节，层层剖析这套零样本单图三维场景建模系统。
 
-## 1. 任务定位与系统全貌：将单图复原转化为结构化场景装配
+---
 
-### 1.1 论文元数据与版本边界
+## 1. 任务重塑与系统全景：把单图恢复转化为结构化场景装配
 
-| 项目 | 内容 |
-| --- | --- |
-| v1 题名 | Diorama: Unleashing Zero-shot Single-view 3D Scene Modeling |
-| 作者 | Qirui Wu, Denys Iliash, Daniel Ritchie, Manolis Savva, Angel X. Chang |
-| 机构 | Simon Fraser University, Brown University, Alberta Machine Intelligence Institute (Amii) |
-| arXiv / DOI | `2411.19492v1`（2024-11-29，20 页） / `10.48550/arXiv.2411.19492` |
-| 项目页与代码 | [3dlg-hcvc.github.io/diorama](https://3dlg-hcvc.github.io/diorama/) / [3dlg-hcvc/diorama](https://github.com/3dlg-hcvc/diorama)（MIT 许可，基线提交 `ec54d826`） |
-| 后续状态 | v2 入选 ICCV 2025 Highlight，正式题名增加 `Indoor` 限定词 |
+### 1.1 结构化场景契约与三个“零样本”边界
 
-论文中使用的 `zero-shot`、`open-world` 与 `training-free` 三个术语具有明确的技术边界：
-- **Zero-shot（零样本）**：指系统未针对目标室内数据集训练端到端的 image-to-CAD 网络，直接组合通用预训练模型完成跨数据集推理。
-- **Open-world（开放世界）**：指物体检测与 CAD 检索突破了传统 Scan2CAD 等基准的封闭小词表限制，可识别并装配笔记本电脑、背包、堆叠书本等长尾日常物品。
-- **Training-free（免端到端训练）**：指主框架无需联合训练场景级参数，但运行时仍依赖 GPT-4o、OWLv2、SAM、Metric3DV2、DINOv2、DuoDuoCLIP、GigaPose 尺度网络与图像修复模型等预训练权重。
-
-### 1.2 结构化输出契约与任务谱系定位
-
-给定单张 RGB 图像 $\mathbf I$，Diorama 输出由平面多边形构成的房间建筑结构（architecture）与带 9-DoF 变换（三维旋转、三维平移、三维尺度）及支撑父节点的 CAD 对象列表：
+给定单张室内 RGB 图像 $\mathbf I$，Diorama 的目标是直接生成一份机器可读、可直接导入三维渲染引擎或编辑器的结构化场景描述（源码中封装为 [`diorama/scenespec.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/scenespec.py) 中的 `SceneSpec` 对象）：
 
 ```json
 {
@@ -67,105 +56,106 @@ draft: false
 }
 ```
 
-在三维视觉任务谱系中，单图三维重建（Single-view 3D reconstruction）与新视角合成（Novel-view synthesis）侧重恢复连续表面或辐射场以保证视角外观一致；三维场景理解（3D scene understanding）侧重预测三维检测框与关系标签；场景生成（Scene generation）从文本或噪声采样新场景。Diorama 则处于**三维场景理解与基于 CAD 的场景建模（CAD-based scene modeling）的交汇处**：遵循“分析即合成（analysis-by-synthesis）”范式，从真实或合成图像中解析语义与几何线索，再通过检索与装配离散 CAD 资产，输出可直接导入渲染器或交互编辑器的结构化场景。
+在进入各模块之前，有必要先厘清论文中频繁出现的三个核心定位词的技术边界：
+- **零样本**（Zero-shot）：指系统从未在目标测试集（如 ScanNet 或自建的 SSDB 基准）上训练过端到端的 Image-to-CAD 映射网络，直接靠通用视觉与语言基础模型的组合完成跨域推理。
+- **开放世界**（Open-world）：彻底打破传统室内三维数据集只有八九类大件家具的紧箍咒，无论是桌面上的笔记本电脑、堆叠书本、水杯，还是墙上的装饰画与地上的背包，统统纳入感知与检索装配范围。
+- **免端到端训练**（Training-free）：指无需联合训练场景级大模型，但在线推理时合理调度了 GPT-4o、OWLv2、SAM / SAM 2.1、Metric3DV2、DINOv2、DuoDuoCLIP、GigaPose 尺度网络与 Inpaint-Anything 等多套预训练权重。
 
-### 1.3 系统能力展示与两段式架构（Fig. 1 & Fig. 2）
+### 1.2 从多源输入到两段式系统流水线
 
 ![Diorama teaser：合成图、网络图与文本到场景](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig01-teaser.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Fig. 1, arXiv non-exclusive distribution license.*
-
-Fig. 1 展示了三类输入场景下的建模结果：SSDB 合成室内图、互联网真实室内照片，以及由文本提示经 Flux-1 生成的图像。即使输入图像中沙发或书桌仅局部可见，输出场景依然具备完整的三维 CAD 几何与墙地平面，支持从任意新相机视角审视。阅读该定性展示时也需留意其方法边界：被遮挡区域的几何完整性源自检索到的 CAD 资产先验而非真实观测恢复，对象表面采用简化的资产材质而非光度级纹理重建，且视觉上的接触摆放尚未经过刚体动力学稳定性校验。
+看上面这张开篇全景图（Fig. 1），Diorama 能够通吃三类截然不同的单图输入：SSDB 合成复杂室内图（左）、互联网上随手找来的野生真实室内照片（中），以及由一句文本提示经 Flux-1 生成的二维概念图（右）。哪怕输入照片里的沙发或书桌被挡住了大半截，输出的三维场景依然拥有四面完整的干净 CAD 网格与严丝合缝的墙地平面，支持从任意新视角环绕审视。
 
 ![Diorama 两段式系统管线](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig02-pipeline.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Fig. 2, arXiv non-exclusive distribution license.*
+Fig. 2 展示了实现这一能力的**两段式系统架构**：
+- **上半部分为开放世界感知阶段**（Open-world Perception，橙色框）：从单张图像出发，分三路并进——第一路用 VLM + 开放词汇检测与分割提取所有大小物体的 2D 框与像素掩码；第二路通过 **PlainRecon** 擦除前景家具、结合 Metric3DV2 预测的度量深度与法线恢复房间墙壁与地板平面；第三路利用带编号标记的图像让 GPT-4o 推理出“谁支撑着谁”的层级场景图（Scene Graph）。
+- **下半部分为基于 CAD 的场景建模阶段**（CAD-based Scene Modeling，绿色框）：拿着感知阶段产出的类别描述、局部裁剪图与反投影点云，先用 **DuoDuoCLIP** 从跨源资产库（60K+ 模型）中检索出 Top-K 候选 CAD 模型；接着利用 **DINOv2** 稠密块特征与 180 个预渲染参考视图做双向循环匹配，结合 Umeyama-RANSAC 和 GigaPose 尺度网络解出每个物体的初始 9-DoF 位姿；最后送入**四阶段语义布局优化器**，在消除碰撞穿模的同时让所有物体稳稳落座，输出多组合理的场景装配方案（Arrangements）。
 
-Fig. 2 将完整管线划分为 **开放世界感知（Open-world Perception，橙色）** 与 **基于 CAD 的场景建模（CAD-based Scene Modeling，绿色）** 两大阶段：
-- **感知阶段**：从输入图像提取开放词汇类别、2D 检测框与实例掩码，利用 Metric3DV2 预测度量深度与表面法线以反投影物体点云，通过 PlainRecon 恢复房间建筑平面，并借助 GPT-4o 构建带支撑层级与物体描述的场景图。
-- **建模阶段**：结合文本类别与图像裁剪区域执行分层多模态 CAD 检索，利用查询图与 CAD 多视角渲染图的 DINOv2 块特征对应估计 9-DoF 初始位姿，最后在场景图与建筑平面的约束下执行四阶段布局优化，产出多个合理的场景装配假设（arrangements）。
+---
 
-## 2. 开放世界感知与场景图生成：从 2D 检测到支撑层级推理
+## 2. 开放世界感知与 Set-of-Mark 支撑树推理
 
-### 2.1 开放词汇实例解析与度量深度点云
+### 2.1 开放词汇实例解析与度量深度反投影
 
-设输入图像为 $\mathbf I$，感知模块识别出的开放词汇类别集合为 $\mathbf C$，检测框为 $\mathbf B$，实例分割掩码为 $\mathbf M$，则 $N$ 个场景对象的二维感知结果记为：
+为什么不能直接让 GPT-4o 框出图里所有物体的像素坐标？因为多模态大模型虽然语义见识广，但直接输出二维边界框坐标时精度很差，还经常漏掉桌上密密麻麻的小物件。
+
+Diorama 在 [`diorama/vis_agent.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/vis_agent.py) 中采用了“**大模型定词表，专用检测器找坐标**”的分工策略：先调 GPT-4o（`VLMAgent.understand_scene()`）扫描全图，列出画面中出现的所有开放词汇类别集合 $\mathbf C$；再把这份动态词表喂给开放词汇检测器 **OWLv2** 定位二维包围框 $\mathbf B$，并用 **SAM / SAM 2.1**（`SAM2.1 Hiera Large`）抠出精细像素掩码 $\mathbf M$，配合类别感知非极大值抑制（Class-aware NMS）滤除重叠冗余框，得到 $N$ 个物体的二维实例集合：
 
 $$
 \mathcal O=\left\{o_i=\{c_i,b_i,m_i\}\right\}_{i=1}^{N}.
 $$
 
-系统设计遵循明确的职责分工：先由 GPT-4o（`VLMAgent.understand_scene()`）识别图像中的开放物体类别与细粒度描述，再交由专用开放词汇检测器 OWLv2 与分割模型 SAM（当前代码支持 SAM2.1 Hiera Large）精确定位像素边界，并通过类别感知非极大值抑制（class-aware NMS）与多实例抑制滤除重复检测框。
-
-与此同时，Metric3DV2 预测整图的度量深度图 $\mathbf D$ 与表面法线 $\mathbf N$。结合相机内参反投影函数 $\Pi^{-1}$，第 $i$ 个对象的三维局部点云由其掩码区域提取：
+与此同时，单目几何基座 **Metric3DV2** 预测整张图的度量深度图 $\mathbf D$ 与表面法线图 $\mathbf N$。结合相机内参反投影函数 $\Pi^{-1}$，第 $i$ 个物体的掩码像素被直接提升为相机坐标系下的局部三维点云：
 
 $$
 p_i=\left\{\Pi^{-1}(u,v,D_{uv})\mid m_i(u,v)=1\right\}.
 $$
 
-度量深度在管线中同时决定建筑平面位置、对象点云尺度与三维平移初值。后文 Table 1 将真值深度（GT depth）与估计深度（Estimated depth）分列对比，直观展示了单目深度误差对下游整体装配精度的影响（总体对齐准确率 Acc 从真值深度下的 `0.33` 降至估计深度下的 `0.25`）。
+这团局部点云 $p_i$ 在后续管线中身兼重任：它既要给 9-DoF 位姿估计提供三维目标点坐标，又要决定物体的初始平移中心与物理尺度。
 
-### 2.2 基于 Set-of-Mark 的场景图构建（Fig. 10）
+### 2.2 给画面贴上数字牌：基于 Set-of-Mark 的场景图构建
+
+识别出了 20 个物体之后，最关键的结构化问题来了：**当单目深度有 15 厘米误差导致杯子在三维空间里悬空时，优化器怎么知道这个杯子到底该往书桌上吸、往书架隔层里放，还是直接掉到地板上？**
+
+这就必须靠显式的**支撑层级场景图**（Support Scene Graph）$G=\langle V, E\rangle$ 来指路。
 
 ![GPT-4o 与 Set-of-Mark 场景图生成](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig10-scene-graph.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Fig. 10, arXiv non-exclusive distribution license.*
+如果只用文字问 GPT-4o：“请问图里左边第二个杯子放在哪张桌子上？”，当桌上摆了好几个杯子和书本时，纯文本指代极其容易张冠李戴。为此，作者在 Fig. 10 中引入了 **Set-of-Mark（SoM）视觉提示机制**（对应 `augment_image_w_marks()`）：直接把每个实例以及每面墙壁、地板的唯一数字 ID（如 `[1]`, `[4]`, `[7]`）醒目地画在图像对应的分割掩码中心，连同列表喂给 GPT-4o。
 
-为避免大语言模型在纯文本坐标下产生指代混淆（如误判“左侧第二个杯子”），Diorama 采用 Set-of-Mark（SoM）视觉提示机制，将实例数字编号直接渲染在图像掩码区域上，再交由 GPT-4o 推理支撑层级场景图：
+模型只需要看着带数字标号的画面做连线填空：
+- 为每个节点 $v_i \in V$ 生成一句带空间上下文的细粒度外观描述（Caption，例如 `"three stacked books beside the monitor"`，供后续检索模型挑选更贴切的 CAD 资产）；
+- 为每个被支撑物体确定**唯一**的直接支撑父节点 $v_j$，构建有向边 $e=\langle v_i, v_j\rangle \in E$，并明确区分是平放在水平表面上（`placed on`，如显示器放在书桌上）还是挂载在垂直立面上（`mounted on`，如挂画挂在右墙上）。
 
-$$
-G=\langle V,E\rangle,
-$$
+因为强制要求每个物体只能认一个直接生父（地面、墙面作为根节点），生成的场景图天然是一棵**有向无环支撑树**（DAG / Tree）。在源码 `SceneSpec.add_support_surf()` 中，这棵树直接决定了后续几何优化的物理拓扑：谁的顶面是提供承托的支撑面（Support Surface），谁的底面（或背面）是去贴合别人的接触面（Contact Surface），以及哪些小物件是塞在书架隔板内部（Supporting Volume）的。
 
-其中节点 $v_i\in V$ 对应物体实例及其细粒度描述（caption），有向边 $e=\langle v_i,v_j\rangle\in E$ 表示对象 $o_i$ 被对象 $o_j$（或地面、墙面等建筑平面）支撑。提示词进一步区分了放置在表面（`placed on`）与挂载在立面（`mounted on`）等关系类型，并约束每个被支撑物体仅选择唯一的直接父节点，从而构成有向无环支撑树。
+---
 
-在官方源码 [`diorama/scenespec.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/scenespec.py) 中，场景图 $G$ 被封装进核心数据结构 `SceneSpec`，通过 `parse_scene_graph()` 解析语言模型输出，并由 `add_support_surf()` 写入支撑面、接触面与法线方向，直接驱动后续的分阶段几何优化：决定哪个 OBB 提供支撑平面、哪个表面作为接触面、书架内部物品是否落入容纳体积（supporting volume），以及落地家具是否需要贴合相邻墙面。
+## 3. PlainRecon 建筑恢复：先把家具“搬空”，再给房间量尺寸
 
-## 3. PlainRecon 建筑恢复：去家具修复、法线聚类与平面边界拟合
+### 3.1 为什么直接拟合点云会失败？去家具修复与法线聚类三步法
 
-### 3.1 为什么需要先移除前景家具（Fig. 3）
+要让家具落脚，首先得有地板和墙壁。传统的室内布局方法（如 Scan2CAD 或早期 Room Layout 估计）大多死守**曼哈顿世界假设**（Manhattan World Assumption），把房间硬塞进一个方方正正的六面体盒子里——一旦遇到带斜角墙面的阁楼、走廊开口或者只拍到两面墙的局部特写，六面体假设就会当场崩溃。
+
+那能不能直接在 Metric3DV2 反投影出来的全图三维点云上跑 RANSAC 拟合平面呢？还是不行！想象一面靠着大衣柜和书桌的墙：衣柜门、桌面和墙面全是平整的大平面，而且法线方向完全正交一致；如果带着家具直接拟平面，RANSAC 算出来的“墙面”和“地面”就会把柜门和桌面一起吞进去，算出的房间边界全乱了套。
 
 ![PlainRecon 建筑恢复流程](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig03-plainrecon.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Fig. 3, arXiv non-exclusive distribution license.*
+看 Fig. 3 展示的 **PlainRecon** 流程，作者用“先做减法、再做聚类”的三步巧思干净利落地解决了这个问题：
 
-许多传统室内布局方法假设房间为规则的正交长方体（Manhattan cuboid），面对转角墙面、斜视角或走廊开口时极易失效；而若直接在原始点云上做平面拟合，大型书桌、柜门与墙面往往法线方向一致，RANSAC 难以区分家具表面与建筑墙面。
-
-PlainRecon 因此提出三步法恢复由带边界三维多边形平面（3D bounded planes）构成的房间结构：
-1. **前景擦除与空房间修复**：结合 BiRefNet、MVANet 与 SEEM 等高召回率前景分割模型提取所有家具掩码（对应 [`scripts/compute_dichotomous_segmentation.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/scripts/compute_dichotomous_segmentation.py)），再调用 Inpaint-Anything 将前景区域修复为干净的“空房间（empty room）”图像。此处高召回率比精细边缘更重要，微小的掩码膨胀可由图像修复自然填补，而漏检残留的家具像素则会污染墙面平面。
-2. **度量深度与法线聚类**：对修复后的空房间图像使用 Metric3DV2 预测深度与法线并反投影为建筑点云。由于表面法线对图像修复伪影比深度值更鲁棒，系统先执行体素下采样与离群点剔除，再用 12 个 K-means 种子法线迭代吸收夹角小于 $10^\circ$ 的点（直至未聚类点少于 200 个），随后通过 DBSCAN 分离法线相同但空间分离的不同墙面，并用 KNN（$k_n=1$）回填剩余点。
-3. **RANSAC 平面拟合与二维边界提取**：对每个法线聚类点集拟合三维平面方程
+1. **高召回率前景擦除与“毛坯空房”图像修复**：既然家具碍事，那就先把家具从照片里抹掉！系统组合了 BiRefNet、MVANet 与 SEEM 等显著性与全景分割模型（[`scripts/compute_dichotomous_segmentation.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/scripts/compute_dichotomous_segmentation.py)），宁可稍微多框一点边缘，也要把前景家具 100% 圈出来；随后调用 **Inpaint-Anything** 把抠掉家具的空白区域顺着周围墙面和地板纹理自然补齐，生成一张干净的“空房间（Empty Room）”图像。
+2. **为什么按表面法线聚类，而不直接按深度拟合？** 对修复后的空房间图跑 Metric3DV2 拿到深度与表面法线后，作者敏锐地注意到一个物理特性：**二维图像修复（Inpainting）填补出的像素，其估计出的绝对深度值往往有轻微鼓包起伏，但预测出的表面法线方向（Normal）却高度一致且极其稳健！** 因此，系统先在法线空间下手：初始化 12 个 K-means 种子法线，迭代吸收法线夹角小于 $10^\circ$ 的点（直到未归类点少于 200 个）；接着针对“左右两面平行墙法线相同但空间不相连”的情况，在三维坐标上跑 **DBSCAN** 密度聚类将它们拆成独立墙面，并用最近邻（$k_n=1$）收编剩余零散点。
+3. **RANSAC 平面拟合与旋转卡壳边界提取**：对每个聚类出的墙面或地面点集，用 RANSAC 拟合三维无穷平面方程：
    $$
-   \pi_k:\quad a_kx+b_ky+c_kz+d_k=0,
+   \pi_k:\quad a_kx+b_ky+c_kz+d_k=0.
    $$
-   再将内点投影至平面局部二维坐标系，计算凸包（convex hull）并通过旋转卡壳法（rotating calipers）拟合包围矩形与多边形边界，生成可参与碰撞检测与支撑约束的有界建筑平面。
+   最后把该平面上的内点投影到平面自身的二维局部坐标系，先求二维凸包（Convex Hull），再用**旋转卡壳法**（Rotating Calipers）拟出紧致的有界三维多边形（3D Bounded Planes）。这样无论是三面墙、斜角墙还是走廊局部，都能拿到带精确边界的房间外壳。
 
-### 3.2 建筑恢复定性与定量评估（Fig. 12 & Table 4）
+### 3.2 100% 稳定重建：与 RaC 基线的定性与定量交锋
 
 ![PlainRecon 建筑恢复定性结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig12-architecture-results.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Fig. 12, arXiv non-exclusive distribution license.*
-
 ![SSDB 建筑平面恢复定量结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table04-architecture-reconstruction.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Table 4, arXiv non-exclusive distribution license.*
+对照 Fig. 12 的可视化与 Table 4 在 SSDB 全部 344 张测试图像上的实测数据，PlainRecon 的工程价值体现得淋漓尽致：
+- **从“经常崩盘”到“344/344 零失败”**：对比基线 RaC（无论是搭配 Depth Anything V2 还是 Metric3DV2），由于依赖严格的平面交线拓扑求解，在 344 张测试图里竟然有 86～108 张图直接求解崩溃（Success 仅为 `236/344` 与 `258/344`）！而对于下游的家具装配而言，一旦房间地板或墙面重建失败，整张图的场景建模就彻底泡汤。PlainRecon 凭借先擦除家具再法线聚类的稳健设计，在 **344 张图上做到了 100% 成功重建**。
+- **精度与速度双赢**：在全集评测下，PlainRecon + Metric3DV2 将平面交并比（IoU）从 RaC 的 `45.2` 大幅推高到 **`58.6`**，平面法线与偏移误差（PE）从 `33.7` 猛压到 **`9.6`**，边界倒角距离（CDb）压到 **`0.447`**，同时单图耗时从 49 秒缩短至 **29 秒**（搭配 DAv2 更是只需 **23 秒**）。
 
-Fig. 12 与 Table 4 展示了 PlainRecon 在 SSDB 344 张测试图像上与 RaC（结合 Depth Anything V2 或 Metric3DV2）的对比：
+---
 
-| Method | Depth | Success ↑ | IoU ↑ | PE ↓ | EE ↓ | RMSE ↓ | CDb ↓ | Time ↓ |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| RaC | DAv2 | 236 / 344 | 40.3 (58.8) | 39.8 (12.2) | 23.2 | **0.67** | 0.645 | 43s |
-| RaC | M3D | 258 / 344 | 45.2 (60.3) | 33.7 (11.6) | 21.0 | 1.23 | 0.908 | 49s |
-| **PlainRecon** | DAv2 | **344 / 344** | 47.8 | 13.3 | 27.5 | 1.26 | 0.503 | **23s** |
-| **PlainRecon** | M3D | **344 / 344** | **58.6** | **9.6** | **18.9** | 1.37 | **0.447** | 29s |
+## 4. 多模态 CAD 检索与零样本 9-DoF 位姿配准
 
-PlainRecon 在全部 344 张图像上实现了 **100% 重建成功**（RaC 仅在 236 或 258 张图上成功求解，表中括号内为仅统计成功子集的指标），并在全集 IoU（`58.6`）、平面误差 PE（`9.6`）、边缘误差 EE（`18.9`）、边界倒角距离 CDb（`0.447`）及耗时（`23–29s`）上显著领先；RaC + DAv2 则在单指标 RMSE（`0.67`）上更低。对于下游场景装配而言，保证 100% 稳定产出完整的地面与墙面支撑边界比局部深度均方根误差更为关键。
+房间外壳和支撑树就绪后，接下来要把每个物体对应的三维 CAD 模型找出来（Retrieval），并算出它的三维旋转、平移和三轴尺度（9-DoF Pose Estimation）。
 
-## 4. 多模态 CAD 检索与零样本 9-DoF 位姿估计
+### 4.1 为什么用文本初筛 + 视觉重排？DuoDuoCLIP 分层检索
 
-### 4.1 基于 DuoDuoCLIP 的分层多模态 CAD 检索（Table 3）
+为了支撑开放世界五花八门的日常物品，Diorama 整合了 ShapeNet、ABO、3D-FUTURE、HSSD 以及 Objaverse LVIS，构建了一个规模高达 **60K+** 的跨源三维资产池。面对几万个模型，怎么为图里抠出来的局部物体 $o_i$ 挑出最神似的 CAD 资产 $s_j$？
 
-Diorama 整合了 ShapeNet、ABO、3D-FUTURE、HSSD 与 Objaverse LVIS 构建大规模跨源资产池（v1 的分布外 OOD 检索池规模达 60K）。系统采用多视图 3D 编码器 **DuoDuoCLIP** 将文本描述 $f_t(c_i)$、对象裁剪图 $f_v(I_i)$ 与三维 CAD 模型的多视图渲染表征 $f_s(s_j)$ 映射至同一特征空间，执行两级混合检索：先通过文本查询筛选语义类别一致的 Top-K 候选（防止因轮廓相似把“显示器”误匹配为“窗户”），再结合视觉特征余弦相似度重排以选出几何形态最接近的资产：
+如果只用裁剪出来的物体小图去搜视觉相似度，当一张方方正正的“电脑显示器”被挡住底座时，它的二维轮廓跟一扇“正方形窗户”或“相框”几乎一模一样，纯视觉检索极易跨类别乱配；反过来，如果只按文本类别 `"chair"` 去搜，搜出来的可能是老板转椅，而图里明明是把木头餐椅。
+
+为此，源码 [`duoduoclip.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/model/duoduoclip/duoduoclip.py) 采用了基于多视图 3D 编码器 **DuoDuoCLIP** 的两级混合检索（Hierarchical Multimodal Retrieval）：先用文本嵌入 $f_t(c_i)$ 与 3D 资产嵌入 $f_s(s_j)$ 的余弦相似度做 KNN 初筛（取 Top-50），锁死正确的语义大类；再叠加上物体裁剪图的视觉嵌入 $f_v(I_i)$ 做加权重排（取 Top-5）：
 
 $$
 S_{ij}=\lambda_t\,\cos(f_t(c_i),f_s(s_j))+
@@ -174,129 +164,132 @@ $$
 
 ![不同检索表征的 Chamfer Distance](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table03-retrieval-similarity.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Table 3, arXiv non-exclusive distribution license.*
+看 Table 3 在同源资产池（SS）与 60K 分布外资产池（OOD）上的几何倒角距离对比（Top-5 候选中与真值模型最小的 L1 Chamfer Distance $\times 10^3$，越低代表搜出来的模型形状越接近实物）：无论是对比纯 2D 的 CLIP 还是点云编码器 OpenShape，DuoDuoCLIP 的图文混合模式（DD-H）在日常小物件（Household：`5.5 / 9.9`）、大件家具（Furniture：`3.2 / 7.6`）以及核心承托物（Supporting：`3.0 / 6.1`）上全线拿下最低几何误差。
 
-Table 3 在 SSDB 同源资产池（SS）与 60K 分布外资产池（OOD）上对比了 CLIP、OpenShape 与 DuoDuoCLIP 的检索质量（指标为 Top-5 候选中与真值形状的最小 L1 Chamfer Distance $\times 10^3$，越低越好）。DuoDuoCLIP 混合检索（DD-H）在绝大多数分组中取得最优几何匹配度（如 Household 的 `5.5 / 9.9`、Furniture 的 `3.2 / 7.6`、Supporting 的 `3.0 / 6.1`），显著缓解了跨数据集检索时的形状失配。
+### 4.2 零样本 9-DoF 位姿估计：180 视图循环块匹配与尺度解耦
 
-### 4.2 零样本 9-DoF 位姿估计：循环特征对应与 Umeyama-RANSAC（Fig. 4）
+拿到了检索出的候选 CAD 模型，怎么在完全没训过目标域位姿回归器的情况下，把它摆进相机三维坐标系？
 
 ![Diorama 零样本对象位姿估计](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig04-zero-shot-pose.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Fig. 4, arXiv non-exclusive distribution license.*
+如 Fig. 4 所示，Diorama（对应源码 [`correspondence.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/model/gigazsp/correspondence.py) 与 [`gigazsp.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/model/gigazsp/gigazsp.py)）利用微调后的 **DINOv2 ViT-L**（提取第 17 层的 $14\times 14$ 稠密 Patch Token）在真实照片与无纹理 CAD 渲染图之间的部件同构性，分四步解算初始 9-DoF 位姿：
 
-由于检索到的 CAD 模型与图像中的真实物体并非同一实例，局部几何可能存在差异。Diorama 利用 DINOv2 ViT-L（14×14 图像块特征）跨实例语义部件的同构性，通过四步求解零样本 9-DoF 位姿：
-
-1. **双向循环一致性块匹配（Cyclic Patch Correspondence）**：预先为每个 CAD 资产渲染 $T=180$ 个 224×224 灰度参考视图及其深度图。对查询图掩码内的每个块特征 $f_q^i$，在参考视图掩码内寻找最相似块 $j$，再从 $j$ 反向查找查询图中的最相似块 $i'$，并计算循环距离 $D_i$：
+1. **180 视图双向循环一致性匹配**（Cyclic Patch Correspondence）：系统预先为资产池里的每个 CAD 模型均匀渲染 $T=180$ 个参考视图（$224\times 224$ 灰度图及对应深度图）。对于查询图掩码内的第 $i$ 个块特征 $f_q^i$，先在某个参考视图掩码内找余弦相似度最高的块 $j$；再反过来从参考视图的块 $j$ 出发，回头在查询图里找最相似的块 $i'$，计算一去一回的**循环偏移距离** $D_i$：
    $$
    j=\arg\max_{k:m_r^k>0}S(f_q^i,f_r^k), \qquad
    i'=\arg\max_{w:m_q^w>0}S(f_q^w,f_r^j), \qquad
    D_i=-\lVert i-i'\rVert_2.
    $$
-2. **最佳参考视角选择**：滤除循环不一致及低相似度点对后，按有效匹配点集 $\mathcal N$ 的平均余弦相似度选出最佳参考视图作为粗旋转假设，并保留 Top-K（默认 50 对）对应点：
+   如果从 $i$ 跳到 $j$ 再跳回来落到了十万八千里的地方（$|D_i|$ 很大），说明这是一次单向一厢情愿的错配，直接滤除！
+2. **最佳参考视角锁定**：在通过了循环检验与相似度门限（源码配置为 `0.5`）的干净匹配集 $\mathcal N$ 上，计算查询图与 180 个参考视图的平均特征相似度，挑出得分最高的参考视图作为粗旋转视角，并截取前 $K=50$ 对高置信度匹配点：
    $$
    \operatorname{sim}(I_q,I_r)=
    \frac{1}{|\mathcal N|}\sum_{(i,j)\in\mathcal N}
    S(f_q^i,f_r^j).
    $$
-3. **3D 提升与 Umeyama + RANSAC 求解**：利用查询图估计深度将 2D 匹配点提升为相机系三维点 $q_k$，利用 CAD 渲染深度得到模型系三维点 $p_k$，结合 RANSAC 迭代调用 Umeyama 算法（`GigaZSP.solve_umeyama_ransac()`）求解旋转 $R^*\in SO(3)$、平移 $t^*$ 与尺度 $s^*$：
+3. **三维反投影提升与 Umeyama-RANSAC 刚体配准**：利用查询图的单目深度将 2D 匹配点提升为相机系三维点 $q_k$，利用参考视图的 CAD 渲染深度拿到模型系三维点 $p_k$，在 RANSAC 循环中调用经典的闭式 **Umeyama 算法**（`solve_umeyama_ransac()`）最小化三维对齐残差，解出旋转矩阵 $R^*\in SO(3)$、平移 $t^*$ 与基础尺度 $s^*$：
    $$
    (R^*,t^*,s^*)=
    \arg\min_{R,t,s}
    \sum_{k=1}^{K}\left\lVert q_k-(sRp_k+t)\right\rVert_2^2.
    $$
-4. **GigaPose 尺度网络增强**：由于单目深度噪声与局部遮挡极易导致纯点云拟合的尺度异常缩放，系统引入 GigaPose 预训练尺度回归网络（`diorama/model/gigazsp/ist_net.py` 中的 `ISTNet`）提供稳健的相对尺度估计。
+4. **为什么还要外挂一个 GigaPose 尺度网络？** 这是一个极其关键的工程补丁：当图里的椅子被挡住一半、或者单目深度在物体边缘发生拖尾畸变时，仅靠稀疏匹配点云算出的尺度 $s^*$ 极易忽大忽小。因此，系统在锁定最佳参考视图后，同步调用预训练的 **GigaPose 尺度与面内旋转回归网络**（[`ist_net.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/model/gigazsp/ist_net.py) 中的 `ISTNet`），直接对比查询图与最佳参考视图的整体二维包络比例，修正三维尺度估计。
 
-### 4.3 位姿估计精度与多检索假设增益（Table 1 & Table 7）
+### 4.3 深度误差级联与多检索候选的兜底效应
 
 ![SSDB 零样本 9-DoF 对齐结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table01-zero-shot-9dof.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Table 1, arXiv non-exclusive distribution license.*
-
-| Method | GT rAcc | GT tAcc | GT sAcc | GT Acc | Est. rAcc | Est. tAcc | Est. sAcc | Est. Acc |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Best multiview | 0.34 | 0.93 | 0.52 | 0.19 | 0.34 | 0.84 | 0.44 | 0.15 |
-| ZSP + DINOv2 | 0.37 | 0.93 | 0.57 | 0.23 | **0.42** | **0.85** | 0.55 | **0.26** |
-| ZSP + ft DINOv2 | **0.45** | 0.94 | 0.66 | **0.34** | 0.41 | **0.85** | 0.54 | 0.24 |
-| GigaPose | 0.36 | **0.95** | **0.71** | 0.27 | 0.36 | 0.84 | **0.64** | 0.22 |
-| **Diorama (Ours)** | **0.45** | **0.95** | **0.71** | 0.33 | 0.41 | 0.84 | **0.64** | 0.25 |
-
-Table 1 显示，Diorama 结合微调 DINOv2 特征与 GigaPose 尺度网络后，在旋转（`0.45`）、平移（`0.95`）与尺度（`0.71`）单项指标上均持平最优，并在场景级碰撞与支撑关系指标上显著领先（注：在纯对象级联合 Acc 上，ZSP + ft DINOv2 于 GT 深度下取得 `0.34` 略高于 Ours 的 `0.33`，ZSP + DINOv2 于估计深度下取得 `0.26` 略高于 Ours 的 `0.25`）。当从 GT 深度切换至估计深度时，支撑关系准确率从 `0.61` 降至 `0.25`，表明三维空间关系的最终落成高度依赖准确的深度与尺度。
-
 ![不同 CAD 检索数量对 9-DoF 对齐的影响](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table07-retrieval-hypotheses.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Table 7, arXiv non-exclusive distribution license.*
+对照 Table 1 与 Table 7 的定量实验，我们可以读出三条关于单图位姿估计的核心规律：
+- **特征微调管旋转，GigaPose 管尺度**：在 Table 1 中，结合了微调 DINOv2 特征与 GigaPose 尺度网络的 Diorama，在真值深度（GT Depth）下同时拿到了最高的单项旋转准确率（rAcc `0.45`）、平移准确率（tAcc `0.95`）和尺度准确率（sAcc `0.71`），且将场景级的物理支撑满足率（Support）推高到了 **`0.61`**（远超未做布局优化的基线 `0.00`）。
+- **单目深度是卡住三维绝对位置的咽喉**：注意看 Table 1 左右两半表的落差——当把真值深度（GT Depth）换成 Metric3DV2 预测的单目估计深度（Estimated Depth）后，虽然旋转准确率几乎没掉（`0.45 -> 0.41`），但因为深度尺度的整体漂移，平移准确率从 `0.95` 掉到了 `0.84`，联合对齐准确率从 `0.33` 降到了 `0.25`，支撑关系准确率更是从 `0.61` 掉到了 `0.25`。这直观说明单目深度的轻微非线性变形，在三维空间里会被放大为十几个厘米的位置错位。
+- **多检索候选（Multi-Hypotheses）显著对冲“搜错模型”的风险**：看 Table 7，如果每个物体只死磕检索排名第 1 的那个 CAD 模型（# Hypotheses = 1），一旦 Top-1 模型长宽比跟照片里的实物不对付，对齐准确率只有可怜的 `0.09`（估计深度下 `0.08`）；而当保留前 4 个或前 8 个检索候选（# Hypotheses = 4 / 8）并行跑位姿与装配时，准确率直接翻倍跃升至 **`0.18` 与 `0.21`**（估计深度下 **`0.15` 与 `0.18`**）！
 
-Table 7 进一步验证了保留多个 CAD 检索候选的必要性：当每个对象的检索候选数从 `1` 增加到 `4` 和 `8` 时，GT 深度下的对齐准确率从 `0.09` 提升至 `0.18` 和 **0.21**（估计深度下从 `0.08` 提升至 `0.15` 和 **0.18**），证实了多假设采样能有效缓解 Top-1 检索资产与目标物体间的几何失配。
+---
 
-## 5. 语义感知的分阶段场景布局优化
+## 5. 核心设计哲学四：为什么布局优化必须拆成四个阶段？
 
-### 5.1 四阶段解耦优化公式体系（Fig. 5）
+### 5.1 为什么 All-in-One 联合优化会彻底崩盘？
+
+现在，每个物体都拿到了独立算出的初始 9-DoF 位姿，房间墙壁地板（PlainRecon）和支撑关系树（GPT-4o Scene Graph）也准备好了。但如果你把这些物体直接摆进三维空间，画面简直没法看：杯子悬在书桌上方 10 厘米，显示器底座插进了键盘里，书柜后背穿透了墙壁。
+
+很自然的想法是：我们写一个总损失函数，把“接触面法线对齐”、“拉向支撑平面”、“禁止三维包围盒（OBB）互相穿模”加在一起，用梯度下降一起优化不就行了？
+
+**如果真的这样做（即 All-in-One 策略），你会发现优化器不仅消不掉穿模，反而会把整个房间的家具炸得乱七八糟！**
+
+为什么？想一想其中的几何梯度冲突就明白了：
+- 在初始状态下，书桌上的笔记本电脑可能既是歪斜的（朝向没对齐），又和旁边的显示器发生了轻微交叠（穿模），同时还悬空在桌面上方。
+- 基于分离轴定理（Separating Axis Theorem，SAT）计算的 3D OBB 碰撞穿透损失 $e_{\text{col}}$ 是一个高度非光滑、分段线性的排斥力。如果此时同时放开旋转、高度平移与防碰撞排斥，碰撞梯度为了最快消除重叠，会顺着歪斜的斜面把笔记本电脑直接往天上顶、或者逼着它发生荒谬的 $90^\circ$ 翻转；而电脑一旦被顶飞，又和“往下拉向桌面”的放置梯度迎头相撞，两股力量在非凸空间里死锁打架！
 
 ![语义感知的分阶段场景布局优化](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig05-layout-optimization.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Fig. 5, arXiv non-exclusive distribution license.*
+为了解开这个死锁，Diorama 在 [`diorama/model/layout_optim.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/model/layout_optim.py) 中设计了 Fig. 5 所示的**四阶段课程优化**（Stage-wise Curriculum Optimization），在每个阶段通过 PyTorch 的 `detach()` 严格锁死无关自由度，按物理因果顺序一步一步理顺场景：
 
-逐对象独立估计的 9-DoF 位姿无法保证场景级的物理接触与互不穿模。Diorama 将每个对象表示为三维有向包围盒（3D OBB），根据场景图确定接触面（contact surface）、支撑面（support surface）与支撑法线方向，并在 [`diorama/model/layout_optim.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/model/layout_optim.py) 中通过选择性梯度截断（`detach`）分四个阶段依次优化旋转、平移与尺度：
+#### 第一步：朝向阶段（Orientation Stage —— 先把歪斜的物体掰正）
+在还没谈“落座”和“挤位置”之前，必须先把物体的底面（接触面）跟承托它的桌面或地面（支撑面）掰成平行！设场景图 $G$ 中被支撑物 $o_i$ 的接触面法线为 $\mathbf n_i^c$，父节点支撑物 $o_j$ 的支撑面法线为 $\mathbf n_j^s$，朝向对齐损失强制二者同向平行；同时，为了防止物体在绕着法线轴自由打转时把正面转到背面去，加上一项约束优化后的水平正面朝向 $\mathbf v_i^*$ 不偏离初始预测朝向 $\mathbf v_i$ 的语义朝向保持损失：
 
-1. **朝向阶段（Orientation Stage）**：对齐被支撑对象 $o_i$ 的接触面法线 $\mathbf n_i^c$ 与支撑对象 $o_j$ 的支撑面法线 $\mathbf n_j^s$，同时约束优化后的水平正面方向 $\mathbf v_i^*$ 不偏离初始语义正面方向 $\mathbf v_i$（防止对齐法线时发生绕垂直轴的任意旋转）：
-   $$
-   e_{\text{align}}=
-   \sum_{(i,j)\in G}
-   \left\lVert \mathbf n_i^c-\mathbf n_j^s\right\rVert_2, \qquad
-   e_{\text{sem}}=
-   \sum_i\left\lVert \mathbf v_i^*-\mathbf v_i\right\rVert_2.
-   $$
-2. **放置阶段（Placement Stage）**：将对象接触面中心 $c_i$ 拉向支撑平面 $S_j$（法线 $n_j$，平面上参考点 $x_j$），同时引入相对位置保持项 $e_{\text{rel}}$ 以维持同平面上多个物体（如桌面上的显示器、键盘与水杯）的初始相对空间排布：
-   $$
-   e_{\text{place}}=
-   \sum_{(i,j)\in G}
-   \left|\left(c_i-x_j\right)^Tn_j\right|, \qquad
-   e_{\text{rel}}=
-   \sum_{(i,j)}
-   \left\lVert
-   (c_i^*-c_j^*)-(c_i-c_j)
-   \right\rVert_2.
-   $$
-3. **空间阶段（Space Stage）**：基于分离轴定理（Separating Axis Theorem, SAT）计算各对象 OBB 之间及对象与建筑平面之间的最小穿透深度（累积为碰撞损失 $e_{\text{col}}$），结合支撑面积边界损失 $e_{\text{surf}}$（`support_space_loss()`，防止物体底面伸出桌面边缘）与支撑容纳体积损失 $e_{\text{vol}}$（`support_volume_loss()`，约束书架隔层或柜内物品不穿出容器边界）联合优化：
-   $$
-   E_{\text{space}}=
-   \lambda_{\text{col}}e_{\text{col}}+
-   \lambda_{\text{surf}}e_{\text{surf}}+
-   \lambda_{\text{vol}}e_{\text{vol}}+
-   \lambda_{\text{rel}}e_{\text{rel}}.
-   $$
-4. **精修阶段（Refinement Stage）**：由于空间防碰撞阶段推开物体时可能导致部分对象轻微脱离支撑面，精修阶段再次执行放置约束，并通过距离启发式为落地家具（如书柜、床头、电视柜）建立贴墙粘附约束（wall adherence）。各阶段使用动量 SGD 优化器（动量 `0.9`，位置/旋转学习率 `0.01`，尺度学习率 `0.001`，每阶段迭代 200 步且每 50 步衰减 `0.1`）。
+$$
+e_{\text{align}}=
+\sum_{(i,j)\in G}
+\left\lVert \mathbf n_i^c-\mathbf n_j^s\right\rVert_2, \qquad
+e_{\text{sem}}=
+\sum_i\left\lVert \mathbf v_i^*-\mathbf v_i\right\rVert_2.
+$$
 
-### 5.2 分阶段消融与 All-in-One 策略对比（Table 2 & Table 8）
+#### 第二步：放置阶段（Placement Stage —— 垂直拉向支撑面，锁住水平相对排布）
+物体全部摆正之后，第二步专门消灭“悬空”和“陷入地下”。设物体 $o_i$ 接触面的中心为 $c_i$，父节点支撑平面 $S_j$ 的法线为 $n_j$、平面上参考点为 $x_j$，放置损失 $e_{\text{place}}$ 直接把点到平面的垂直距离压向零；与此同时，为了防止同一张书桌上的显示器、键盘和马克杯在移动时乱了原本的左右前后队形，引入成对相对位移保持项 $e_{\text{rel}}$：
+
+$$
+e_{\text{place}}=
+\sum_{(i,j)\in G}
+\left|\left(c_i-x_j\right)^Tn_j\right|, \qquad
+e_{\text{rel}}=
+\sum_{(i,j)}
+\left\lVert
+(c_i^*-c_j^*)-(c_i-c_j)
+\right\rVert_2.
+$$
+
+#### 第三步：空间阶段（Space Stage —— 在支撑面内推开穿模，严禁出界）
+当所有物体都端端正正落到了各自的支撑平面上后，原本悬空交错的物体被拍进了同一个平面层，局部穿模（Collision）此时会集中暴露出来。现在再开启空间排斥损失 $E_{\text{space}}$，梯度就只会顺着支撑平面干净利落地把重叠物体向两侧推开：
+
+$$
+E_{\text{space}}=
+\lambda_{\text{col}}e_{\text{col}}+
+\lambda_{\text{surf}}e_{\text{surf}}+
+\lambda_{\text{vol}}e_{\text{vol}}+
+\lambda_{\text{rel}}e_{\text{rel}}.
+$$
+
+看这四项的精密配合：
+- $e_{\text{col}}$ 基于三维分离轴定理（SAT）计算任意两个 OBB 之间、以及 OBB 与房间墙壁之间的最小穿透深度并把它们推开；
+- 但如果只管推开，桌边的水杯很容易被一把推到桌子外面悬空！所以紧跟着 $e_{\text{surf}}$（源码 `support_space_loss()`）专门惩罚超出父节点支撑面二维多边形边界的部分，把水杯死死圈在桌面范围内；
+- 而对于塞在书架隔板或开放式柜子里面的书本，$e_{\text{vol}}$（源码 `support_volume_loss()`）则构建三维容纳体积约束，严禁柜内物品穿出隔板顶面或侧面。
+
+#### 第四步：精修阶段（Refinement Stage —— 回补接触面与大型家具贴墙粘附）
+在第三步推开穿模物体并微调三轴尺度的过程中，部分物体的底面可能会因为尺度缩放而再次轻微脱离支撑面。因此第四步回炉重跑一次放置约束，并额外引入一项非常符合室内设计常识的启发式规则——**贴墙粘附**（Wall Adherence）：凡是离墙面足够近且朝向背对墙壁的落地大件家具（如书柜、床头、衣柜、电视柜），自动将其背面吸附贴紧相邻墙面。四个阶段统一使用带动量的 SGD（动量 `0.9`，平移/旋转学习率 `0.01`，尺度学习率 `0.001`，每阶段跑 200 步且每 50 步衰减 `0.1`）。
+
+### 5.2 阶段消融与“先碰撞上升、再全局收敛”的非单调博弈
 
 ![Diorama 布局优化阶段消融](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table02-layout-ablation.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Table 2, arXiv non-exclusive distribution license.*
-
 ![all-in-one 与 stage-wise 优化对比](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table08-stagewise-optimization.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Table 8, arXiv non-exclusive distribution license.*
+对照 Table 2 与 Table 8 的实验数据，前面分析的物理博弈过程在数字上得到了教科书般的印证：
+1. **为什么单加 Placement 时碰撞反而变多了？** 看 Table 2 前三行：未优化初值（w/o optim）的碰撞指标为 `7.26`，加上 Orientation 掰正后降为 `6.34`；可紧接着加上 Placement 把悬空物体全部拍回桌面和地面后，因为原本在半空中错开的物体挤到了同一层平面上，碰撞指标短暂反弹到了 `7.61`，而放置合格率则从 `0.01` 暴涨到 `0.94`！
+2. **为什么加上 Space 后放置率又掉了一截，非要 Refinement 不可？** 看第四行（`+ O, P, S`）：Space 阶段发力推开重叠物体并微调尺度后，碰撞降到了 `5.90`，但因为尺度收缩导致底面离开桌面，Placement 合格率从 `0.94` 滑落到了 `0.54`；直到最后接上第四步 Refinement 重新压实接触面并贴合墙壁，才让 Collision 降到全场最低的 **`4.43`**，同时 Orientation 达 **`0.97`**、Placement 达 **`0.95`**、综合合格率 Overall 飙升至 **`0.92`**！
+3. **All-in-One 的惨败**：再看 Table 8，如果把这几项损失一股脑全开（All-in-One），碰撞直接恶化到 **`12.49`**（比完全不优化的 `7.26` 还糟一倍），综合合格率更是只有 **`0.15`**。这充分证明在包含非光滑几何碰撞与层级拓扑约束的优化问题中，**分阶段解耦课程（Stage-wise Curriculum）是决定收敛生死的胜负手**。
 
-| 优化配置 | Collision ↓ | Orientation ↑ | Placement ↑ | Overall ↑ |
-| --- | ---: | ---: | ---: | ---: |
-| w/o optimization（未优化初值） | 7.26 | 0.18 | 0.01 | 0.00 |
-| + Orientation | 6.34 | 0.97 | 0.01 | 0.01 |
-| + O, Placement | 7.61 | 0.97 | 0.94 | 0.91 |
-| + O, P, Space | 5.90 | 0.97 | 0.54 | 0.53 |
-| **+ O, P, S, Refinement (Stage-wise)** | **4.43** | **0.97** | **0.95** | **0.92** |
-| All-in-One（单阶段同时优化全部损失） | 12.49 | 0.18 | 0.84 | 0.15 |
-| w/ GT scene graph | 3.28 | 0.97 | 0.97 | 0.95 |
-| w/ GT architecture | 4.15 | 0.97 | 0.97 | 0.95 |
+---
 
-Table 2 与 Table 8 揭示了两个极具启发性的现象：
-- **阶段间的非单调博弈**：在加入 Placement 后，物体被集中拉向支撑平面，导致碰撞指标从 `6.34` 短暂上升至 `7.61`；紧接着 Space 阶段消除碰撞至 `5.90`，却使放置接触率从 `0.94` 滑落至 `0.54`；最终依靠 Refinement 阶段回补放置与贴墙约束，才使 Collision 降至 **4.43**、Overall 达到 **0.92**。
-- **分阶段课程优化的必要性**：若采用 All-in-One 将所有损失项同时放开优化，旋转、平移与非光滑 OBB 碰撞梯度相互干扰，不仅 Overall 跌至 `0.15`，碰撞甚至恶化至 `12.49`。先锁定朝向与支撑拓扑、再微调空间排布的分阶段策略有效规避了病态局部极小值。
+## 6. 全方位实验验证：从密集小物件、ScanNet 到野生图像与交互编辑
 
-## 6. 实验基准、跨数据集对比与定性分析
+### 6.1 场景感知对齐指标与 SSDB 多假设重建
 
-### 6.1 评测基准、场景级对齐指标与 SSDB 多假设结果（Fig. 6, Fig. 14 & Table 5）
+传统的单物体对齐评测只看每个物体自己跟真值位姿差多少（平移 $e_t \le 20\text{ cm}$、旋转 $e_R \le 20^\circ$、尺度 $e_s \le 20\%$）。但在真实房间里，如果书桌和桌上的电脑同时往左偏了 25 厘米，按传统指标算它俩全错，可实际上电脑依然稳稳摆在书桌正中央，场景内部结构完全合理！反之，如果书桌往左偏 12 厘米、电脑往右偏 12 厘米，虽然各自都没超 20 厘米，但电脑已经悬空掉出桌外了。
 
-论文在 **SSDB**（130 个密集室内场景、1,700 个独立 CAD、Blender 渲染 344 张测试图）与 **ScanNet 子集**（600 张真实 RGB 图、覆盖 24 类约 3,000 个实例）上展开评估。除传统的对象级对齐阈值（平移误差 $e_t\le 20\text{ cm}$、旋转误差 $e_R\le 20^\circ$、尺度误差 $e_s\le 20\%$）外，作者提出了**场景感知对齐指标（Scene-aware Alignment）**，要求对象不仅接近自身真值位姿，还需相对场景中所有其他对象 $j\ne i$ 满足相对变换容差：
+为此，作者专门定义了**场景感知对齐指标**（Scene-aware Alignment）：一个物体要想被判为对齐成功，除了自身位姿达标外，它相对于场景中**所有其他物体** $j \neq i$ 的相对位移、相对旋转与相对尺度误差也必须同时满足容差：
 
 $$
 \forall j\ne i:\quad
@@ -307,108 +300,69 @@ $$
 
 ![SSDB 场景、支撑图与多个 CAD arrangement](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig06-ssdb-results.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Fig. 6, arXiv non-exclusive distribution license.*
-
 ![更多 SSDB 场景、场景图与替代 CAD arrangement](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig14-more-ssdb.webp)
-
-*Source: Wu et al., arXiv:2411.19492v1, Fig. 14, arXiv non-exclusive distribution license.*
-
-Fig. 6 与 Fig. 14 展示了 SSDB 复杂桌面、书架、厨房与卧室场景的重建效果。每行同时给出使用真值形状的 Arrangement 1（隔离检验位姿与布局优化）以及使用不同检索 CAD 的 Arrangement 2/3，验证了系统在几十个密集小物体层级下的支撑保持能力。
 
 ![不同 SSDB 对象组的平均对齐结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table05-object-groups.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Table 5, arXiv non-exclusive distribution license.*
+看 Fig. 6 与 Fig. 14 在 SSDB 密集场景（单图包含多达二三十个大小物体，如堆满杂物的书架、书桌与厨房台面）上的表现：图中不仅展示了 GPT-4o 推理出的多层支撑树，还并列给出了使用不同检索候选生成的 **Arrangement 1 / 2 / 3**。哪怕换用了局部款式略有不同的替代书架或茶几 CAD 模型，分阶段布局优化器依然能把上层的花瓶、书本和显示器严丝合缝地重新安顿在新的支撑面上。而 Table 5 按物体属性拆解的数据也符合直觉：完整可见物体（Complete，Acc `0.34`）显著好于重度遮挡物体（Occluded，Acc `0.25`），结构特征鲜明的大件家具在旋转估计上（Furniture，rAcc `0.53`）明显高于细碎的日常小物件（Household，rAcc `0.44`）。
 
-Table 5 按对象属性分组统计了对齐精度：完整可见对象（Complete，Acc `0.34`）明显优于被遮挡对象（Occluded，Acc `0.25`），大件家具的旋转准确率（Furniture，rAcc `0.53`）显著高于日常小物件（Household，rAcc `0.44`），反映了局部块特征对应对可见面积与结构显著性的依赖。
+### 6.2 ScanNet 真实场景对比：封闭域强监督 vs 开放世界零样本
 
-### 6.2 ScanNet 真实场景对比与评测集差异（Fig. 7, Table 6 & Fig. 13）
+当把零样本的 Diorama 拉到传统室内基准 ScanNet（结合 Scan2CAD 标注）上，跟在 ScanNet 训练集上做过端到端全监督训练的 **ROCA** 以及概率扩散方法 **DiffCAD** 同台竞技时，会出现怎样的格局？
 
 ![Diorama、ROCA 与 DiffCAD 的 ScanNet 定性比较](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig07-scannet-comparison.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Fig. 7, arXiv non-exclusive distribution license.*
-
 ![Scan2CAD object-focused alignment accuracy](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-table06-scannet-alignment.webp)
-
-*Source: Wu et al., arXiv:2411.19492v1, Table 6, arXiv non-exclusive distribution license.*
 
 ![DiffCAD、ROCA 与 Diorama 使用的 Scan2CAD 评价集合差异](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig13-evaluation-set-differences.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Fig. 13, arXiv non-exclusive distribution license.*
+把 Fig. 7、Table 6 与 Fig. 13 对照起来看，非常客观地揭示了“域内强监督专家”与“开放世界零样本通才”之间的真实权衡：
+- **在传统封闭大件家具上，域内强监督依然占优**：在 Table 6 统计的浴缸、床、垃圾桶、沙发等 9 类常见家具上，背熟了 ScanNet 相机分布与资产库先验的全监督模型 ROCA 拿到了 `8.72 / 12.87` 的类别/实例平均准确率，高于零样本无训练的 Diorama（`3.55 / 5.87`）。这很大程度上是因为真实 ScanNet 视频帧存在严重的运动模糊与残缺视角，原生 DINOv2 零样本块匹配在模糊大家具上的鲁棒性不如专门在大规模 NOC 数据集上微调过的几何特征（这也正是本系列精读的后续工作 **[SUFLECA](/blog/sufleca-cad-to-image-alignment-feature-learning-paper-reading/)** 重点攻克并大幅反超全监督方法的突破口！）。
+- **在开放世界小物体与空间物理合理性上，Diorama 降维打击**：看 Table 6 的 `others`（开放长尾类别）一列，受限于封闭分类头的 ROCA 与 DiffCAD 直接交了白卷（`-`），而 Diorama 稳稳拿下了 `4.76`；再看 Fig. 7 的定性渲染，ROCA 和 DiffCAD 不仅彻底漏掉了办公桌上的两台显示器、键盘和地面杂物，而且预测出的办公椅横七竖八地插在桌子里面；Diorama 则凭借场景图与四阶段优化，把椅子、桌子与桌面双显示器整理得井井有条。
 
-在 ScanNet 上与有监督方法 ROCA 及概率生成方法 DiffCAD 对比时（共享掩码、深度与候选形状以对齐评测口径），Table 6 与 Fig. 7/13 呈现出清晰的互补格局：在传统封闭家具类别上，接受过 Scan2CAD 域内强监督训练的 ROCA 取得更高的平均对齐率（类别平均 `8.72` / 实例平均 `12.87`，DiffCAD 5-hypotheses 为 `4.34 / 6.84`，零样本 Diorama 为 `3.55 / 5.87`）；而 Diorama 的突出优势在于无需域内三维标注即可泛化至基线无法处理的开放类别（`others` 类达到 `4.76`），如桌面上的笔记本电脑与地面背包。
+### 6.3 互联网野生照片、文本生场景与对象级交互编辑
 
-### 6.3 互联网野生图像、文本生成场景与交互编辑（Fig. 8, 9, 11, 15, 16）
+脱离了学术数据集的温室，Diorama 在完全未知相机内参的互联网真实照片（Pixabay / Pexels / Unsplash）以及文生图流水线上表现如何？
 
 ![Diorama 在网络室内图片上的结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig08-in-the-wild.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Fig. 8, arXiv non-exclusive distribution license.*
-
 ![更多互联网图片结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig15-more-real-world.webp)
-
-*Source: Wu et al., arXiv:2411.19492v1, Fig. 15, arXiv non-exclusive distribution license.*
-
-在 Pixabay、Pexels 与 Unsplash 的互联网真实照片（Fig. 8 & Fig. 15）上，系统面对未知相机内参、复杂光照与非标准摆设依然恢复出了墙面挂画、窗帘、盆栽与多层桌面摆件。
 
 ![Flux-1 图像生成后接 Diorama 的文本到场景结果](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig09-text-to-scene.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Fig. 9, arXiv non-exclusive distribution license.*
-
 ![更多文本到场景案例](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig16-more-text-to-scene.webp)
-
-*Source: Wu et al., arXiv:2411.19492v1, Fig. 16, arXiv non-exclusive distribution license.*
-
-在文本到场景生成（Fig. 9 & Fig. 16）中，系统通过 `Text Prompt -> Flux-1 生成单张室内图 -> Diorama 解析装配` 的两段式串联，将 2D 扩散模型的视觉想象力转化为三维 CAD 场景。
 
 ![Diorama 的对象重排、插入、删除和替换](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig11-editing.webp)
 
-*Source: Wu et al., arXiv:2411.19492v1, Fig. 11, arXiv non-exclusive distribution license.*
+看上面这一组丰富的实测展示（Fig. 8、Fig. 15、Fig. 9、Fig. 16 与 Fig. 11）：
+- **野生照片与文生图桥接**（Fig. 8/15 & Fig. 9/16）：无论是互联网上的高清家居摄影，还是先用文本提示驱动 **Flux-1** 生成一张二维室内概念图、再交给 Diorama 转化为三维场景，系统都能把墙上的多幅装饰画、窗帘、桌面绿植、架子鼓乃至复杂的L型沙发准确拆解还原为三维 CAD 资产组合。这为 Text-to-3D Scene 提供了一条极其实用的捷径：**先把最难的审美构图与风格想象交给极其成熟的 2D 扩散大模型（Flux-1），再用 Diorama 把生成的 2D 图纸“编译”成结构化的 3D CAD 场景！**
+- **牵一发而动全身的支撑树联动编辑**（Fig. 11）：因为输出的是带支撑树的独立 CAD 资产，用户在后续编辑时，如果拖动或替换了底下的大书桌，场景图里挂在书桌节点下的显示器、书本和台灯可以顺着支撑关系自动跟着一起平移或自适应贴合新桌面，彻底告别了传统网格重建“牵一发而破全身”的窘境。
 
-由于每个对象均为独立的 CAD 资产并附带支撑树关系，Fig. 11 展示了直接对 `SceneSpec` 进行对象重排（rearrangement）、插入（insertion）、删除（removal）与资产替换（replacement）的编辑能力。
+---
 
-## 7. 官方源码剖析与坐标系变换契约
+## 7. 源码架构深挖与三维坐标系变换避坑指南
 
-### 7.1 核心源码模块地图与阶段式执行设计
+### 7.1 分阶段缓存的源码主干设计
 
-官方仓库（commit [`ec54d826`](https://github.com/3dlg-hcvc/diorama/tree/ec54d826cf6b39c6daf88947da897ff9626e5d61)）采用 Hydra 管理配置 `config/cfg_wss.yaml`，将完整流程拆分为通过布尔开关控制的独立阶段，以便缓存高成本的中间产物：
+走进官方开源仓库（基线提交 [`ec54d826`](https://github.com/3dlg-hcvc/diorama/tree/ec54d826cf6b39c6daf88947da897ff9626e5d61)），你会发现作者并没有把所有模型塞进一个大脚本里硬跑——因为同时把 OWLv2、SAM 2.1、Metric3DV2、DINOv2-L、DuoDuoCLIP 全加载进一张显卡，显存当场就会爆炸。
 
-| 模块职责 | 源码文件（固定提交 `ec54d826`） | 核心类 / 函数与实现要点 |
+源码通过 [`run.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/run.py) 与 Hydra 配置文件 [`config/cfg_wss.yaml`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/config/cfg_wss.yaml) 将全流程设计为**按阶段懒加载与落盘缓存**的架构：
+
+| 阶段模块 | 核心源码文件 | 关键函数与工程容错细节 |
 | --- | --- | --- |
-| **总控入口与配置** | [`run.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/run.py)<br>[`config/cfg_wss.yaml`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/config/cfg_wss.yaml) | 按 `load_depth_model`、`load_perception_model`、`load_retrieval_model`、`load_pose_model`、`run_optimization` 分阶段调度 `VisionAgent` 与 `VLMAgent` |
-| **多模态场景图代理** | [`diorama/vlm_agent.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/vlm_agent.py) | `understand_scene()`、`generate_scene_graph_from_augment()`、`parse_gpt4v_response()`；配置 `n_trials: 6` 自动重试应对 API 解析失败 |
-| **视觉与几何编排器** | [`diorama/vis_agent.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/vis_agent.py) | `_init_models()`、`detect_objects_w_owlv2()`、`segment_objects()`、`segment_object_crops_and_pcd()`、`augment_image_w_marks()`、`retrieve_shapes()`、`estimate_poses()`、`optimize_layout()` |
-| **跨阶段场景数据契约** | [`diorama/scenespec.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/scenespec.py) | `SceneSpec` 持久化对象列表、支撑关系图与 `add_support_surf()` 支撑几何面 |
-| **多模态 CAD 检索** | [`duoduoclip.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/model/duoduoclip/duoduoclip.py) | 文本 KNN Top-50 初筛 + 视觉 Top-5 重排 |
-| **零样本 9-DoF 位姿** | [`correspondence.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/model/gigazsp/correspondence.py)<br>[`gigazsp.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/model/gigazsp/gigazsp.py)<br>[`ist_net.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/model/gigazsp/ist_net.py) | 180 视图 DINOv2 循环匹配、`solve_umeyama_ransac()` 三维刚体加尺度求解、`ISTNet` 尺度回归 |
-| **分阶段布局优化** | [`layout_optim.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/model/layout_optim.py) | `place_on_loss()`、`support_space_loss()`、`support_volume_loss()`、SAT OBB 碰撞检测与四阶段 SGD |
-| **PlainRecon 建筑脚本** | [`arch_util.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/utils/arch_util.py)<br>[`estimate_depth.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/scripts/estimate_depth.py)<br>[`compute_plane_segmentation.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/scripts/compute_plane_segmentation.py) | 独立预处理脚本：前景分割、Inpaint-Anything 修复、Metric3D 深度法线估计与平面聚类 |
+| **1. 场景图与 VLM 代理** | [`diorama/vlm_agent.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/vlm_agent.py) | `understand_scene()`、`generate_scene_graph_from_augment()`；配置 `n_trials: 6` 自动重试机制，一旦 GPT-4o 返回的 JSON 格式或节点 ID 校验不合法自动重发 |
+| **2. 开放词汇感知与点云裁剪** | [`diorama/vis_agent.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/vis_agent.py) | `detect_objects_w_owlv2()`、`segment_objects()`（支持升级版 `SAM2.1 Hiera Large`）、`segment_object_crops_and_pcd()`、`augment_image_w_marks()` |
+| **3. PlainRecon 空房平面恢复** | [`diorama/utils/arch_util.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/utils/arch_util.py)<br>[`scripts/compute_plane_segmentation.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/scripts/compute_plane_segmentation.py) | 独立预处理脚本串联前景分割、Inpaint-Anything 修复、Metric3DV2 反投影、12 种子法线聚类、DBSCAN 与旋转卡壳多边形边界提取 |
+| **4. 多模态分层检索** | [`diorama/model/duoduoclip/duoduoclip.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/model/duoduoclip/duoduoclip.py) | 利用预计算的 FAISS 索引执行文本 KNN Top-50 初筛 + 视觉裁剪图 Top-5 重排 |
+| **5. 零样本 9-DoF 位姿估计** | [`diorama/model/gigazsp/correspondence.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/model/gigazsp/correspondence.py)<br>[`diorama/model/gigazsp/gigazsp.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/model/gigazsp/gigazsp.py) | `dinov2_vitl14`（Layer 17，块相似度门限在配置中放宽至 `0.5` 以提升召回）、180 视图循环匹配取 Top-50 点对、`solve_umeyama_ransac()` + `ISTNet` 尺度回归 |
+| **6. 四阶段 OBB 布局优化** | [`diorama/model/layout_optim.py`](https://github.com/3dlg-hcvc/diorama/blob/ec54d826cf6b39c6daf88947da897ff9626e5d61/diorama/model/layout_optim.py) | 基于 `SceneSpec` 支撑面，串联 `place_on_loss()`、`support_space_loss()`、`support_volume_loss()` 与 SAT OBB 防碰撞算子 |
 
-### 7.2 v1 论文与当前开源代码（`ec54d826`）的差异审计
+### 7.2 极易踩坑的三维坐标系与矩阵乘法次序契约
 
-| 维度 | v1 论文（2024-11） | 官方仓库固定提交（`ec54d826`） |
-| --- | --- | --- |
-| 实例分割模型 | Segment Anything (SAM) | 配置同时支持 SAM 与 `SAM2.1 Hiera Large` |
-| 块对应相似度阈值 | 补充材料记为 `0.7` | 配置文件 `cfg_wss.yaml` 设为 `0.5` |
-| DINOv2 与参考视图 | Fine-tuned DINOv2 ViT-L, patch 14, 180 视图 | `dinov2_vitl14`, patch 14, layer 17, `n_ref: 180`, `num_correspondences: 50` |
-| 检索资产池 | SSDB 内部池 + 60K OOD 集合 | 由本地 `cad_pool` 配置与预计算 FAISS 索引决定 |
-| PlainRecon 集成度 | 管线统一组成部分 | 拆分为 `scripts/` 下多步独立脚本与第三方修复子模块 |
+在把多源视觉模型与多源 CAD 资产库（Objaverse、3D-FUTURE、ABO、ShapeNet）拼成一条三维管线时，90% 的诡异 Bug 都出在**坐标系约定与仿射变换顺序**上。细读源码，有三条铁律必须在工程实现中严格锁死：
 
-### 7.3 坐标系、单位与 9-DoF 变换排错指南
-
-单图三维管线最常见的静默错误往往源于不同模块对坐标系与变换次序的约定不一致。复现或二次开发时需严格对齐以下五处变换契约：
-
-1. **像素坐标到相机坐标反投影**：给定内参矩阵 $K$ 与度量深度 $d$，反投影公式为
-   $$
-   K=\begin{bmatrix}
-   f_x&0&c_x\\
-   0&f_y&c_y\\
-   0&0&1
-   \end{bmatrix}, \qquad
-   p_{\text{cam}}=dK^{-1}[u,v,1]^T.
-   $$
-   必须确保图像缩放或裁剪后 $(f_x,f_y,c_x,c_y)$ 同步缩放，且明确深度值 $d$ 是沿相机光轴的 $z$ 分量还是沿射线的欧氏距离。
-2. **相机坐标与世界坐标转换**：区分相机到世界变换 $T_{wc}$ 与世界到相机变换 $T_{cw}=T_{wc}^{-1}$，并统一 OpenCV（`+Z` 前、`+Y` 下）、Blender（`-Z` 前、`+Y` 上或 `+Z` 上）与 PyTorch3D 之间的轴向约定。
-3. **CAD 资产规范化坐标系（Canonical Transform）**：跨数据集资产（Objaverse、3D-FUTURE、ABO）的原始单位（米 vs 厘米）、原点位置（底面中心 vs 几何中心）及正面朝向各异。预处理时必须为每个资产固化 `canonical_up`、`canonical_front` 与单位缩放矩阵，否则 `semantic_orient_loss` 会将错误正面当作优化目标。
-4. **9-DoF 缩放、旋转与平移次序**：在列向量约定下，标准变换顺序为先对 CAD 局部坐标做三维尺度缩放 $S$，再施加正交旋转 $R\in SO(3)$，最后叠加世界系平移 $t$：
+1. **9-DoF 变换的矩阵乘法顺序（先缩放、再旋转、最后平移）**：
+   对于 CAD 规范空间下的点 $p_{\text{cad}}$，当存在各向异性三轴缩放对角矩阵 $S=\operatorname{diag}(s_x,s_y,s_z)$ 与正交旋转矩阵 $R\in SO(3)$ 时，转换到世界坐标 $p_{\text{world}}$ 的顺序必须是**先在物体自身主轴下做缩放 $S$，再左乘旋转矩阵 $R$，最后加上平移 $t$**：
    $$
    p_{\text{world}}=R(Sp_{\text{cad}})+t, \qquad
    T=
@@ -417,106 +371,39 @@ Table 5 按对象属性分组统计了对齐精度：完整可见对象（Comple
    0&1
    \end{bmatrix}.
    $$
-   若交换非均匀缩放 $S$ 与旋转 $R$ 的乘积顺序，会导致 OBB 主轴发生剪切形变。
-5. **支撑面与接触面法线方向约定**：计算 $e_{\text{align}}=\lVert \mathbf n_i^c-\mathbf n_j^s\rVert_2$ 时，需统一规定被支撑物的接触面法线与支撑物的支撑面法线同向（例如均朝上指离支撑面），避免因网格面片绕序（winding order）相反导致正确贴合被赋予高额惩罚。
+   一旦不小心写反成 $S(Rp_{\text{cad}}) + t$，当物体旋转了 $45^\circ$ 后再沿世界坐标轴做非均匀拉伸，原本方正的书桌三维包围盒（OBB）就会发生严重的**剪切形变**（Shear Distortion），变成斜平行四边形！
+2. **跨源 CAD 资产的规范朝向对齐（Canonical Up & Front）**：
+   不同 3D 数据集的原始模型坐标系五花八门（有的以 $+Y$ 为上、有的以 $+Z$ 为上；有的正面朝 $+X$、有的朝 $-Z$；有的原点在几何中心、有的在底面中心）。如果不预先把所有入库资产统一归一化并标定好标准的 `canonical_up` 与 `canonical_front`，第一阶段的语义朝向保持损失 $e_{\text{sem}} = \lVert \mathbf v_i^* - \mathbf v_i \rVert_2$ 就会拿着错误的正面方向去锁死物体，导致所有椅子统统面朝墙壁。
+3. **接触面与支撑面法线的同向约定**：
+   在计算朝向对齐损失 $e_{\text{align}} = \lVert \mathbf n_i^c - \mathbf n_j^s \rVert_2$ 时，注意中间是**减号**！这意味着源码约定被支撑物体底部的“接触面法线” $\mathbf n_i^c$ 与下方桌面顶部的“支撑面法线” $\mathbf n_j^s$ 必须**方向相同**（例如统一定义为竖直向上指离支撑表面），千万不能按照封闭网格外法线惯例把物体底面法线设成朝下（否则减号就会逼着杯子底朝天倒扣在桌面上）。
 
-## 8. 方法横向对比与工程复现路线
+---
 
-### 8.1 与三维场景重建及生成工作的横向对比
+## 8. 系统瓶颈复盘与三维视觉版图横向坐标
 
-| 方法 | 输入与目标 | 核心场景表示 | 相比 Diorama 的核心差异 |
+### 8.1 长链路系统的真实工程边界
+
+客观审视 Diorama 的实验表现与模块化设计，它在展现强大开放世界组装能力的同时，也清晰暴露了长管线系统的固有边界：
+- **长链路级联误差（Cascading Errors）**：从 OWLv2 检测、SAM 2.1 分割、Metric3DV2 深度、PlainRecon 墙面、GPT-4o 支撑边到 DuoDuoCLIP 检索与 DINOv2 位姿，整条管线长达六七个环节。如果上游 Metric3DV2 把远处的地面深度估偏了 20%，或者 GPT-4o 把“挂在墙上的电视”误判成了“立在电视柜上”，下游的布局优化器就会忠实地按照错误的父子关系把电视强行往下拉到电视柜表面。
+- **检索式 CAD 表示的“形似而非真身”**：用检索出的现成 CAD 模型替代原图物体，虽然换来了干净完整的 3D 网格，但搜出来的沙发在布料褶皱、抱枕花纹和扶手弧度上毕竟跟照片里的实物存在差异，无法满足文物数字化或高精度工业数字孪生对像素级一致性的要求。
+- **“免训练”背后的重型推理栈**：虽然不需要在目标场景上做端到端训练，但跑通一次完整推理需要依次加载七八个视觉大模型、遍历 180 张参考渲染图算块匹配，还要调商业 GPT-4o API，冷启动与单图计算开销依然不轻。
+
+### 8.2 在 3D 场景建模与生成版图中的位置
+
+如果把 Diorama 放进本站精读过的整个三维视觉技术版图中，你会看到一条非常精彩的互补与进化脉络：
+
+| 系统 / 论文 | 核心任务与输入 | 场景表示与核心机制 | 与 Diorama 的生态互补关系 |
 | --- | --- | --- | --- |
-| **ROCA / DiffCAD** | 单图 Scan2CAD 对齐 | 封闭词表 CAD + 位姿回归/扩散 | 依赖 Scan2CAD 域内监督，封闭家具类别精度更高，但无法泛化至开放词表与多层小物体支撑 |
-| **CasLayout** | 条件生成 3D 室内布局 | 四阶段级联扩散 + Relation VAE | 学习布局生成分布先验，不以还原特定单张输入图像中的真实实例为目标 |
-| **Imaginarium** | 文本/图像引导生成 3D 场景 | 微调 Flux + 资产检索 + Blender 物理 | 面向内容创作，强依赖自有高质量资产库与 Blender 刚体退火；Diorama 更聚焦开放世界野生图像感知与零样本块对应 |
-| **Layout2Scene / CompoNeRF** | 布局或文本生成 3D 场景 | 3D Gaussian / 多局部 NeRF 组合 | 输出神经辐射场或高斯溅射，缺乏独立干净的 CAD 网格拓扑 |
-| **TRELLIS.2 / AssetGen / TripoSG** | 单图生成高保真 3D 单资产 | O-Voxel / SDF VAE / PBR 网格 | 专注单物体几何与纹理生成；未来可与 Diorama 结合，在检索置信度过低时动态生成缺失资产 |
+| **Diorama** | **单张野生室内图恢复可编辑 3D CAD 场景** | 有界建筑平面（PlainRecon）+ 开放词汇 CAD 检索 + DINOv2 180 视图配准 + 四阶段支撑树布局优化 | 构建了完整的单图开放世界场景拆解与分阶段防穿模装配框架，但单物体原生 DINOv2 配准在模糊真实图上精度有限 |
+| **[SUFLECA](/blog/sufleca-cad-to-image-alignment-feature-learning-paper-reading/)** | **单图零样本高精度 9D CAD 位姿对齐** | 12 数据集 NOC 弱监督 DPT 特征 + 6 视角缓存 + 双向 Top-$k$ + 消去旋转的各向异性谱图共识 + SupeRANSAC | **Diorama 最完美的位姿内核升级件**：在 ScanNet25k 上，Diorama 的原生 DINOv2 位姿模块仅得 `8.7% / 11.3%`，而 SUFLECA 以 `0.53s` 耗时直接飙升至 **`33.4% / 42.3%`**，可直接无缝替换 Diorama 的第 5 阶段位姿估计器！ |
+| **[TRELLIS.2](/blog/trellis2-native-structured-latents-3d-generation-paper-reading/) / AssetGen / TripoSG** | **单图生成高保真 3D 网格与 PBR 资产** | 结构化稀疏体素潜在空间（O-Voxel）/ SDF 前馈生成高质量独立网格 | **Diorama 的资产兜底生成器**：当遇到造型奇特的定制家具导致 DuoDuoCLIP 检索相似度过低时，可直接调单图 3D 生成模型现场捏一个专属网格放进 Diorama 的布局优化器里 |
+| **[CompoNeRF](/blog/componerf-text-guided-compositional-nerf-paper-reading/) / [Layout2Scene](/blog/layout2scene-semantic-layout-guided-scene-generation-paper-reading/)** | **3D 布局与文本引导生成神经渲染场景** | 多局部 NeRF / 前景 2D Gaussians + 背景多边形 + 扩散先验蒸馏（SDS / GSDS / ISD） | 面向无参考图纯生成场景，输出神经场或高斯图元；而 Diorama 面向单图逆向解析，输出拓扑干净的标准工业 CAD 网格 |
+| **[Blended-NeRF](/blog/blended-nerf-zero-shot-object-generation-blending-paper-reading/)** | **已有 NeRF 场景中的局部 3D ROI 编辑** | 双分支辐射场采样点级距离平滑与激活内外密度混合 | 在隐式辐射场内部做局部增删改；而在 Diorama 生成的显式 CAD 场景中，增删改物体只需直接修改 `SceneSpec` 的节点与变换矩阵 |
 
-### 8.2 分阶段复现路线与带溯源（Provenance）的中间数据契约
+总而言之，Diorama 最令人赞赏的工程贡献，在于它跳出了“单图端到端黑盒重建”的传统套路，用一套极其务实的**系统分治哲学**——**“先擦除家具恢复非曼哈顿空房、用 Set-of-Mark 让大模型搭支撑树、靠多模态检索与块匹配给初值、用四阶段课程优化解耦朝向与碰撞”**——把散落在各个领域的视觉基础模型拧成了一股绳。对于任何致力于构建开放世界三维场景理解、机器人室内环境仿真或智能家装三维重建系统的团队而言，这套模块化架构与分阶段课程优化思想都提供了极具价值的工程范本。
 
-由于管线同时依赖 Python 3.10、PyTorch 2.5.1、CUDA 12.1、FAISS-GPU、PyTorch3D 以及 OWLv2、SAM2.1、BiRefNet、Metric3DV2、DINOv2、DuoDuoCLIP、GigaPose 尺度网络等七套预训练权重与 GPT-4o API，工程复现建议按五个里程碑推进：
-1. **Stage 0（环境与资产池校验）**：校验所有模型权重与单个 CAD 池的多视图 RGB-D 渲染缓存及 DuoDuoCLIP 嵌入。
-2. **Stage 1（2D 感知与支撑树验证）**：运行 `VLMAgent` 与 OWLv2 + SAM2，确保生成的 Set-of-Mark 场景图无环且所有父节点 ID 合法。
-3. **Stage 2（深度与 PlainRecon 平面验证）**：验证相机内参反投影点云尺度，检查地面平面法线是否与重力方向对齐。
-4. **Stage 3（检索与位姿诊断）**：可视化最佳参考视图与 DINOv2 循环匹配点对，检查 RANSAC 内点率（inlier ratio）及初始 CAD 投影轮廓重叠度。
-5. **Stage 4（四阶段优化门禁）**：在 Orientation、Placement、Space、Refinement 每阶段后保存检查点，监控是否存在尺度发散或物体被推入墙外。
+## 参考资料
 
-在将系统工程化改造时，建议为中间 JSON 增加模型版本与置信度溯源字段（Provenance Schema），以便快速界定故障归属：
-
-```json
-{
-  "scene_id": "scene_001",
-  "paper_version": "2411.19492v1",
-  "pipeline_commit": "ec54d826...",
-  "input": {
-    "image_sha256": "...",
-    "intrinsics": [[1000, 0, 512], [0, 1000, 392], [0, 0, 1]]
-  },
-  "objects": [{
-    "object_id": 7,
-    "category": "chair",
-    "bbox_xyxy": [120, 90, 410, 650],
-    "mask_path": "masks/7.png",
-    "depth_path": "depth.npy",
-    "support_parent": "floor",
-    "support_relation_source": "gpt-4o",
-    "retrieval_candidates": [{"asset_id": "...", "text_score": 0.8, "image_score": 0.7}],
-    "pose": {
-      "policy": "dino-gigazsp-umeyama-ransac",
-      "reference_view": 42,
-      "correspondence_count": 50,
-      "inlier_ratio": 0.62,
-      "rotation": "...",
-      "translation_m": [0.2, 1.0, 2.5],
-      "scale": [0.8, 0.8, 0.8]
-    }
-  }]
-}
-```
-
-## 9. 局限性与工程边界
-
-综合论文实验证据与源码实现，评估和应用 Diorama 时需把握以下六个核心边界：
-
-| 评估维度 | 论文实证表现 | 真实工程边界与局限 |
-| --- | --- | --- |
-| **1. 单视角欠约束与多假设性质** | Table 7 证实保留 8 个检索候选可将对齐 Acc 从 `0.09` 提升至 `0.21` | 单张 RGB 无法唯一确定被遮挡背面与绝对尺度；输出的多个 arrangement 是离散启发式候选，尚未构建校准后的场景级后验概率分布 |
-| **2. 长链路级联误差传播** | Table 1/2 显示替换 GT 深度、GT 场景图或 GT 建筑平面均有明显增益 | 上游漏检、掩码越界、深度尺度漂移或 GPT-4o 支撑边误判会直接误导下游优化器（例如把错误的父子关系强行压到同一平面） |
-| **3. 检索表示与视觉保真度折中** | Table 3 证实 DuoDuoCLIP 混合检索降低了几何 Chamfer 距离 | 离散 CAD 资产保证了拓扑完整与可编辑性，但物体的具体纹理、材质、品牌细节与输入照片存在固有差异，不适用于精密数字孪生或文物复刻 |
-| **4. 定量基准的客观位置** | SSDB 综合指标领先，ScanNet `others` 开放类别达 `4.76` | 在 Table 1 纯对象级 Acc 上 ZSP 变体略高 `0.01`；在 Table 6 ScanNet 已知封闭家具类别上，有监督方法 ROCA（`8.72 / 12.87`）仍大幅高于零样本 Diorama（`3.55 / 5.87`） |
-| **5. 建筑假设与静态几何近似** | PlainRecon 在 SSDB 上实现 344/344 成功重建且耗时 `23–29s` | 平面聚类难以处理曲面墙体、旋转楼梯、镜面/玻璃反射；布局优化仅基于 OBB 与 SAT 静态几何穿透，未引入重心、摩擦与刚体动力学仿真 |
-| **6. “免训练”背后的运行与维护成本** | 无需在目标场景数据集上做端到端训练 | 推理需串行或分阶段加载 7+ 个大型预训练模型、遍历 180 视图块匹配与 RANSAC 并调用商业 GPT-4o API，显存、存储与冷启动开销较大，且需关注 2024 v1 论文与后续开源代码间的参数演进 |
-
-## 10. 总结与延伸阅读
-
-### 10.1 推荐精读与文献补课路径
-
-若希望在短时间内抓住论文与代码主干，建议按以下顺序推进：
-1. 阅读 **Abstract**、**Fig. 2** 与 **Sec. 3.1（Fig. 3 / Fig. 10）**，理解两段式架构、Set-of-Mark 场景图与 PlainRecon 空房间平面恢复。
-2. 精读 **Sec. 3.2（Fig. 4 / Fig. 5）** 与补充材料 **A.3 / A.5 / A.6**，掌握 DuoDuoCLIP 混合检索、180 视图 DINOv2 循环对应、Umeyama-RANSAC 以及四阶段 OBB 布局优化损失。
-3. 对照 **Table 1–8** 审视深度误差级联、分阶段优化与多检索假设的定量贡献，最后沿 `run.py -> vis_agent.py -> gigazsp.py -> layout_optim.py` 走读官方源码。
-
-延伸阅读可按模块检索相关基石工作：CAD 检索与对齐（Scan2CAD、ROCA、DiffCAD）、开放词汇检测与分割（OWLv2、SAM / SAM 2、Set-of-Mark）、单目度量几何（Metric3D v2）、多模态 3D 表征（OpenShape、DuoDuoCLIP）以及跨实例语义对应与位姿估计（DINOv2、ZSP、GigaPose）。
-
-### 10.2 结语
-
-Diorama 清晰地回答了一个系统级问题：在不训练端到端场景网络的前提下，通过合理定义结构化输出契约（`SceneSpec`），将开放世界视觉语言模型的语义推理、跨实例视觉特征对应、多模态 CAD 检索与分阶段几何约束优化串联起来，完全可以从单张 RGB 图像构建出层次丰富、支持对象级编辑的三维室内场景。它对模块边界的划分、对单图多假设的诚实保留以及分阶段课程优化的工程实践，为后续开放世界三维场景理解与装配系统提供了极具价值的参考基线。
-
-## 参考文献
-
-1. Qirui Wu et al. [Diorama: Unleashing Zero-shot Single-view 3D Scene Modeling](https://arxiv.org/abs/2411.19492v1). arXiv:2411.19492v1, 2024.
-2. Diorama v1 [PDF](https://arxiv.org/pdf/2411.19492v1), [HTML](https://arxiv.org/html/2411.19492v1), [TeX source](https://arxiv.org/e-print/2411.19492v1).
-3. Diorama [project page](https://3dlg-hcvc.github.io/diorama/) and [official repository](https://github.com/3dlg-hcvc/diorama); 源码基线 [`ec54d826`](https://github.com/3dlg-hcvc/diorama/tree/ec54d826cf6b39c6daf88947da897ff9626e5d61).
-4. Qirui Wu et al. [Diorama: Unleashing Zero-shot Single-view 3D Indoor Scene Modeling](https://openaccess.thecvf.com/content/ICCV2025/html/Wu_Diorama_Unleashing_Zero-shot_Single-view_3D_Indoor_Scene_Modeling_ICCV_2025_paper.html). ICCV 2025, Highlight.
-5. Armen Avetisyan et al. [Scan2CAD: Learning CAD Model Alignment in RGB-D Scans](https://arxiv.org/abs/1811.11187). CVPR 2019.
-6. Can Gümeli et al. [ROCA: Robust CAD Model Retrieval and Alignment from a Single Image](https://arxiv.org/abs/2112.00463). CVPR 2022.
-7. Yang Gao et al. [DiffCAD: Weakly-Supervised Probabilistic CAD Model Retrieval and Alignment from an RGB Image](https://arxiv.org/abs/2305.13570). SIGGRAPH Asia 2023.
-8. Maxime Oquab et al. [DINOv2: Learning Robust Visual Features without Supervision](https://arxiv.org/abs/2304.07193). 2023.
-9. Matthias Minderer et al. [Scaling Open-Vocabulary Object Detection](https://arxiv.org/abs/2306.09683). NeurIPS 2023.
-10. Alexander Kirillov et al. [Segment Anything](https://arxiv.org/abs/2304.02643). ICCV 2023.
-11. Nikhila Ravi et al. [SAM 2: Segment Anything in Images and Videos](https://arxiv.org/abs/2408.00714). 2024.
-12. Mu Hu et al. [Metric3D v2: A Versatile Monocular Geometric Foundation Model for Zero-depth and Surface Normal Estimation](https://arxiv.org/abs/2404.15506). 2024.
-13. Jason Y. Zhang et al. [OpenShape: Scaling Up 3D Shape Representation Towards Open-World Understanding](https://arxiv.org/abs/2305.10764). NeurIPS 2023.
-14. Jaewoo Lee et al. [DuoDuo CLIP: Efficient 3D Understanding with Multi-view Images](https://arxiv.org/abs/2406.11579). 2024.
-15. Nguyen et al. [GigaPose: Fast and Robust Novel Object Pose Estimation via One Correspondence](https://arxiv.org/abs/2311.14155). CVPR 2024.
-16. Jianwei Yang et al. [Set-of-Mark Prompting Unleashes Extraordinary Visual Grounding in GPT-4V](https://arxiv.org/abs/2310.11441). 2023.
+- Qirui Wu, Denys Iliash, Daniel Ritchie, Manolis Savva, Angel X. Chang, [Diorama: Unleashing Zero-shot Single-view 3D Scene Modeling](https://arxiv.org/abs/2411.19492v1), arXiv:2411.19492v1（ICCV 2025 Highlight: [Diorama: Unleashing Zero-shot Single-view 3D Indoor Scene Modeling](https://openaccess.thecvf.com/content/ICCV2025/html/Wu_Diorama_Unleashing_Zero-shot_Single-view_3D_Indoor_Scene_Modeling_ICCV_2025_paper.html)）.
+- 官方项目页：[3dlg-hcvc.github.io/diorama](https://3dlg-hcvc.github.io/diorama/)；官方开源仓库：[3dlg-hcvc/diorama](https://github.com/3dlg-hcvc/diorama)（源码分析基线 [`ec54d826`](https://github.com/3dlg-hcvc/diorama/tree/ec54d826cf6b39c6daf88947da897ff9626e5d61)）.
+- 相关核心文献：[Scan2CAD (CVPR 2019)](https://arxiv.org/abs/1811.11187)、[ROCA (CVPR 2022)](https://arxiv.org/abs/2112.00463)、[DiffCAD (SIGGRAPH Asia 2023)](https://arxiv.org/abs/2305.13570)、[Set-of-Mark (arXiv 2023)](https://arxiv.org/abs/2310.11441)、[Metric3D v2 (TPAMI 2024)](https://arxiv.org/abs/2404.15506)、[DuoDuoCLIP (arXiv 2024)](https://arxiv.org/abs/2406.11579)、[GigaPose (CVPR 2024)](https://arxiv.org/abs/2311.11455).

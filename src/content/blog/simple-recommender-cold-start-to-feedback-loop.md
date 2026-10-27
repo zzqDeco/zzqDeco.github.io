@@ -14,7 +14,7 @@ tags:
 draft: false
 ---
 
-工程团队在从零构建推荐系统时，往往倾向于直接寻找一个现成的相似度公式或双塔模型结构。然而在真实生产环境中，启动阶段最棘手的难题在于系统处于**缺乏可靠偏好样本**的真空期，首要工程任务是搭建起从曝光到再曝光的数据演进闭环：
+工程团队在从零构建推荐系统时，最容易踩入的误区是把“冷启动”当成一个纯粹的神经网络结构问题——试图在第一周就直接照搬大厂的复杂双塔或序列注意力模型，却对线上日志缺失、历史规则偏置与特征时间穿越视而不见。在真实生产环境中，启动期最致命的瓶颈在于系统处于**缺乏无偏偏好样本的真空期**，首要工程任务是搭建起从受控曝光到真实反馈回流的因果数据闭环：
 
 ```text
 曝光 (Exposure)
@@ -26,22 +26,25 @@ draft: false
   -> 新一轮受控曝光 (Controlled Exposure)
 ```
 
-本文面向电商商品、内容流、视频、课程与 3D 资产等通用推荐场景（文中以商品 `item` 或 `SKU` 为主例），系统梳理当你手头仅有商品元数据、基础规则排序与少量用户画像，甚至尚未建立曝光日志时，如何通过内容先验、规则蒸馏、低权重近似最近邻（ANN）召回与受控探索制造可学习曝光，利用严格的时间点快照日志将未观测状态（unknown）转化为已观测反馈（observed），最终平滑过渡到由真实用户行为主导的训练闭环。
+面向电商商品、内容流、视频、课程与 3D 资产等通用推荐场景（文中以商品 `item` 或 `SKU` 为主例），当我们手头仅有商品元数据、基础规则排序与少量用户画像，甚至尚未建立完整曝光日志时，整套推荐系统的工程设计与演进浓缩为**四条核心设计哲学**：
+
+1. **观测边界先于模型训练**（Unknown $\neq$ Negative 与防穿越快照）：在推荐系统中，用户未点击某件未曾曝光的商品仅代表**未观测状态**（Unknown），绝不等同于**真实负反馈**（Negative）。系统上线的第一资产是携带策略版本号的曝光日志（`ExposureLogV1`）与严格回滚至曝光时刻 $t$ 之前的点快照样本（`TrainingExampleV1`）。唯有严守“先真实曝光、再等待完整归因窗口、最后判定弱负样本（`exposed_no_action`）”的因果铁律，模型才不会把长尾商品与新上架商品系统性压死。
+2. **表征学习与业务规则正交解耦**（单池双塔召回 + 声明式 `RankPolicyV1`）：拒绝让双塔神经网络同时背负库存过滤、同 SPU 去重、已曝光疲劳度惩罚与运营加权等异构职责。双塔模型只专注在 $128$ 维单位超球面上度量“用户—商品”的语义与偏好内积，而将一票否决硬护栏（Guardrail）、多路通道分数融合与实时点踩重罚封装进可秒级热更新的声明式策略层 `RankPolicyV1`。
+3. **弱监督充当启动脚手架、受控探索破除信息茧房**：在零真实反馈的启动期，联合运用商品多视图内容对比、逆向合成伪用户画像对齐（Synthetic Profile Matching）与全谱系六分桶规则蒸馏（Rule Distillation）撑开初始双塔度量空间；上线后在核心位维持稳健利用（Exploitation）的同时，固定划拨 $5\%\sim 10\%$ 中腰部坑位开展**受控引导探索**（Guided Exploration），主动将冷启动新品与模型分歧候选从 Unknown 转化为 Observed。
+4. **双塔与向量索引的几何同构绑定与四阶段退火演进**：在线实时推理的 User Tower 与离线批量构建的 Item ANN Index 必须处于完全相同的版本化内积空间，任何一方单独升级都会造成内积失真，必须通过 `CandidateModelReleaseV1` 实现原子级成对发布与一键回滚；随着真实反馈样本在四个演进阶段中逐步成熟，多目标混合损失中的弱监督权重按预设门禁有序退火，最终完成向真实用户行为自演进闭环的平稳交接。
 
 > 冷启动阶段的核心工程原则：用内容特征与既有规则的弱监督信号初始化双塔向量空间，用低权重 ANN 召回与受控探索制造可学习曝光，用严格的时间点快照日志将 unknown 逐步转化为 observed，最终让真实用户反馈接管主监督。
 
-全文按照工程落地的先后依赖关系组织为 11 个章节：第 1、2 节确立单池召回架构、五层系统职责边界、三类冷启动解耦与负样本语义底线；第 3 至 5 节详述商品塔（Item Tower）、用户塔（User Tower）的特征工程及冷启动弱监督（伪用户属性对齐与规则蒸馏）方案；第 6、7 节定义曝光日志、防穿越样本契约、版本化 Manifest、在线 ANN 检索与策略层排序（RankPolicy）的协同机制；第 8 节将多目标混合损失与四阶段演进路线图整合为可执行的里程碑与验收门禁；第 9、10 节深入闭环建成后的持续重训、双塔与索引成对发布、反馈防污染、分层监控及线上故障排查；第 11 节给出收尾总结。
-
 ## 1. 冷启动的核心矛盾与单池召回总体架构
 
-在标准监督学习任务中，工程师通常先获取一批带有明确输入输出标签的数据集，再着手设计模型结构。推荐系统则截然不同：用户只能对系统展示过的候选商品产生反馈，未曾曝光的商品即便没有点击，也仅代表“未被观测（unknown）”，绝不意味着用户讨厌该商品。正如 Schnabel 等人在 *Recommendations as Treatments* 中所指出的，推荐系统的历史日志是由既有推荐策略（logging policy）筛选展示后的有偏观测（异于从全量“用户—物品”笛卡尔积空间中均匀采样），天然伴随严重的选择偏差（selection bias）与曝光偏差（exposure bias）。
+在标准监督学习任务中，工程师通常先获取一批带有明确输入输出标签的静态数据集，再着手设计模型结构。推荐系统则面临截然不同的观测机制：用户只能对系统已经展示过的候选商品产生反馈。正如 Schnabel 等人在 *Recommendations as Treatments* 中所指出的，推荐系统的历史日志是由既有推荐策略（Logging Policy）筛选展示后的有偏观测（异于从全量“用户—物品”笛卡尔积空间中均匀采样），天然伴随严重的选择偏差（Selection Bias）与曝光偏差（Exposure Bias）。
 
 在系统启动初期，制约推荐效果的四大核心缺口均集中在数据与机制层面：
 
 | 核心缺口 | 线上具体表现 | 忽视该缺口的工程后果 |
 | --- | --- | --- |
 | 曝光日志缺失 | 仅保存接口返回列表或只记点击，不知用户实际看见了哪些商品 | 无法定义“曝光未点击”弱负样本，训练与归因失去分母 |
-| 负样本语义混淆 | 将全库未点击商品无差别视为用户不喜欢的负样本 | 把未知（unknown）当成负反馈（negative），长尾与新品被系统性压制 |
+| 负样本语义混淆 | 将全库未点击商品无差别视为用户不喜欢的负样本 | 把未知（Unknown）当成负反馈（Negative），长尾与新品被系统性压制 |
 | 策略版本断层 | 样本未记录产生该次曝光的模型版本、索引版本与排序策略版本 | 无法区分分布变化源于用户兴趣迁移还是策略自身调整 |
 | 探索机制缺位 | 线上永远只展示旧规则认为高分的头部商品 | 新品与边界候选得不到曝光机会，反馈闭环锁死在历史局部分布 |
 
@@ -130,13 +133,13 @@ Exposure:
 
 在工程方案设计中，“冷启动”包含三类性质迥异的子问题，必须分别制定应对策略：
 
-1. **系统冷启动（System Cold Start）**：推荐系统刚启动运行，既无历史曝光日志，也无真实点击、收藏、加购、购买、隐藏或举报反馈。此时不存在可学习的真实偏好监督，首要工程目标是落地商品特征快照、规则或热门基线、曝光与行为日志、版本化排序策略、受控探索机制以及样本生成链路。这一阶段产出的初版模型本质上是基于内容与规则先验的初始化模型，目标是做到内容相关、类目合理、价格区间得当且新商品可被召回。
-2. **用户冷启动（User Cold Start）**：新注册用户尚无历史交互，或匿名访客仅有当前会话上下文。此时 User Tower 不能依赖 `user_id` 独立向量，而应充分挖掘当前请求场景（首页、商详页、搜索后推荐）、设备与地域时间上下文、注册引导（onboarding）选择的兴趣偏好、默认人群分群（segment）以及会话内的实时点击、停留、跳过与隐藏信号，在热门与高质候选兜底的基础上实现会话内快速适应。
-3. **商品冷启动（Item Cold Start）**：新上架商品缺乏 CTR、CVR、销量、收藏与购买等后验统计，且累计曝光极低。此时 Item Tower 必须摆脱对 `sku_id` 记忆表征与历史热度的依赖，依靠三级类目、品牌店铺、标签与结构化属性（材质、颜色、风格、房间、用途）、标题文本向量、主图视觉向量、价格折扣及同 SPU/同系列关系生成内容向量，并借助线上探索配额获取初始曝光反馈。
+1. **系统冷启动**（System Cold Start）：推荐系统刚启动运行，既无历史曝光日志，也无真实点击、收藏、加购、购买、隐藏或举报反馈。此时不存在可学习的真实偏好监督，首要工程目标是落地商品特征快照、规则或热门基线、曝光与行为日志、版本化排序策略、受控探索机制以及样本生成链路。这一阶段产出的初版模型本质上是基于内容与规则先验的初始化模型，目标是做到内容相关、类目合理、价格区间得当且新商品可被召回。
+2. **用户冷启动**（User Cold Start）：新注册用户尚无历史交互，或匿名访客仅有当前会话上下文。此时 User Tower 不能依赖 `user_id` 独立向量，而应充分挖掘当前请求场景（首页、商详页、搜索后推荐）、设备与地域时间上下文、注册引导（Onboarding）选择的兴趣偏好、默认人群分群（Segment）以及会话内的实时点击、停留、跳过与隐藏信号，在热门与高质候选兜底的基础上实现会话内快速适应。
+3. **商品冷启动**（Item Cold Start）：新上架商品缺乏 CTR、CVR、销量、收藏与购买等后验统计，且累计曝光极低。此时 Item Tower 必须摆脱对 `sku_id` 记忆表征与历史热度的依赖，依靠三级类目、品牌店铺、标签与结构化属性（材质、颜色、风格、房间、用途）、标题文本向量、主图视觉向量、价格折扣及同 SPU/同系列关系生成内容向量，并借助线上探索配额获取初始曝光反馈。
 
 ### 2.1 监督信号可信度分层（L0–L7）
 
-在样本积累过程中，不同来源的数据蕴含的偏好可信度天差地别。Hu、Koren 与 Volinsky 在隐式反馈协同过滤经典论文中指出，隐式行为应被建模为偏好方向（preference）与置信度权重（confidence）的结合。据此，工程上可将全部可用信号划分为 L0 至 L7 八个层级：
+在样本积累过程中，不同来源的数据蕴含的偏好可信度天差地别。Hu、Koren 与 Volinsky 在隐式反馈协同过滤经典论文中指出，隐式行为应被建模为偏好方向（Preference）与置信度权重（Confidence）的结合。据此，工程上可将全部可用信号划分为 L0 至 L7 八个层级：
 
 | 层级 | 信号来源 | 模型能学到什么 | 可信度 | 主要工程用途 |
 | --- | --- | --- | --- | --- |
@@ -165,9 +168,9 @@ Exposure:
 ```
 
 围绕这一边界，训练中使用的三类负样本各自具备明确的适用范围与权重上限：
-1. **全库随机负样本 / 批内负样本（Random / In-Batch Negatives）**：充当对比学习（Contrastive Loss）的分母项以防止向量坍缩，帮助模型拉开“沙发与灯具、耳机与服饰”等粗粒度类目距离。由于随机采到的商品绝大多数处于未观测（unknown）状态，必须赋予极低权重，并在采样时剔除同 SPU、用户历史交互过或属性高度重合的潜在正例。
-2. **同类目难负样本（Hard Negatives）**：例如当用户画像指向“北欧风客厅布艺沙发（正样本）”时，采样“工业风客厅皮质沙发”作为同类目难负例，迫使模型学习材质与风格等细粒度决策边界。但同类目不同属性的商品往往也是潜在替代品，存在假阴性风险，因此仅宜赋予低至中等权重。
-3. **曝光未点击弱负样本（`exposed_no_action`）**：最贴近线上真实分布的负反馈来源，但其成立必须同时满足五项条件：商品确实进入用户可见视口、完整记录了 `request_id / rank / position / scene`、预设归因等待窗口已结束、窗口内无任何正负向动作，且经去重排除了高频重复曝光噪声。考虑到用户未点击可能是由于位置靠后或临时分心，其样本权重必须显著低于正向点击与显式点踩。
+1. **全库随机负样本与批内负样本**（Random / In-Batch Negatives）：充当对比学习（Contrastive Loss）的分母项以防止向量坍缩，帮助模型拉开“沙发与灯具、耳机与服饰”等粗粒度类目距离。由于随机采到的商品绝大多数处于未观测（Unknown）状态，必须赋予极低权重，并在采样时剔除同 SPU、用户历史交互过或属性高度重合的潜在正例。
+2. **同类目难负样本**（Hard Negatives）：例如当用户画像指向“北欧风客厅布艺沙发（正样本）”时，采样“工业风客厅皮质沙发”作为同类目难负例，迫使模型学习材质与风格等细粒度决策边界。但同类目不同属性的商品往往也是潜在替代品，存在假阴性风险，因此仅宜赋予低至中等权重。
+3. **曝光未点击弱负样本**（`exposed_no_action`）：最贴近线上真实分布的负反馈来源，但其成立必须同时满足五项条件：商品确实进入用户可见视口、完整记录了 `request_id / rank / position / scene`、预设归因等待窗口已结束、窗口内无任何正负向动作，且经去重排除了高频重复曝光噪声。考虑到用户未点击可能是由于位置靠后或临时分心，其样本权重必须显著低于正向点击与显式点踩。
 
 不同交互事件在训练中的参考样本权重配置如下：
 
@@ -225,11 +228,13 @@ Exposure:
 }
 ```
 
-这里有两项关键特征工程规范：第一，跨类目的动态属性统一扁平化为 `key=value` 词元（如 `style=nordic`、`room=living_room`、`material=fabric`），使所有品类共享同一套 EmbeddingBag 编码器；第二，所有历史后验统计字段（如 `ctr_7d`、`sales_7d`）必须配对布尔型缺失指示器（`ctr_7d_missing`）。新上架商品因尚无曝光而呈现 `ctr_7d=0`，其物理含义与“海量曝光但无人点击的老商品”完全不同，缺失指示器能防止模型将缺乏曝光机会的新品误判为劣质品。
+这里有两项决定冷启动成败的特征工程设计：
+1. **跨类目动态属性扁平化编码**：不同品类的商品属性键（Key）差异极大（家具看材质与房间，服饰看尺码与版型）。将所有结构化属性统一序列化为 `key=value` 词元（如 `style=nordic`、`room=living_room`、`material=fabric`），能够让全库所有品类共享同一套 `EmbeddingBag` 编码器，避免了稀疏宽表带来的维度灾难。
+2. **后验统计字段与缺失指示器配对解耦**：所有历史统计特征（如 `ctr_7d`、`sales_7d`）必须同步传入布尔型缺失指示器（`ctr_7d_missing`）。新上架商品因尚无曝光而呈现 `ctr_7d = 0.0, ctr_7d_missing = true`，其物理语义与“经历上万次曝光却无人问津的老商品（`ctr_7d = 0.0, ctr_7d_missing = false`）”截然相反。显式拆分这两个通道，能彻底防止神经网络把缺乏曝光机会的新品误判为劣质品。
 
 ### 3.1 商品内容对比预训练的正负样本构造
 
-在零用户反馈阶段，可利用 L5 级商品语义邻近信号对 Item Tower 开展对比预训练。正样本对可采自：同一 SKU 经特征掩码（feature dropout）生成的两个增强视图、同 SPU 下的不同 SKU、同系列商品，或同类目下属性高度重合且文本/图像向量相近的商品对。其中同 SKU 的多视图增强通过随机丢弃部分字段构造：
+在零用户反馈阶段，可利用 L5 级商品语义邻近信号对 Item Tower 开展对比预训练。正样本对可采自：同一 SKU 经特征掩码（Feature Dropout）生成的两个增强视图、同 SPU 下的不同 SKU、同系列商品，或同类目下属性高度重合且文本/图像向量相近的商品对。其中同 SKU 的多视图增强通过随机丢弃部分字段构造：
 
 ```text
 view_1 = 随机掩码一部分 tag / attr / title token 后的商品特征视图
@@ -367,7 +372,7 @@ UserTower:
   -> user_emb R128
 ```
 
-为了防止模型死记老用户与老商品 ID，训练期应对 `item_id_emb` 与 `user_id_emb` 施加 Feature Dropout，并为新用户与新商品绑定统一的 default/unknown 表征；同时对所有连续数值特征执行对数压缩、极值截断与缺失解耦处理：
+为了防止模型死记老用户与老商品 ID（遵循 Volkovs 等人在 DropoutNet 中验证的冷启动泛化机制），训练期应对 `item_id_emb` 与 `user_id_emb` 施加高比例 Feature Dropout，并为新用户与新商品绑定统一的 `default / unknown` 表征；同时对所有连续数值特征执行对数压缩、极值截断与缺失解耦处理：
 
 | 原始数值特征 | 建议预处理方式 |
 | --- | --- |
@@ -396,7 +401,7 @@ $$
 
 ## 5. 冷启动弱监督：伪用户属性对齐与规则系统蒸馏
 
-在真实曝光反馈尚未形成的启动期，为了让 User Tower 与 Item Tower 输出的向量落入同一可比度量空间，工程上可联合采用**伪用户属性匹配（Synthetic User-SKU Matching）**与**规则系统蒸馏（Rule Distillation）**两项弱监督手段进行预热。
+在真实曝光反馈尚未形成的启动期，如果仅对 Item Tower 做自监督预训练，User Tower 的参数依然处于随机初始化状态，两个塔输出的向量根本不在同一个度量坐标系内。为了让 User Tower 与 Item Tower 在零样本期就能输出几何对齐的向量，工程上可联合采用**伪用户属性匹配**（Synthetic User-SKU Matching）与**规则系统蒸馏**（Rule Distillation）两项弱监督手段进行跨塔预热。
 
 ### 5.1 伪用户属性对齐：跨塔字段兼容性初始化
 
@@ -536,7 +541,7 @@ $$
 
 ### 6.1 时间点快照与防数据穿越样本契约
 
-离线训练样本由 `ExposureLogV1 + InteractionEventV1 + UserFeatureSnapshot + ItemFeatureSnapshot` 关联生成。在拼接过程中，严禁直接读取用户当前的最新画像表，必须严格按曝光发生时刻 $t$ 回滚特征窗口：
+离线训练样本由 `ExposureLogV1 + InteractionEventV1 + UserFeatureSnapshot + ItemFeatureSnapshot` 关联生成。在拼接过程中，严禁直接读取用户当前的最新画像表（那会把用户在时刻 $t$ 点击商品后才新增的偏好标签泄漏回时刻 $t$ 的输入特征，制造虚假的离线高准确率），必须严格按曝光发生时刻 $t$ 回滚特征窗口：
 
 ```text
 for each exposure at time t:
@@ -748,11 +753,14 @@ s_{\text{final}}
 -p.
 $$
 
-新模型上线严格遵循**三步渐进放量策略**：第一步为 **Shadow（影子阶段）**，线上实时计算 ANN TopN 并写入影子日志，核验合法率、覆盖率、延迟及与规则候选的重合度，完全不干预前端展示；第二步为 **Low-Weight Recall（低权重接入）**，将 `ann_score` 权重 $\alpha$ 设为 $0.10\sim 0.20$，由规则、画像与热门主导排序，并配齐超时或故障自动降级（Fallback）；第三步为 **Controlled Ramp-up（受控提权）**，待分桶数据证明 `ann_score` 与真实转化单调正相关且负反馈未上升后，逐步将 $\alpha$ 提升至 $0.35\sim 0.50$ 以上，同时全程保留可一键关闭 ANN 或回滚版本的热开关（Kill Switch）。
+新模型上线严格遵循**三步渐进放量策略**：
+- 第一步为 **影子验证阶段**（Shadow Mode）：线上实时计算 ANN TopN 并写入影子日志，核验合法率、覆盖率、延迟及与规则候选的重合度，完全不干预前端展示；
+- 第二步为 **低权重接入阶段**（Low-Weight Recall）：将 `ann_score` 权重 $\alpha$ 设为 $0.10\sim 0.20$，由规则、画像与热门主导排序，并配齐超时或故障自动降级（Fallback）；
+- 第三步为 **受控提权阶段**（Controlled Ramp-up）：待分桶数据证明 `ann_score` 与真实转化单调正相关且负反馈未上升后，逐步将 $\alpha$ 提升至 $0.35\sim 0.50$ 以上，同时全程保留可一键关闭 ANN 或回滚版本的热开关（Kill Switch）。
 
 ### 7.2 受控引导探索：制造可学习的边界曝光
 
-为了打破旧规则与初版模型的曝光偏差，线上服务应在 $90\%\sim 95\%$ 坑位执行常规最优排序（Exploitation）的同时，预留 $5\%\sim 10\%$ 预算开展**受控引导探索（Guided Exploration）**。探索候选必须在通过全部安全护栏（`hard_filters`）的前提下，从内容相关但低曝光的新上架商品、ANN Top $100\sim 300$ 的中腰部边界商品、同类目跨风格商品以及双塔高分但旧规则低分的分歧候选中抽取。展示位置上坚持“Top 3 核心位保守稳健、Rank $4\sim 20$ 中腰部适度穿插探索”的原则，并在曝光日志中完整记录探索前后的位次变化：
+为了打破旧规则与初版模型的曝光偏差，线上服务应在 $90\%\sim 95\%$ 坑位执行常规最优排序（Exploitation）的同时，预留 $5\%\sim 10\%$ 预算开展**受控引导探索**（Guided Exploration）。探索候选必须在通过全部安全护栏（`hard_filters`）的前提下，从内容相关但低曝光的新上架商品、ANN Top $100\sim 300$ 的中腰部边界商品、同类目跨风格商品以及双塔高分但旧规则低分的分歧候选中抽取。展示位置上坚持“Top 3 核心位保守稳健、Rank $4\sim 20$ 中腰部适度穿插探索”的原则，并在曝光日志中完整记录探索前后的位次变化：
 
 ```json
 {
@@ -799,7 +807,7 @@ w_{\text{real}}\mathcal{L}_{\text{real}}
 +w_{\text{item}}\mathcal{L}_{\text{item}}.
 $$
 
-各损失项权重与线上策略随数据成熟度按以下四阶段演进表动态迁移：
+各损失项权重与线上策略随数据成熟度按以下四阶段演进表动态退火迁移：
 
 | 演进阶段 | `w_real` | `w_noact (+hard)` | `w_syn` | `w_distill` | `w_item` | 在线 ANN 模式与核心目标 |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
@@ -812,14 +820,14 @@ $$
 
 ### 8.1 阶段 0：零样本启动期（第 1–3 周）
 
-- **第 1 周（基线与日志就位）**：落地 `RecommendRequest / RecommendResponse` 接口契约、规则/热门/画像基线排序、`RankPolicyV1` 初始配置以及 `ExposureLogV1` 与 `InteractionEventV1` 埋点，确保任意推荐响应均可关联曝光日志、任意点击均可通过 `request_id + item_id` 回连曝光，且下架或不可售商品零泄漏。
-- **第 2 周（商品特征快照与质量门禁）**：构建 `ItemFeatureV1` 离线导出管线、`ItemFeatureSnapshotManifestV1` 与自动化质量检查报告，确保主键唯一、缺失率可解释且新品具备完整内容特征。
-- **第 3 周（初版向量导出与 ANN Shadow）**：先通过确定性特征投影或阶段 0 弱监督双塔导出 `ItemEmbeddingV1` 并构建 `ANNIndexManifestV1`，上线 ANN Shadow 查询链路，验证检索延迟、$100\%$ 候选合法率与近邻语义合理性。
+- **第 1 周**（基线与日志就位）：落地 `RecommendRequest / RecommendResponse` 接口契约、规则/热门/画像基线排序、`RankPolicyV1` 初始配置以及 `ExposureLogV1` 与 `InteractionEventV1` 埋点，确保任意推荐响应均可关联曝光日志、任意点击均可通过 `request_id + item_id` 回连曝光，且下架或不可售商品零泄漏。
+- **第 2 周**（商品特征快照与质量门禁）：构建 `ItemFeatureV1` 离线导出管线、`ItemFeatureSnapshotManifestV1` 与自动化质量检查报告，确保主键唯一、缺失率可解释且新品具备完整内容特征。
+- **第 3 周**（初版向量导出与 ANN Shadow）：先通过确定性特征投影或阶段 0 弱监督双塔导出 `ItemEmbeddingV1` 并构建 `ANNIndexManifestV1`，上线 ANN Shadow 查询链路，验证检索延迟、$100\%$ 候选合法率与近邻语义合理性。
 
 ### 8.2 阶段 1：少量样本破冰期（第 4–5 周）
 
-- **第 4 周（防穿越样本管线）**：上线基于时间点快照的样本生成流水线，产出首批 `TrainingExampleV1` 与 `TrainingDatasetManifestV1`，完成零数据穿越审计与归因等待窗口校验。
-- **第 5 周（首版真实反馈混合双塔）**：按阶段 1 混合权重训练 `ItemTower` 与 `UserTower`，替换确定性向量并以 `ann_score = 0.10~0.20` 低权重及 `5%` 探索比例灰度上线。准出要求为：`exposure -> interaction` 回连率达标、显式负反馈（hide/dislike）实时触发过滤或重罚、灰度期间负反馈率无抬升。
+- **第 4 周**（防穿越样本管线）：上线基于时间点快照的样本生成流水线，产出首批 `TrainingExampleV1` 与 `TrainingDatasetManifestV1`，完成零数据穿越审计与归因等待窗口校验。
+- **第 5 周**（首版真实反馈混合双塔）：按阶段 1 混合权重训练 `ItemTower` 与 `UserTower`，替换确定性向量并以 `ann_score = 0.10~0.20` 低权重及 `5%` 探索比例灰度上线。准出要求为：`exposure -> interaction` 回连率达标、显式负反馈（hide/dislike）实时触发过滤或重罚、灰度期间负反馈率无抬升。
 
 ### 8.3 阶段 2：规模化可训练期（第 6 周及之后）
 
@@ -853,9 +861,9 @@ $$
 | --- | --- | --- | --- | --- |
 | **特征快照更新** | `ItemFeatureV1`、统计特征、用户画像 | 小时级到天级 | 让系统及时感知新商品、新价格、新库存与新行为 | 快照时间戳与训练样本时间窗口不一致 |
 | **ANN Index 更新** | `ItemEmbeddingV1`、向量索引、过滤字段 | 天级或更高 | 将最新上架商品与最新表征纳入可召回池 | 在线 User Tower 与 Item Index 向量空间失配 |
-| **Batch Retraining（全量重训）** | 双塔召回模型、排序模型 | 天级、周级 | 用最新闭环窗口数据整体刷新模型参数 | 历史曝光偏置累积放大、时间窗口配置漂移 |
-| **Warm-Start / Continued Training（续训）** | 基于上一版模型检查点继续微调 | 小时级到天级 | 节省训练算力，保持跨批次向量空间方位相对稳定 | 继承旧模型局部偏差、遗忘长尾与冷门分布 |
-| **Nearline / Online Update（近线/在线更新）** | 用户短期兴趣状态向量、局部热点参数 | 秒级到小时级 | 即时捕捉会话内兴趣转移与突发热点 | 反馈回路急速放大，工程与风控复杂度陡增 |
+| **全量重训**（Batch Retraining） | 双塔召回模型、排序模型 | 天级、周级 | 用最新闭环窗口数据整体刷新模型参数 | 历史曝光偏置累积放大、时间窗口配置漂移 |
+| **热启动续训**（Continued Training） | 基于上一版模型检查点继续微调 | 小时级到天级 | 节省训练算力，保持跨批次向量空间方位相对稳定 | 继承旧模型局部偏差、遗忘长尾与冷门分布 |
+| **近线/在线更新**（Nearline Update） | 用户短期兴趣状态向量、局部热点参数 | 秒级到小时级 | 即时捕捉会话内兴趣转移与突发热点 | 反馈回路急速放大，工程与风控复杂度陡增 |
 
 ### 9.1 全量重训与热启动续训流水线
 
@@ -965,7 +973,7 @@ Batch Retraining（批式重训）
 
 ### 10.1 四层核心监控面板
 
-1. **数据闭环监控（训练前置底线）**：
+1. **数据闭环监控**（训练前置底线）：
 
 | 指标名称 | 监控意义 |
 | --- | --- |
@@ -1054,54 +1062,54 @@ exposure result (click / dwell / hide / no_action)
 
 ## 11. 结语
 
-从零构建并演进一套简单可靠的推荐系统，核心在于把握“数据语义先于模型复杂度、系统边界先于参数调优”的工程次序。通过单池召回与五层架构解耦，系统将双塔模型聚焦于 $128$ 维语义与偏好匹配，将硬过滤、多路融合与去重惩罚交由可声明式热更新的 `RankPolicyV1` 管控；通过严格区分未曝光未知项（unknown）与真实负反馈（negative），配合内容对比预训练、伪用户属性对齐与分桶规则蒸馏，系统得以在零样本期安全起步；再经由 Shadow 验证、低权重召回、受控引导探索、防穿越时间点样本快照以及 `CandidateModelReleaseV1` 成对发布契约，推荐系统便能稳步完成从冷启动弱监督向真实反馈自演进闭环的跨越。
+从零构建并演进一套简单可靠的推荐系统，核心在于把握“数据因果边界先于模型复杂度、系统职责解耦先于参数调优”的工程哲学。通过单池召回与五层架构解耦，系统将双塔模型聚焦于 $128$ 维语义与偏好匹配，将硬过滤、多路融合与去重惩罚交由可声明式热更新的 `RankPolicyV1` 管控；通过严格区分未曝光未知项（Unknown）与真实负反馈（Negative），配合内容对比预训练、伪用户属性对齐与全谱系分桶规则蒸馏，系统得以在零样本期安全起步；再经由 Shadow 验证、低权重召回、受控引导探索、防穿越时间点样本快照以及 `CandidateModelReleaseV1` 成对发布契约，推荐系统便能稳步完成从冷启动弱监督向真实反馈自演进闭环的跨越。
 
 ## 参考文献与延伸阅读
 
 - [Yifan Hu, Yehuda Koren, Chris Volinsky. Collaborative Filtering for Implicit Feedback Datasets. ICDM 2008.](https://yifanhu.net/PUB/cf.pdf)  
-  隐式反馈推荐的经典工作。对本文最重要的启发是：隐式行为本质上是带不同置信度的 preference signal，不能等同于干净的显式正负标签。
+  隐式反馈推荐的奠基工作，阐明了隐式行为应当拆解为偏好方向（Preference）与置信度权重（Confidence），不可直接等同于干净的显式正负标签。
 
 - [Steffen Rendle et al. BPR: Bayesian Personalized Ranking from Implicit Feedback. UAI 2009.](https://arxiv.org/abs/1205.2618)  
-  个性化排序损失的经典基线。尽管本方案采用多目标混合损失替代单一 BPR，但该工作清晰阐明了隐式反馈推荐需要直接优化相对排序目标。
+  个性化排序损失的经典基线，确立了隐式反馈推荐直接优化相对排序序关系的建模范式。
 
 - [Tobias Schnabel et al. Recommendations as Treatments: Debiasing Learning and Evaluation. ICML 2016.](https://proceedings.mlr.press/v48/schnabel16.html)  
-  讨论推荐训练和评估里的 selection bias。对本文的关键启发是：历史推荐日志来自旧策略选择展示之后的观测，不能当成无偏全量样本。
+  从因果推断视角剖析推荐训练与评估中的选择偏差（Selection Bias），指出历史推荐日志源于旧策略筛选展示后的有偏观测。
 
 - [Paul Covington, Jay Adams, Emre Sargin. Deep Neural Networks for YouTube Recommendations. RecSys 2016.](https://research.google/pubs/deep-neural-networks-for-youtube-recommendations/)  
-  工业推荐中 candidate generation 和 ranking 两阶段架构的代表性论文。本文采用“ANN 召回只是候选源，最终排序另做”的同类工程思想。
+  工业推荐系统中候选生成（Candidate Generation）与精排（Ranking）两阶段漏斗架构的代表性论文。
 
 - [Denis Baylor et al. Continuous Training for Production ML in the TensorFlow Extended TFX Platform. USENIX OpML 2019.](https://www.usenix.org/conference/opml19/presentation/baylor)  
-  生产 ML 持续训练流水线的代表性资料。本文用它支撑“重训超越了简单定时脚本（cron job），必须构建为带数据验证、模型验证、metadata 和发布门禁的工程流水线”这一观点。
+  生产级机器学习持续训练（Continuous Training）流水线的代表工作，展示了如何通过数据验证、模型验证、元数据谱系与发布门禁保障重训可靠性。
 
 - [Google Cloud. MLOps: Continuous delivery and automation pipelines in machine learning.](https://cloud.google.com/architecture/mlops-continuous-delivery-and-automation-pipelines-in-machine-learning)  
-  工程视角解释 ML pipeline 自动化、持续训练和部署成熟度。本文参考其思想，把推荐重训拆成触发、验证、发布和回滚。
+  从系统工程视角拆解机器学习流水线自动化、持续训练触发机制、模型评估门禁与灰度回滚体系。
 
 - [Martin Zinkevich. Rules of Machine Learning: Best Practices for ML Engineering.](https://developers.google.com/machine-learning/guides/rules-of-ml)  
-  Google 的 ML 工程实践指南。本文借鉴其“先建立可观测 baseline，再逐步增加复杂度”的系统演进思路。
+  Google 机器学习工程实践指南，强调先打通端到端数据管线与可观测的简单基线，再逐步提升模型复杂度。
 
 - [Pinterest Engineering. Establishing a Large-Scale Learned Retrieval System at Pinterest.](https://medium.com/pinterest-engineering/establishing-a-large-scale-learned-retrieval-system-at-pinterest-eb0eaf7b92c5)  
-  双塔 learned retrieval 的工业落地文章。本文参考其自动训练、item embedding 导出、ANN index 构建和线上同步的工程思路。
+  双塔向量召回的工业界落地实践，详述了自动重训、商品向量批量导出、ANN 索引构建及线上成对同步机制。
 
 - [Jian Zhu et al. Monolith: Real Time Recommendation System With Collisionless Embedding Table. arXiv 2022.](https://arxiv.org/abs/2209.07663)  
-  大规模实时推荐训练系统。本文把它作为“在线训练是高阶能力，不应作为第一版目标”的代表案例。
+  大规模实时流式推荐训练系统代表作，适合在批式闭环与近线兴趣池化成熟后作为高阶演进参考。
 
 - [Dan Matam et al. QuickUpdate: Fast and Efficient Model Updates for Online Recommender Systems. NSDI 2024.](https://www.usenix.org/conference/nsdi24/presentation/matam)  
-  研究如何在完整模型发布之间快速更新推荐模型参数。本文用它说明部分参数高频发布可以提升新鲜度，但需要成熟发布基础设施。
+  探讨如何在完整模型发布周期之间高频增量更新关键子集参数，以兼顾模型新鲜度与发布稳定性。
 
 - [Mohammad Saberian, Justin Basilico. RecSysOps: Best Practices for Operating a Large-Scale Recommender System. RecSys 2021.](https://doi.org/10.1145/3460231.3474620)  
-  Netflix 推荐系统运维实践。本文借鉴其把问题发现、预测、诊断、修复纳入推荐系统生命周期的思路。
+  Netflix 推荐系统运维实践，将异常发现、诊断、巡检与自动降级修复纳入推荐系统全生命周期管理。
 
 - [Eugene Yan. A Practical Guide to Maintaining Machine Learning Systems in Production.](https://eugeneyan.com/writing/practical-guide-to-maintaining-machine-learning/)  
-  生产 ML 维护指南。本文参考其对数据漂移、反馈回路、监控和系统性排查的讨论。
+  生产环境机器学习维护指南，深入讨论了反馈回路自我强化、数据漂移、监控盲区与系统性排障流程。
 
 - [Maksims Volkovs, Guangwei Yu, Tomi Poutanen. DropoutNet: Addressing Cold Start in Recommender Systems. NeurIPS 2017.](https://papers.nips.cc/paper/7081-dropoutnet-addressing-cold-start-in-recommender-systems)  
-  通过 dropout 显式训练冷启动能力。本文借鉴其核心思想：冷启动模型需要在训练时模拟缺失 ID 或缺历史行为的情况，不能只在上线时临时补救。
+  通过在训练期显式施加特征与 ID Dropout 模拟冷启动缺失状态，迫使深度网络充分利用内容特征泛化。
 
 - [Lihong Li et al. A Contextual-Bandit Approach to Personalized News Article Recommendation. WWW 2010.](https://arxiv.org/abs/1003.0146)  
-  推荐探索和利用的经典 contextual bandit 工作。本文不建议第一版直接上复杂 bandit，但强调受控探索和 logging policy 是冷启动闭环的基础。
+  推荐系统中探索与利用（Exploration vs. Exploitation）的经典上下文赌博机工作，奠定了受控探索与策略日志记录的理论基础。
 
 - [Yuta Saito et al. Open Bandit Dataset and Pipeline: Towards Realistic and Reproducible Off-Policy Evaluation. 2020.](https://arxiv.org/abs/2008.07146)  
-  讨论 logged bandit feedback 和 off-policy evaluation 的数据与工具。对本文的启发是：如果想离线评估新策略，日志必须记录策略、动作、反馈和上下文。
+  系统阐述带策略日志反馈（Logged Bandit Feedback）与离策略评估（OPE）的数据规范。
 
 - [Negative Sampling in Recommendation: A Survey and Future Directions.](https://arxiv.org/html/2409.07237v1)  
-  系统梳理推荐里的负采样问题。本文只取其中一个工程结论：负采样有 false negative 风险，不能把采样负例等价于用户明确负反馈。
+  全面梳理推荐系统中的负采样策略与假阴性（False Negative）风险控制。

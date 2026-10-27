@@ -14,464 +14,363 @@ tags:
 draft: false
 ---
 
-Jiaqi Zhai、Lucy Liao、Xing Liu、Yueming Wang、Rui Li、Xuan Cao、Leon Gao、Zhaojie Gong、Fangda Gu、Michael He、Yinghai Lu 和 Yu Shi 在 ICML 2024 发表的 **Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for Generative Recommendations**，直面了工业推荐领域长期存在的一个核心疑问：
+大型互联网推荐平台每天实时产生的用户曝光、点击、完播与互动事件动辄以百亿计——单日沉淀的“行为 Token”总量，甚至比训练 GPT-3 或 LLaMA-2 的全部文本语料还要庞大。然而在过去十年里，当自然语言处理与计算机视觉沿着算力扩展定律（Scaling Law）一路狂飙时，工业界深度学习推荐模型（DLRM）却陷入了一个尴尬的怪圈：算法团队长年累月地往模型里塞入成百上千个手工统计特征、时间窗口计数、显式交叉网络（DCN）与业务专属子塔，可一旦试图把训练算力扩大十倍，离线指标却很快撞上天花板，根本跑不出语言模型那样陡峭的幂律增长曲线。
 
-> 推荐系统是否也存在类似语言模型和视觉模型那样的算力扩展定律（compute scaling law）？如果存在，为什么传统的深度学习推荐模型（DLRM）范式未能显著兑现这一红利？
+为什么守着全世界最大规模的行为数据流，传统工业推荐模型却吃不到算力扩展的红利？
 
-论文给出的系统性回答是 **Generative Recommenders（生成式推荐系统，简称 GRs）**。GRs 将异构特征彻底重构为**序列转导**（sequential transduction）任务：把内容表征 token、用户动作 token 与目标候选 token 交错编排在同一条时间序列中，从而将召回（retrieval）与排序（ranking）统一纳入目标感知（target-aware）的自回归生成框架。为了支撑这一范式在十亿级日活生产环境中的训练与在线服务，论文配套提出了三项核心工程组件：
+Meta 团队在 ICML 2024 发表的里程碑论文 **[Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for Generative Recommendations](https://arxiv.org/abs/2402.17152)**（[PMLR 论文页](https://proceedings.mlr.press/v235/zhai24a.html)、[官方代码仓库 meta-recsys/generative-recommenders](https://github.com/meta-recsys/generative-recommenders)），给出了一个直击本质的诊断：**阻碍推荐系统扩展的罪魁祸首，正是把用户行为拆成碎片化手工特征与孤立模块的 DLRM 范式本身**。为此，作者提出了 **生成式推荐系统**（Generative Recommenders, GRs），将模型规模一举推上 **`1.5 trillion`（1.5 万亿参数）**，在 8192 序列长度下实现比 FlashAttention-2 快 **`5.3x`～`15.2x`** 的编码效率，并在十亿用户级生产环境的线上 A/B 测试中拿下了 **`+12.4%`** 的核心排序指标提升。
 
-1. **HSTU（Hierarchical Sequential Transduction Unit）**：专为高基数、非平稳、流式推荐数据设计的层级序列转导编码器。
-2. **Stochastic Length（随机序列长度采样）**：在训练阶段按幂律分布动态稀疏化长历史序列，以可控计算成本保持模型对超长历史的建模能力。
-3. **M-FALCON（Microbatched-Fast Attention Leveraging Cacheable OperatioNs）**：在目标感知的排序推理阶段，利用微批次（microbatching）与编码器键值缓存摊销海量候选的打分开销。
+如果拨开繁复的实验表格与算子实现，整篇论文的突破建立在**四条环环相扣的设计哲学**之上：
 
-论文汇报的关键指标非常亮眼：HSTU 在合成与公开基准上最高取得 `65.8%` 的 NDCG 提升，在 8192 序列长度下比基于 FlashAttention-2 的 Transformer 快 `5.3x`～`15.2x`；基于 HSTU 的 GRs 参数规模最高扩展至 `1.5 trillion`（1.5 万亿），并在 Meta 线上 A/B 实验的排序主指标上取得 `+12.4%` 的业务增益。
+1. **用“内容与动作交错的统一序列转导”终结碎片化特征拼装**（Interleaved Content-Action Transduction over Fragmented Feature Engineering）：放弃将用户行为切碎成数百个稀疏/稠密特征桶的做法，把用户接触到的内容表征 $\Phi_i$ 与产生的反馈动作 $a_i$ 按真实时间轴交错排成一条因果序列。在这条统一序列上，预测下一个内容 $\Phi_{i+1}$ 就是**召回**（Retrieval），在序列末尾塞入候选内容 $\Phi_{i+1}$ 预测动作 $a_{i+1}$ 就是**目标感知精排**（Target-Aware Ranking）。
+2. **抛弃行归一化 Softmax 与独立 FFN，用逐点门控注意力保留偏好强度**（Pointwise Gated Attention over Normalized Softmax）：标准 Transformer 的 Softmax 强制令所有历史位置的注意力权重加和为 $1$，这在推荐场景下会抹杀一个致命信号——**用户对某个候选类目的历史交互总频次与总强度**。HSTU 编码器果断用非归一化的逐点激活函数（如 SiLU）替代 Softmax，融入相对时间与位置分桶偏置 $r_{ab}^{p,t}$，并通过逐元素门控分支 $\mathrm{Norm}(A(X)V(X))\odot U(X)$ 在单一算子内同时完成序列聚合与高阶特征交叉，一举省去了笨重的独立 FFN 子层。
+3. **在数据层用幂律随机截断制造稀疏性，破解长序列训练的算力困局**（Stochastic Length as Data-Level Sparsification）：用户的长周期历史行为存在极高的时间冗余。与其在每个训练步都硬扛 $O(n^2)$ 的全长序列开销，或者削足适履只训短序列，**随机序列长度采样**（Stochastic Length）按幂律分布与特征重要性动态抽稀训练序列——既把长序列训练成本砍掉了大半，又逼着模型学会在跨月度的稀疏历史线索中提取长期偏好。
+4. **用掩码隔离微批次与编码器缓存，把多候选打分摊销为单次历史编码**（Amortize Target-Aware Scoring via M-FALCON）：目标感知精排要求每个候选物品都与长达数千步的用户历史做深层自注意力交互。如果对 $m$ 个候选分别跑一遍前向传播，线上 GPU 瞬间就会瘫痪。**M-FALCON** 将共享的用户历史前缀只编码 1 次并固化为编码器缓存，随后把 $m$ 个候选切成微批次（Microbatches）拼在缓存后面并行打分，通过注意力掩码让候选之间彼此不可见——从而让单次理论计算量高出 `285 倍` 的生成式大模型，在线上跑出了反超传统 DLRM 的吞吐量。
 
-本文围绕范式重构、HSTU 与 M-FALCON 算法细节、Scaling Law 实验证据以及官方开源仓库 `meta-recsys/generative-recommenders` 的核心代码实现展开精读。文中图表截取自 arXiv/PMLR 论文 PDF（CC BY 4.0 许可）；关于工业生产数据集、1.5T 模型训练与线上 A/B 收益的分析均以论文报告为准，代码走读部分基于官方公开的复现仓库做静态拆解。
+下面我们就顺着这四条设计哲学，结合论文推导与开源仓库代码，由浅入深拆解这套万亿参数生成式推荐架构。
 
-## 1. 论文概览与工业 DLRM 的扩展瓶颈
+---
 
-| 项目 | 内容 |
-| --- | --- |
-| 题名 | Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for Generative Recommendations |
-| 作者 | Jiaqi Zhai, Lucy Liao, Xing Liu, Yueming Wang, Rui Li, Xuan Cao, Leon Gao, Zhaojie Gong, Fangda Gu, Michael He, Yinghai Lu, Yu Shi |
-| 会议 | ICML 2024, PMLR 235 |
-| arXiv | `2402.17152` |
-| 页数 | 26 页 |
-| 官方代码 | `meta-recsys/generative-recommenders` |
-| 主要关键词 | Generative Recommenders, HSTU, Stochastic Length, M-FALCON, scaling law |
+## 1. 为什么传统工业 DLRM 跑不出 Scaling Law？
 
-论文的整体脉络可以浓缩为一句话：**将工业推荐从“手工异构特征工程 + 多塔/多任务 DLRM”重构为“内容与动作交错的自回归序列生成问题”，并依靠 HSTU、Stochastic Length 与 M-FALCON 协同突破超长序列训练与目标感知推理的算力瓶颈**。
-
-这一重构触及三个层面的转变：在架构层面，它改变了传统 DLRM 依赖人工堆叠特征交叉模块与业务子塔的扩展方式；在序列建模层面，它超越了 SASRec、BERT4Rec 等仅对历史物品 ID 建模的传统序列推荐，将内容特征 $\Phi_i$、用户反馈动作 $a_i$ 与待评估候选 $\Phi_{i+1}$ 显式融合；在推理系统层面，它通过 M-FALCON 将单个用户请求下 $m$ 个候选对长度 $n$ 历史的重复注意力计算转化为一次缓存共享与微批次增量计算。
-
-### 1.1 训练算力趋势对比（Fig. 1）
-
-Fig. 1 将工业推荐模型（DLRM 与 GR）与主流语言及视觉模型放在同一张训练算力（PFlops/s-days）时间轴上进行对照：
+### 1.1 训练算力鸿沟与 DLRM 的四大结构性死结
 
 ![Fig. 1: DLRM 与 GR 训练 compute 趋势](/images/blog/generative-recommenders-hstu/hstu-fig01-training-compute.webp)
 
-*Source: Zhai et al., ICML 2024, Fig. 1, CC BY 4.0.*
+看看上图将工业推荐模型（蓝色星号）与主流语言、视觉基础模型（红色圆点，从 AlexNet、BERT 到 GPT-3、LLaMA-2）放在同一张训练算力坐标轴上的对比：过去十年间，传统工业 DLRM 的训练算力长期徘徊在底部平缓区；直到切换为论文提出的生成式推荐架构（GR-23、GR-24）后，推荐系统的有效训练算力才一跃冲上与 GPT-3 和 LLaMA-2 比肩的量级。
 
-图中红色数据点代表 AlexNet、ResNet、BERT、AlphaZero、GPT-3 与 LLaMA-2 等里程碑模型，蓝色星号则对应工业 DLRM 及论文提出的 GR-23、GR-24。尽管大型推荐平台每天沉淀的用户交互行为远超自然语言语料规模，但传统 DLRM 的训练算力曲线长期处于平缓状态，未能像大语言模型那样通过跨数量级扩充算力换取可预测的指标跃升。直到切换为统一序列转导架构后，GR-23 与 GR-24 的有效训练算力才逼近 GPT-3 与 LLaMA-2 的量级，开启了推荐系统的基础模型化扩展路径。
+为什么在传统 DLRM 架构下，单纯加机器、加层数换不来持续的精度跃升？根源在于工业推荐场景面临着四道与自然语言截然不同的物理约束：
 
-### 1.2 传统工业 DLRM 难以持续扩展的四类症结
+1. **手工异构特征打碎了统一的计算图**：工业 DLRM 的输入是由几百位工程师在数年间各自添加的大杂烩——创作者 ID、物品 ID、类目统计率、过去 1 小时/7 天/30 天的滑动窗口计数、多源交叉特征等。为了消化这些特征，DLRM 被迫拆成五花八门的特征提取器、池化层、DCN 交叉层和多任务子塔。计算图高度碎片化，导致绝大部分参数都耗散在浅层稀疏查找上，真正参與深层非线性推理的算力占比极低。
+2. **十亿级动态高基数词表**（High-Cardinality Dynamic Vocabulary）：语言模型的词表通常固定在 10 万个静态词元左右；而大型内容与电商平台的物品、视频、创作者规模高达十亿级，且每秒钟都有海量新内容入库、旧内容下架。
+3. **非平稳流式数据分布**：推荐模型面对的是只过一遍（One-pass Streaming）的实时行为流，用户兴趣、社会热点与候选池时刻漂移，无法像静态文本库那样反复全量洗牌（Full-shuffle）训练。
+4. **目标感知（Target-Aware）的严苛推理延迟红线**：在精排阶段，模型必须在几十毫秒内对召回层送来的数千个候选物品逐一打分，而且候选物品的特征必须尽早和用户历史做细粒度交叉。这一硬约束让许多人不敢把重型序列模型直接搬上精排主链路。
 
-为什么在 DLRM 框架下单纯堆叠参数和算力容易遭遇收益饱和？论文将其归结为推荐场景特有的四项结构性约束：
+---
 
-1. **异构特征空间缺乏统一序列结构**：工业排序特征涵盖用户画像、创作者 ID、物品 ID、上下文统计计数、滑动窗口交叉比率、历史行为序列以及多模态内容表征。DLRM 依靠定制化的特征提取器、显式交叉网络（如 DCN）与多任务塔将这些异构模块拼装在一起，导致计算图碎片化，难以通过统一增加深度或宽度来平滑扩展容量。
-2. **十亿级动态高基数词表（High-Cardinality Dynamic Vocabulary）**：语言模型的词表通常固定在十万量级，而推荐系统的物品、广告与创作者规模高达十亿级且时刻处于新增与过期下架的动态变化中，给底层 Embedding 维护、负采样与冷启动泛化带来巨大负担。
-3. **非平稳流式训练分布**：工业推荐面对的是随时间持续演化的用户行为流，候选池分布、季节性热点与业务目标时刻漂移，无法像静态离线文本语料那样做多轮全量随机洗牌（full-shuffle）。
-4. **目标感知（Target-Aware）的严苛推理预算**：排序阶段必须精细刻画当前候选物品与用户历史偏好的交叉反应，候选特征必须尽早进入深层交互路径。如果在长序列自注意力模型中直接为每个候选重跑一遍完整历史编码，线上延迟与 GPU 算力开销将彻底失控。
+## 2. 核心设计哲学一：把异构特征重构为“内容与动作交错”的序列转导
 
-上述四点共同表明，简单把标准 Transformer 模块塞进 DLRM 并不能解决问题；要释放序列模型的扩展潜力，必须从输入表征、注意力算子到在线推理调度进行全栈重构。
+### 2.1 从分桶拼装到交错时间流：DLRM 与 GR 的范式分野
 
-## 2. 生成式推荐（GR）范式：从特征拼装到序列转导
-
-### 2.1 DLRM 与 GR 的特征组织对比（Fig. 2）
-
-Fig. 2 直观展示了从传统 DLRM 到生成式推荐系统（GR）的特征重组过程：
+怎么把碎片化的 DLRM 改造成像 GPT 一样结构规整、能无限吸收算力的统一架构？Fig. 2 给出了整篇论文最核心的特征重组方案：
 
 ![Fig. 2: DLRM 与 GR 的特征组织和训练流程](/images/blog/generative-recommenders-hstu/hstu-fig02-dlrm-vs-gr-features.webp)
 
-*Source: Zhai et al., ICML 2024, Fig. 2, CC BY 4.0.*
+对比左右两侧的数据流向：
+- **左侧的传统 DLRM**：把用户的历史行为和上下文按特征源拆成 `E, F, G, H` 等离散特征簇与数值特征簇，各自过完 Embedding 和局部池化后，在顶层拼成一个扁平大向量喂给 MLP。在这个过程中，**不同行为发生的时间先后顺序与因果链条被彻底揉碎了**。
+- **右侧的生成式推荐（GR）**：将散落在各个表里的主时间序列（用户点击/观看流）、辅助时间序列（创作者互动流等）、稀疏类别属性与稠密统计数值，全部按事件发生的真实时间戳合并重排，压平为一条由**内容表征 Token $\Phi_i$** 与 **用户反馈动作 Token $a_i$** 严格交替排列的单一人格化序列：
 
-在左侧的传统 DLRM 中，来自不同特征源的类别特征（`E, F, G, H`）与稠密数值特征分别经过独立的提取、池化与交叉子网，最后汇总至顶部 MLP。而在右侧的 GR 中，所有的用户历史交互、多源辅助时间序列、稀疏与稠密属性被统一序列化并压缩为交错排列的**内容表征 token $\Phi_i$** 与**用户动作 token $a_i$**。两套范式的核心差异对照如下：
+$$
+\left(\Phi_0,\, a_0,\, \Phi_1,\, a_1,\, \ldots,\, \Phi_i,\, a_i\right)
+$$
 
-| 维度 | 传统工业 DLRM | Generative Recommender (GR) |
+其中，那些原本属于静态画像或慢变的稠密统计特征，则被合并编码到对应时间步的内容表征 $\Phi_i$ 内部。经过这番改造，原本千奇百怪的异构特征工程，就变成了一个干净利落的序列转导（Sequential Transduction）问题：
+
+| 核心维度 | 传统工业 DLRM 范式 | 生成式推荐（GR）范式 |
 | --- | --- | --- |
-| 输入特征组织 | 异构特征簇分模块提取与拼接 | 内容 token $\Phi_i$ 与动作 token $a_i$ 交错成单一序列 |
-| 候选物品接入方式 | 在排序塔中与池化后的用户向量做交叉 | 作为目标感知条件 $\Phi_{i+1}$ 直接追加至序列末端 |
-| 监督与训练方式 | 针对单次曝光做点式（pointwise）多任务监督 | 沿用户时间轴做因果自回归（causal autoregressive）序列转导 |
-| 容量扩展主轴 | 堆叠手工特征、扩充子塔与显式交叉层 | 扩展序列上下文长度 $n$、模型层数/维度与训练算力 |
-| 核心工程瓶颈 | 特征管道维护成本高、算力利用率低 | 超长序列注意力开销与多候选并发打分延迟 |
+| **输入表征形态** | 数百个异构特征簇分模块提取、池化与拼接 | 内容 Token $\Phi_i$ 与动作 Token $a_i$ 按时间交错的单一序列 |
+| **候选物品交互** | 在精排塔中与压缩后的静态用户向量做交叉 | 作为目标感知条件 Token $\Phi_{i+1}$ 直接追加在历史序列末尾 |
+| **训练监督效率** | 单次请求仅对末端单次曝光做点式（Pointwise）监督 | 沿整条用户时间轴做因果自回归监督，一步前向同时训练全序列所有步 |
+| **算力扩展主轴** | 靠人工堆叠新特征、扩充子塔与显式交叉层 | 直接拉长上下文序列长度 $n$、加深加宽转导网络层数 |
 
-### 2.2 召回与排序的统一序列转导形式化（Table 1）
+### 2.2 召回与精排的大一统数学形式
 
-Table 1 给出了将召回（Retrieval）与排序（Ranking）统一抽象为序列转导任务的数学形式：
+一旦把输入统一成了 $(\Phi_0, a_0, \Phi_1, a_1, \ldots, \Phi_i, a_i)$，推荐漏斗里原本割裂的**召回**（Retrieval）和**精排**（Ranking）两大核心阶段，就在数学上实现了惊人的统一：
 
 ![Table 1: Ranking 与 retrieval 作为 sequential transduction tasks](/images/blog/generative-recommenders-hstu/hstu-table01-sequential-transduction-tasks.webp)
 
-*Source: Zhai et al., ICML 2024, Table 1, CC BY 4.0.*
+为什么说论文标题里的“Actions Speak Louder than Words（行动胜于雄辩）”抓住了推荐的灵魂？
 
-设用户按时间顺序接触过的内容序列为 $\Phi_0, \Phi_1, \ldots, \Phi_i$，对应的反馈动作序列为 $a_0, a_1, \ldots, a_i$。若不区分具体待评候选，纯粹的动作预测可写为 $p(a_{i+1}\mid \Phi_0,a_0,\Phi_1,a_1,\ldots,\Phi_i,a_i)$；但真实排序任务需要评估“当系统向用户展示特定候选内容 $\Phi_{i+1}$ 时，用户产生多目标动作 $a_{i+1}$ 的概率分布”。因此，GR 将**目标感知排序**（Target-Aware Ranking）形式化为：
+在早期学术界的序列推荐模型（如 GRU4Rec、SASRec、BERT4Rec）里，序列中只有正向点击过的物品 ID（相当于只有 $\Phi_0, \Phi_1, \ldots, \Phi_i$）。但在真实工业场景中，用户看了一个视频 30 秒并顺手点赞，和看了一眼 0.5 秒就划走甚至点击“不感兴趣”，这两个事件虽然接触的是同一个内容 $\Phi_k$，表达的偏好却是南辕北辙的！因此，必须把**用户动作 $a_k$**（完播时长、点赞、分享、跳过、举报等多任务反馈的联合嵌入）作为紧跟在 $\Phi_k$ 后面的独立 Token 显式喂给模型。
 
-$$
-p(a_{i+1}\mid \Phi_0,a_0,\Phi_1,a_1,\ldots,\Phi_i,a_i,\Phi_{i+1})
-$$
-
-通过将候选内容 $\Phi_{i+1}$ 显式置于条件序列末端，模型能够在深层自注意力网络中直接完成候选内容与全部历史交互的细粒度交叉。相应地，**召回任务**（Retrieval）则对应于在观测到动作 $a_i$ 之后，自回归地生成或检索用户下一个将要正向交互的内容表征：
+在此基础上，看 Table 1 是如何区分召回与精排的：
+- **召回任务（Retrieval）——预测下一个内容 Token**：当用户完成了第 $i$ 次交互并产生动作 $a_i$ 后，系统在还没有选定具体候选池时，自回归地生成用户下一个最可能产生正向交互的目标内容表征分布：
 
 $$
-p(\Phi_{i+1}\mid \Phi_0,a_0,\Phi_1,a_1,\ldots,\Phi_i,a_i)
+p\left(\Phi_{i+1}\mid \Phi_0,a_0,\Phi_1,a_1,\ldots,\Phi_i,a_i\right)
 $$
 
-这一划分也紧扣了论文题名“Actions Speak Louder than Words”的核心洞察：在推荐系统中，点击、完播、点赞、购买乃至跳过、隐藏等动作 $a_i$ 本身承载了最关键的用户偏好演进语义，必须作为一等序列 token 参与上下文建模。
+在训练时，为了不在曝光未点击的负反馈样本上学习生成废内容，检索分支的监督掩码 $m_i$ 仅在 $a_i$ 为正向交互时置为 $1$（负向交互时 $m_i=0$，只把它保留在输入上下文里供后续避雷，而不作为生成目标）。
+- **目标感知精排（Target-Aware Ranking）——给定候选内容，预测下一个动作 Token**：到了精排阶段，上游已经送来了具体的待评候选物品 $\Phi_{i+1}$。此时不能只笼统地预测 $p(a_{i+1}\mid \Phi_0,a_0,\ldots,\Phi_i,a_i)$，必须先把候选物品 $\Phi_{i+1}$ 塞进序列的最后一个位置，让候选物品穿过全部深层自注意力网络、与历史上每一个 $\Phi_k, a_k$ 充分交互后，再在它头顶上预测多任务动作分布：
 
-### 2.3 与传统序列推荐模型的边界划分（Table 10 & Table 11）
-
-为了厘清 GR 与早期学术界序列推荐工作（如 GRU4Rec、SASRec、BERT4Rec）的差异，论文在附录 Table 10 与 Table 11 中做了系统梳理：
+$$
+p\left(a_{i+1}\mid \Phi_0,a_0,\Phi_1,a_1,\ldots,\Phi_i,a_i,\Phi_{i+1}\right)
+$$
 
 ![Table 10: sequential recommender 与 GR 相关工作对比](/images/blog/generative-recommenders-hstu/hstu-table10-related-work-ranking.webp)
 
-*Source: Zhai et al., ICML 2024, Table 10, CC BY 4.0.*
-
 ![Table 11: 对内容与动作序列的生成建模](/images/blog/generative-recommenders-hstu/hstu-table11-generative-modeling.webp)
 
-*Source: Zhai et al., ICML 2024, Table 11, CC BY 4.0.*
+对照附录 Table 10 与 Table 11 的梳理可以看出，这一“内容-动作”双流交错加末端候选注入的设计，让生成式推荐彻底跳出了传统序列推荐只能在小词表上做“下一个物品 ID 分类”的局限，第一次在同一个自回归主干上打通了工业级召回与多目标目标感知精排。
 
-综合这两张对照表可以看出，传统序列推荐通常仅在正向交互的物品 ID 序列上预测下一个物品，既不区分曝光未点击等负向动作，也缺乏在序列末端接入任意候选 $\Phi_{i+1}$ 进行多任务动作预估的机制。而 GR 通过交错编排 $(\Phi_0, a_0, \Phi_1, a_1, \ldots)$，在同一套因果转导骨架上同时支持了面向动作生成的精排打分 $p(a_i \mid \Phi_0,a_0,\ldots,\Phi_i)$ 与面向内容生成的候选召回 $p(\Phi_i \mid \Phi_0,a_0,\ldots,a_{i-1})$。
+---
 
-## 3. HSTU 架构设计与结构消融实验
+## 3. 核心设计哲学二：HSTU 编码器——为什么必须干掉 Softmax 和 FFN？
 
-在明确了序列转导的任务形式后，核心问题随之转向：什么样的序列编码器能够高效处理推荐场景下的非平稳长序列与动态词表？论文为此提出了 **HSTU（Hierarchical Sequential Transduction Unit）**。
+有了统一的序列转导形式，接下来是不是直接拿标准的 GPT（FlashAttention-2 + FFN）往上套就行了？作者试过之后发现：标准 Transformer 在推荐流式长序列上既算得慢，精度也打不过专门设计的编码器。为此，论文提出了 **HSTU**（Hierarchical Sequential Transduction Unit，层级序列转导单元）。
 
-### 3.1 逐点变换注意力、相对时空偏置与门控机制（Fig. 3）
-
-Fig. 3 将传统 DLRM 的异构子模块与 GR/HSTU 的统一层级结构进行了并置对比：
+### 3.1 逐点门控注意力、相对时空偏置与无 FFN 架构
 
 ![Fig. 3: DLRM 与 GR/HSTU 的关键组件](/images/blog/generative-recommenders-hstu/hstu-fig03-model-components.webp)
 
-*Source: Zhai et al., ICML 2024, Fig. 3, CC BY 4.0.*
+看 Fig. 3 右侧展示的 HSTU 单元结构，它的数学表达式只有三行，却处处透着对推荐数据物理特性的深刻理解：
 
-单个 HSTU 层由三个紧密衔接的数学步骤构成。首先，输入序列表示 $X$ 经过一次线性投影 $f_1$ 与非线性激活 $\phi_1$（如 SiLU），直接切分出门控权重 $U(X)$、值 $V(X)$、查询 $Q(X)$ 与键 $K(X)$ 四个张量：
-
-$$
-U(X),V(X),Q(X),K(X)=\mathrm{Split}(\phi_1(f_1(X)))
-$$
-
-其次，在计算注意力权重矩阵 $A(X)$ 时，HSTU 融入了同时刻画序列相对位置（position）与事件相对时间差（time delta）的联合偏置项 $r_{ab}^{p,t}$，并采用逐点激活函数 $\phi_2$（pointwise transformation，如 SiLU）替代了标准 Transformer 中的行归一化 Softmax：
+1. **一次投影四路切分**：给定输入序列表示 $X\in\mathbb{R}^{n\times d}$，先通过一层线性变换 $f_1(X)$ 加非线性激活 $\phi_1$（SiLU），直接一口气切分出四个分支——**门控分支 $U(X)$**、**值 $V(X)$**、**查询 $Q(X)$** 与 **键 $K(X)$**：
 
 $$
-A(X)=\phi_2\left(Q(X)K(X)^T+r_{ab}^{p,t}\right)
+U(X),\, V(X),\, Q(X),\, K(X) = \mathrm{Split}\!\left(\phi_1(f_1(X))\right)
 $$
 
-最后，经过注意力聚合的表示通过归一化层（Norm），与门控分支 $U(X)$ 做逐元素哈达玛积（$\odot$），再经线性变换 $f_2$ 输出：
+2. **融合相对时空偏置的非归一化逐点注意力**：计算 $Q(X)K(X)^\top$ 后，加上同时刻画相对位置差与相对时间差的偏置矩阵 $r_{ab}^{p,t}$，然后**不用 Softmax**，直接套一层逐元素非线性激活函数 $\phi_2$（如 SiLU）作为注意力权重矩阵 $A(X)$：
 
 $$
-Y(X)=f_2\left(\mathrm{Norm}(A(X)V(X))\odot U(X)\right)
+A(X) = \phi_2\!\left(Q(X)K(X)^\top + r_{ab}^{p,t}\right)
 $$
 
-这三步设计针对推荐系统的物理特性做了深度定制：
-- **弃用 Softmax 改用逐点激活注意力（Pointwise Aggregated Attention）**：标准 Softmax 强制令所有历史位置的注意力权重之和为 $1$，无法自然表达用户对某个候选类目的交互强度与历史活跃度（例如重度活跃用户与冷启动用户的总匹配度本不相同）。移除 Softmax 归一化不仅保留了交互频次与强度的幅值信息，还规避了长序列下昂贵的指数行归约开销。
-- **相对时间与位置融合偏置 $r_{ab}^{p,t}$**：自然语言仅需关注词元间的相对位置，而推荐行为高度依赖发生时刻的物理间隔（昨天点击某品类与半年前点击同一品类的意图权重截然不同），显式引入分桶时间差偏置能有效捕捉非平稳兴趣衰减。
-- **显式门控与消除独立 FFN**：通过 $\mathrm{Norm}(A(X)V(X))\odot U(X)$ 的子层门控设计，HSTU 在单一算子内同时完成了序列上下文聚合与高阶特征交叉（发挥类似 DLRM 中 DCN/门控网络的作用），省去了标准 Transformer 中参数与算力占比极高的独立前馈网络（FFN）。
-- **原生适配变长 Jagged Tensor 与增量缓存**：真实用户的历史行为长度跨度极大，HSTU 底层围绕 FBGEMM 的不规则张量（Jagged Tensor）设计，完全消除了无意义的 Padding 计算，并暴露了供 M-FALCON 复用的中间状态缓存接口。
+3. **LayerNorm 后接逐元素门控乘积（省去独立 FFN）**：将注意力聚合结果 $A(X)V(X)$ 做归一化后，直接与第一步切分出来的门控分支 $U(X)$ 做逐元素哈达玛积（$\odot$），最后经线性层 $f_2$ 投回输出空间：
 
-### 3.2 流式合成数据与公开基准上的结构消融（Table 2 & Table 5）
+$$
+Y(X) = f_2\!\left(\mathrm{Norm}\!\left(A(X)V(X)\right) \odot U(X)\right)
+$$
 
-为了验证上述结构假设，论文首先在单遍流式合成数据集（synthetic one-pass streaming setting）上进行了受控对比（Table 2），随后在公开序列推荐基准上展开了逐模块消融（Table 5）：
+这三步改造背后，藏着三个极其硬核的追问：
+
+- **第一问：为什么在推荐系统里必须废掉 Softmax，改用逐点激活 $\phi_2$？**
+  想象这样一个场景：当前候选广告是一双篮球鞋。用户甲是个铁杆篮球迷，过去一周里连续点击、完播了 50 条篮球视频；用户乙是个刚注册的新手，历史序列里只有 1 条不小心误触的篮球视频。
+  如果你用标准 Transformer 的行归一化 **Softmax**，因为所有历史位置的注意力权重强制加和为 $1$（$\sum_j A_{ij} = 1$），用户甲的 50 条篮球记录每条分到 `0.02` 的权重，加起来是 `1.0`；用户乙的那 1 条篮球记录独自拿到 `1.0` 的权重！经过 Softmax 归一化加权求和后，**“历史交互了 50 次”和“只交互了 1 次”的偏好强度幅值（Intensity / Magnitude）被彻底抹平了**！而在推荐精排中，一个用户在某个目标类目下到底积累了多少次历史正反馈，恰恰是预估点击率与观看时长最强的统计信号。HSTU 改用逐点激活函数 $\phi_2$（如 SiLU）并除以序列长度尺度后，50 次匹配就能线性累加出远强于 1 次匹配的激活幅值；同时在硬件执行上，去掉 Softmax 还省掉了长序列下极其耗时的逐行求最大值（Row-max）与指数求和同步开销。
+- **第二问：为什么要加相对时间与位置融合偏置 $r_{ab}^{p,t}$？**
+  在自然语言里，一句话里两个词隔了 5 个字，不管这句话是昨天写的还是十年前写的，语法关系都不变；但在用户行为序列里，同样是往前数第 5 个点击，发生在“3 分钟前（同一个 Session 内）”和发生在“3 个月前”，其意图相关性天差地别。通过将成对事件的时间戳差值 $|t_b - t_a|$ 做对数分桶（Bucketization）并与相对位置偏移 $b - a$ 相加構成 $r_{ab}^{p,t}$，模型得以直接在注意力打分阶段感知非平稳兴趣的时间衰减。
+- **第三问：为什么一个 $\odot U(X)$ 门控就能干掉占据 Transformer 三分之二算力的独立 FFN？**
+  在传统 DLRM 里，最有效的模块是 DCN 这类显式特征乘积交叉（Feature Interaction，$x_0 \cdot x_l^\top w$）。HSTU 在最后一步直接将全局上下文聚合特征 $\mathrm{Norm}(A(X)V(X))$ 与当前局部特征变换分支 $U(X)$ 做逐元素乘法（$\odot$），本质上就是在每一层内部原生执行了一次动态门控的二阶特征交叉！这样一来，无需再在注意力层后面挂接笨重的两层宽 FFN（在标准 Transformer 中 FFN 隐藏层通常是 $4d$，吃掉了绝大部分 FLOPs 和显存读写），单层算子变得更加紧凑高效。
+
+### 3.2 流式合成数据与公开基准上的结构消融
+
+为了证明“去掉 Softmax”和“加入时空偏置 $r_{ab}^{p,t}$”绝不是纸上谈兵，作者先构造了一个高度模拟线上分布漂移与类别幂律分布的单遍流式合成测试台（Table 2），随后在 MovieLens 与 Amazon Books 公开数据集上做了逐项拆解消融（Table 5）：
 
 ![Table 2: synthetic one-pass streaming setting 结果](/images/blog/generative-recommenders-hstu/hstu-table02-synthetic-streaming.webp)
 
-*Source: Zhai et al., ICML 2024, Table 2, CC BY 4.0.*
-
 ![Table 5: HSTU、HSTU ablation 与 Transformers 对比](/images/blog/generative-recommenders-hstu/hstu-table05-hstu-ablation.webp)
 
-*Source: Zhai et al., ICML 2024, Table 5, CC BY 4.0.*
+盯着 Table 2 和 Table 5 里的四行配置看，每一个变量的贡献都清清楚楚：
+- 把完整版 `HSTU` 里的相对时空偏置拿掉，变成 `HSTU (-rabp,t)`，各项 HR 与 NDCG 指标随即出现第一波下滑，印证了显式时间间隔分桶对捕捉兴趣演化的价值；
+- 更震撼的是对比 `HSTU (-rabp,t)` 与 `HSTU (-rabp,t, Softmax)`——两者结构完全一模一样，仅仅是把逐点激活函数 $\phi_2$ 换回了标准的 **Softmax**，在 Table 2 流式合成实验以及 Table 5 的 Amazon Books 等长尾稀疏数据集上，指标当场发生断崖式暴跌（几乎退化回普通 `Transformer` 基线的水平）！这组铁证直接坐实了前面的理论推导：在推荐序列建模中，打破 Softmax 的行和为 1 束缚、保留历史交互频次的幅值信息，是拉开精度差距的胜负手。
 
-联合解读 Table 2 与 Table 5 的四档配置——标准 `Transformer` 基线、移除时空偏置并退回 Softmax 的 `HSTU (-rabp,t, Softmax)`、保留逐点激活但移除时空偏置的 `HSTU (-rabp,t)`，以及完整形态的 `HSTU`——可以清晰剥离出各组件的贡献：在合成流式设置与真实数据集上，将逐点激活强行换回 Softmax 会导致指标大幅回落，证实了非归一化逐点注意力对捕获推荐偏好强度的关键作用；而在保留逐点注意力的基础上叠加相对时间与位置偏置 $r_{ab}^{p,t}$，则进一步稳定提升了各数据集上的 HR 与 NDCG 表现。
+---
 
-## 4. Stochastic Length：面向超长行为序列的稀疏训练策略
+## 4. 核心设计哲学三：Stochastic Length——用数据层稀疏化破解长序列困局
 
-工业推荐系统中，活跃用户在数月内积累的曝光、点击、完播与交互序列动辄长达数万步。如果在每个训练步都对全长历史执行 $O(n^2)$ 复杂度（或次二次复杂度）的注意力计算，训练吞吐将难以为继；反之，若在训练时硬性截断为短序列，模型在推理阶段面对长历史上下文时又会出现严重的泛化退化。为此，论文提出了 **Stochastic Length（SL，随机序列长度采样）**。
+当把用户历史序列从百级拉长到 `2048` 甚至 `8192` 时，哪怕 HSTU 算子再快，如果每个训练样本在每一步都老老实实跑满全长序列的自注意力，训练集群依然吃不消；可如果在训练时为了省钱只截取最近 200 个行为，到了线上推理面对 8000 步的长历史时，模型又会因为没见过长跨度上下文而发生严重的长度外推退化。
 
-### 4.1 随机长度采样的稀疏度控制与离线收益（Table 3, Fig. 4, Table 14-15）
+怎么既少花训练算力，又让模型学会驾驭万级长序列？论文提出了 **Stochastic Length**（SL，随机序列长度采样）。
 
-Stochastic Length 的核心思路是：考虑到用户的历史行为序列具有显著的时间冗余与重复模式，训练时以幂律分布随机采样保留子序列长度（由超参数 $\alpha$ 控制采样偏斜度），让模型在绝大部分训练样本上仅处理压缩后的稀疏子序列，仅以一定概率接触完整长序列。Table 3 统计了不同最大序列长度与参数 $\alpha$ 组合下的序列注意力稀疏度（Sparsity）：
+### 4.1 幂律长度采样与注意力稀疏度收益
+
+Stochastic Length 的物理直觉来自推荐行为的一个天然属性：**用户的历史行为在时间上是高度重复且冗余的**。一个喜欢看美食视频的用户，过去三个月的 4000 条记录里可能有几百条高度雷同的烹饪短视频。如果我们在训练时，以某个随机采样出的较短长度 $L_c \le n_i$ 从原序列中抽取一个子序列喂给模型，模型依然能从这个稀疏子序列中学到相同的长期偏好，而且还顺带练习了“如何在跨度拉大的稀疏事件之间做长程推理”！
+
+具体而言，给定最大序列长度 $N$ 和原始序列长度 $n_i$，系统通过超参数 $\alpha \in (0, 2]$ 控制采样长度分布的偏斜度：当 $\alpha = 2.0$ 时，保持原始全长不压缩；当调小 $\alpha$（例如设为 $1.6$ 或 $1.2$）时，绝大多数训练步都会采样出长度远小于 $N$ 的紧凑子序列，仅以一定幂律长尾概率保留全长序列。
 
 ![Table 3: Stochastic Length 对序列稀疏性的影响](/images/blog/generative-recommenders-hstu/hstu-table03-sl-sparsity-main.webp)
 
-*Source: Zhai et al., ICML 2024, Table 3, CC BY 4.0.*
-
-当 $\alpha=2.0$ 时近似于不施加额外的长度压缩，而调小 $\alpha$（如 $1.6$ 或 $1.2$）以及拉长最大历史窗口都会大幅提升计算的稀疏比例。Fig. 4 进一步展示了在工业数据上不同稀疏度配置对归一化熵（NE difference，柱状图）与计算稀疏度（虚线）的权衡影响：
-
 ![Fig. 4: Stochastic Length 对指标的影响](/images/blog/generative-recommenders-hstu/hstu-fig04-stochastic-length-metrics.webp)
 
-*Source: Zhai et al., ICML 2024, Fig. 4, CC BY 4.0.*
-
-可以看到，适度的 Stochastic Length 不仅大幅削减了训练算力消耗，甚至因为起到了序列级的正则化与去噪作用而略微改善了离线 NE 指标；只有当 $\alpha$ 过小导致历史信息被过度丢弃时，训练质量才会出现实质性受损。附录 Table 14 与 Table 15 进一步补充了 60 天与 90 天用户历史窗口下的稀疏度演进数据，验证了该策略在跨月度长周期序列上的稳定性：
+看 Table 3 与 Fig. 4 的实测效果：当最大序列长度设为 `4096` 或 `8192`、取 $\alpha=1.6$ 时，序列注意力的计算稀疏度（Sparsity，即省掉的无效计算比例）高达 **`70%`～`88%`** 以上！更妙的是看 Fig. 4 的柱状图（代表离线归一化熵 NE 与全长训练基线的差值）：在取得超过 80% 算力节省的同时，模型的离线评估质量几乎没有任何退化（甚至在适度稀疏区间因为滤除了短期高频噪声而比全长硬训略好一点）；直到把 $\alpha$ 压得过低、丢掉了超过 95% 的核心信息时，指标才开始变差。
 
 ![Table 14: 60 天用户历史下 Stochastic Length 对稀疏性的影响](/images/blog/generative-recommenders-hstu/hstu-table14-sl-sparsity-60d.webp)
 
-*Source: Zhai et al., ICML 2024, Table 14, CC BY 4.0.*
-
 ![Table 15: 90 天用户历史下 Stochastic Length 对稀疏性的影响](/images/blog/generative-recommenders-hstu/hstu-table15-sl-sparsity-90d.webp)
 
-*Source: Zhai et al., ICML 2024, Table 15, CC BY 4.0.*
+附录 Table 14 与 Table 15 进一步给出了在 60 天和 90 天工业历史窗口下的稀疏度表，随着时间窗口拉长到 90 天，Stochastic Length 在 $N=8192$ 下能稳定释放超过 `84%`～`96%` 的注意力计算冗余。
 
-### 4.2 与常规长度外推方法的对比（Table 16 & Fig. 10）
+### 4.2 为什么它比 NLP 的位置编码长度外推更管用？
 
-附录 Table 16 与 Fig. 10 将 Stochastic Length 与大语言模型中常见的长度外推（length extrapolation）方案——包括直接零样本外推（zero-shot）、长序列微调（fine-tune）以及 RoPE/NTK 风格位置插值——进行了横向评测：
+有人可能会问：大语言模型里不是有很多现成的长度外推（Length Extrapolation）技巧吗？比如训练时只训 1024 长度，推理时用 RoPE/NTK 缩放位置编码直接外推到 8192，或者在长序列上做少量微调（Fine-tune）？
 
 ![Table 16: Stochastic Length 与 sequence length extrapolation 方法对比](/images/blog/generative-recommenders-hstu/hstu-table16-sl-vs-length-extrapolation.webp)
 
-*Source: Zhai et al., ICML 2024, Table 16, CC BY 4.0.*
-
 ![Fig. 10: Stochastic Length 对 ranking metrics 的影响](/images/blog/generative-recommenders-hstu/hstu-fig10-sl-ranking-metrics.webp)
 
-*Source: Zhai et al., ICML 2024, Fig. 10, CC BY 4.0.*
+作者在附录 Table 16 与 Fig. 10 中把这些方案拉出来做了正面比拼。结果非常说明问题：只靠短序列训练加零样本外推（Zero-shot）或位置编码插值，在推荐精排指标上明显落后于 Stochastic Length。原因在于，如果训练时只截最近 1000 步，模型在训练期永远只见过“最近几天内的密集行为”，从来没见过“两个月前的稀疏长尾行为与当前候选交互”的时间跨度分布（即 $r_{ab}^{p,t}$ 中的大时间桶在训练期根本没被激活过！）。而 Stochastic Length 从长达数月的完整历史中抽稀采样，让模型在省算力的同时，全程都在接触跨月度的真实时间跨度。
 
-实验表明，推荐序列的长度扩展难题不仅仅在于位置编码能否泛化到更大索引，更在于模型必须在训练期亲历长跨度、高稀疏的历史交互分布。Stochastic Length 通过在数据构造层直接注入多尺度长度分布，在训练速度与长上下文排序指标之间取得了显著优于纯位置编码外推的折中。
+---
 
-## 5. M-FALCON 推理算法与算子级效率分析
+## 5. 核心设计哲学四：M-FALCON——把几千个候选的精排打分压成一次历史编码
 
-在排序服务（Ranking Serving）阶段，生成式推荐面临着严峻的推理算力挑战：假设用户历史序列长度为 $n$，单次请求需要对召回层送来的 $m$ 个候选物品 $\Phi'_0, \ldots, \Phi'_{m-1}$ 分别预估动作概率。若按朴素方式对每个候选单独拼接历史并执行前向传播，计算复杂度将高达 $O(m \cdot n^2)$，线上延迟完全无法接受。论文为此设计了 **M-FALCON（Microbatched-Fast Attention Leveraging Cacheable OperatioNs）**。
+现在我们来到了决定生成式推荐生死存亡的在线服务（Serving）关卡。
 
-### 5.1 微批次与编码器缓存摊销机制（Fig. 11 & Algorithm 1）
+回顾第 2.2 节的目标感知精排公式 $p(a_{i+1}\mid \Phi_0,a_0,\ldots,\Phi_i,a_i,\Phi_{i+1})$：为了给召回层送来的 $m$ 个候选物品 $\Phi'_0, \Phi'_1, \ldots, \Phi'_{m-1}$ 打分，我们需要把每个候选放到长度为 $n$ 的用户历史序列末尾跑自注意力。如果朴素地写一个循环对 $m$ 个候选分别跑一遍长度为 $n+1$ 的 HSTU 前向传播，总计算复杂度将高达 **$O(m \cdot n^2)$**！在 $n=4096$、$m=1000$ 的生产规模下，单次请求的计算量会膨胀上千倍，没有任何线上集群能扛得住。
 
-Fig. 11 与 Algorithm 1 完整展示了 M-FALCON 的训练与推理计算图改造：
+怎么破解这个 $O(m \cdot n^2)$ 的魔咒？论文提出了 **M-FALCON**（Microbatched-Fast Attention Leveraging Cacheable OperatioNs）。
+
+### 5.1 掩码合批、微批次切分与跨批编码器缓存
 
 ![Fig. 11: M-FALCON 训练与推理示意](/images/blog/generative-recommenders-hstu/hstu-fig11-mfalcon-illustration.webp)
 
-*Source: Zhai et al., ICML 2024, Fig. 11, CC BY 4.0.*
-
 ![Algorithm 1: M-FALCON pseudocode](/images/blog/generative-recommenders-hstu/hstu-algorithm01-mfalcon.webp)
 
-*Source: Zhai et al., ICML 2024, Algorithm 1, CC BY 4.0.*
+对照 Fig. 11 下半部分的推理示意图与 Algorithm 1 的伪代码，M-FALCON 用三招漂亮的组合拳，把 $m$ 个候选的打分复杂度从 $O(m\cdot n^2)$ 硬生生削成了 **$O(n^2 + m\cdot n)$**：
 
-M-FALCON 通过三层递进机制将 $m$ 个候选的目标感知打分成本压降至接近单次序列前向传播的量级：
+1. **第一招：带列对角掩码的多候选合批**（Masked Batched Inference）：
+   与其每次只拼 1 个候选，不如把多个候选 $\Phi'_0, \Phi'_1, \ldots, \Phi'_{b_m-1}$ 一次性并排拼在同一条用户历史序列 $(\Phi_0, a_0, \ldots, \Phi_i, a_i)$ 的屁股后面！
+   但这里有个致命陷阱：在普通因果掩码（下三角掩码）下，排在第 2 个的候选 $\Phi'_1$ 会看到排在第 1 个的候选 $\Phi'_0$！这不仅会造成候选间的信息污染，还会让打分结果跟候选的排列顺序强绑定。为此，M-FALCON 专门定制了 Fig. 11 右下角那张特殊的注意力掩码矩阵——左半边对应前 $n$ 个用户历史位置，全部放行（每个候选都能完整看到全部用户历史）；右半边对应追加的 $b_m$ 个候选位置，**只保留主对角线上的 1，其余位置全部置 0**！这样一来，每个候选只能看到用户历史和它自己，候选与候选之间彻底隐身隔离，一次矩阵乘法就能并行算出 $b_m$ 个候选的精确目标感知分数。
+2. **第二招：微批次切分控制显存峰值**（Microbatching）：
+   如果单次请求要给 $m=2048$ 个候选打分，一次性把 2048 个候选全拼在后面，会让序列尾部暴涨，撑爆单卡显存并拉高尾延迟。因此，Algorithm 1 将 $m$ 个候选切分成 $\lceil m / b_m \rceil$ 个大小为 $b_m$ 的**微批次**（Microbatches），分批送入模型评分。
+3. **第三招：跨微批次甚至跨请求的编码器级缓存**（Encoder-Level Caching）：
+   既然切成了 $\lceil m / b_m \rceil$ 个微批次，难道每个微批次都要把前面那 $n$ 个用户历史 Token 重新算一遍吗？当然不用！因为前 $n$ 个位置是因果自回归的，它们根本看不见后面的候选 Token，所以在全部微批次里，前 $n$ 个位置在每一层 HSTU 算出来的 $K(X)$、$V(X)$ 和层输出完全一模一样！
+   如 Algorithm 1 所示，M-FALCON 只在第一个微批次（或请求到达前的预热阶段）对长度为 $n$ 的用户历史做**唯一一次**编码，并将每一层 HSTU 的历史键值状态固化到缓存中；随后的所有候选微批次，只需针对新增的那 $b_m$ 个候选 Token 计算 $Q_{\mathrm{cand}}$，去和缓存里的历史 $K_{\mathrm{cache}}, V_{\mathrm{cache}}$ 做轻量交叉注意力即可！更进一步，如果同一个用户在短时间内连续刷新两次信息流，连这份历史编码缓存都可以直接跨请求复用。
 
-1. **带掩码隔离的候选合批推理（Batched Target-Aware Inference）**：将多个待评候选 $\Phi'_0, \ldots, \Phi'_{b_m-1}$ 直接拼接在同一用户历史序列之后，并修改因果注意力掩码（attention mask），使得每个候选 token 都能完整关注到前序的 $n$ 个用户历史 token，但候选与候选之间相互不可见，从而在单次矩阵乘法中并行完成多候选交互，且严格杜绝候选间的信息泄漏。
-2. **微批次切分（Microbatching）**：当单次请求的候选总数 $m$ 较大（例如数千个）时，直接拼成超长尾部会导致注意力矩阵膨胀并撑爆显存。M-FALCON 将 $m$ 个候选切分为大小为 $b_m$ 的 $\lceil m / b_m \rceil$ 个微批次依次处理，精准控制单步显存峰值与尾延迟。
-3. **跨微批次的编码器级缓存（Encoder-Level Caching）**：由于同一个请求的各个候选微批次共享完全相同的用户历史前缀，M-FALCON 在首个微批次前向计算时，将每一层 HSTU 中用户历史部分的中间表征（$K(X)$、$V(X)$ 及层输出状态）持久化到缓存中；后续微批次仅需计算新增的 $b_m$ 个候选 token 对历史缓存的交叉注意力。
-
-用伪代码直观对比，M-FALCON 将朴素的逐候选重算循环：
-
-```text
-for candidate in candidates:
-  encode(history + candidate)
-```
-
-重构为一次历史编码加多轮轻量微批次增量打分：
-
-```text
-cache = encode_shared_history(history)
-for microbatch in chunk(candidates, size=b_m):
-  score(history_cache, microbatch)
-```
-
-### 5.2 候选评分吞吐扩展性（Fig. 6, Fig. 12, Fig. 13）
-
-得益于上述缓存与微批次摊销，尽管单个 GR 模型的参数量与单序列 FLOPs 远高于传统 DLRM，其在多候选打分场景下的实际在线吞吐（QPS）依然极具竞争力。Fig. 6、Fig. 12 与 Fig. 13 分别从不同候选规模、端到端系统吞吐以及微批次大小扩展性三个维度验证了 M-FALCON 的线上性能：
+### 5.2 单模型算力大 285 倍，为什么线上吞吐反而追平甚至反超 DLRM？
 
 ![Fig. 6: 不同候选评分设置下的 inference throughput](/images/blog/generative-recommenders-hstu/hstu-fig06-inference-throughput-main.webp)
 
-*Source: Zhai et al., ICML 2024, Fig. 6, CC BY 4.0.*
-
 ![Fig. 12: GR w/ M-FALCON 与 DLRM 的端到端吞吐](/images/blog/generative-recommenders-hstu/hstu-fig12-end-to-end-throughput.webp)
-
-*Source: Zhai et al., ICML 2024, Fig. 12, CC BY 4.0.*
 
 ![Fig. 13: M-FALCON microbatch throughput scaling](/images/blog/generative-recommenders-hstu/hstu-fig13-mfalcon-throughput-scaling.webp)
 
-*Source: Zhai et al., ICML 2024, Fig. 13, CC BY 4.0.*
+看上面 Fig. 6、Fig. 12 与 Fig. 13 三组实测吞吐曲线，你会看到一个初看极其反直觉的现象：单序列理论计算量高达 **285x FLOPs** 的生成式推荐模型（GR w/ M-FALCON），在待评候选数 $m$ 较大时，单卡每秒处理的查询吞吐量（QPS）不仅追上了 1x FLOPs 的传统 DLRM，在许多区间甚至还完成了反超！
 
-这三组曲线揭示了一个重要的系统规律：在目标感知排序中，单纯对比单次前向的理论 FLOPs 会严重高估序列模型的部署成本。由于 DLRM 的许多交叉模块需要随候选数 $m$ 线性重复执行，而 GR 借助 M-FALCON 将重头的用户历史计算锁定在 $O(1)$ 次缓存构建上，因此在特定候选数量与微批次配置区间内，GR 甚至能跑出高于复杂 DLRM 的端到端吞吐。当然，这一高吞吐高度依赖底层 GPU 硬件特性、算子融合质量以及线上候选批大小分布。
+为什么会这样？账算得很清楚：
+- 传统 DLRM 虽然单次计算量小，但它的顶层 MLP 与交叉模块里揉杂了大量 `User × Candidate` 的耦合特征，当面对 $m$ 个候选时，很大一部分网络计算必须老老实实重复执行 $m$ 遍，且访存极其碎片化，GPU Tensor Core 利用率很低；
+- 而 GR 配合 M-FALCON 后，重头的用户历史编码被鎖死在 $O(1)$ 次缓存构建上，随候选数 $m$ 增长的微批次增量计算则是极其规整的稠密矩阵乘法（GEMM），把现代 GPU 的算力密度发挥到了极致。
 
-### 5.3 HSTU 与 FlashAttention-2 的编码器效率对比（Fig. 5）
-
-除了推理侧的 M-FALCON，HSTU 算子本身的执行效率也是支撑长序列训练与服务的基础。Fig. 5 对比了 HSTU 与基于 FlashAttention-2 的标准 Transformer 在不同序列长度与模型宽度下的训练与推理耗时：
+### 5.3 HSTU 与 FlashAttention-2 的算子级速度对决
 
 ![Fig. 5: HSTU vs FlashAttention2 Transformer 的 encoder-level efficiency](/images/blog/generative-recommenders-hstu/hstu-fig05-encoder-efficiency.webp)
 
-*Source: Zhai et al., ICML 2024, Fig. 5, CC BY 4.0.*
+再看 Fig. 5 从编码器算子层面对 HSTU 与基于 FlashAttention-2 的标准 Transformer 所做的硬碰硬对比：在序列长度一路推高到 `8192` 的过程中，HSTU 在取得更优离线 NE 指标的同时，训练与推理速度比 FlashAttention-2 Transformer 快出了整整 **`5.3x` 至 `15.2x`**！这正是前文剖析的三项设计——**砍掉独立 FFN 子层**、**用逐点激活替代 Softmax 行归约**、以及**基于 Jagged Tensor 消除变长序列 Padding 浪费**——在底层 Triton / CUDA 算子上叠加释放出的惊人威力。
 
-在长达 8192 的序列上，HSTU 实现了相对 FlashAttention-2 Transformer **`5.3x` 至 `15.2x` 的速度提升**。这一加速来源于三方面协同：其一，HSTU 省去了独立的 FFN 子层，大幅削减了每层的矩阵乘总计算量；其二，逐点激活注意力免去了 Softmax 中的逐行最大值归约与指数求和同步；其三，底层结合 Jagged Tensor 与融合相对偏置的定制算子（开源仓库中的 `ops/triton` 与 `ops/cpp/hstu_attention`）显著降低了显存读写带宽开销。
+---
 
-## 6. 公开基准与工业级 Scaling Law 实验分析
+## 6. 从公开基准到 1.5 万亿参数的工业级 Scaling Law
 
-### 6.1 公开数据集评测结果（Table 4 & Table 12）
+### 6.1 公开基准验证与实验细节辨析
 
-在传统的公开序列推荐基准（MovieLens-1M、MovieLens-20M 与 Amazon Books）上，论文采用多轮全量洗牌（full-shuffle）设置对比了 SASRec 与 HSTU（Table 4），并在附录 Table 12 中补充了与 GRU4Rec、BERT4Rec 的对照：
+在进入内部生产实验前，论文先在学术界通用的公开序列推荐数据集（MovieLens-1M、MovieLens-20M 与 Amazon Books）上检验了 HSTU 的成色（Table 4 与附录 Table 12）：
 
 ![Table 4: 公开数据集多轮 full-shuffle 设置结果](/images/blog/generative-recommenders-hstu/hstu-table04-public-datasets.webp)
 
-*Source: Zhai et al., ICML 2024, Table 4, CC BY 4.0.*
-
 ![Table 12: traditional sequential recommender 设置下补充比较](/images/blog/generative-recommenders-hstu/hstu-table12-traditional-sequential-results.webp)
 
-*Source: Zhai et al., ICML 2024, Table 12, CC BY 4.0.*
+剖析这两张表，有两个必须看懂的技术细节：
+1. **在完全相同的采样 Softmax 训练管线下，HSTU 全面碾压 SASRec**：在 Table 4 中，标准版 `HSTU` 与加深加宽的 `HSTU-large` 在全部三个数据集的 HR@10/50/200 与 NDCG@10/50/200 上均大幅抛离 SASRec。特别是在长尾物品极多、序列稀疏的 Amazon Books 上，`HSTU-large` 将 NDCG@10 相比 SASRec 提升了高达 **`65.8%`**（HR@10 提升 `+56.7%`）。这证明即便在没有复杂多任务动作的小型公开数据集上，HSTU 的架构优势依然扎实，且增大模型容量（从 HSTU 到 HSTU-large）能立竿见影地换来精度提升。
+2. **读懂 Table 12 中的负采样协议差异**：在附录 Table 12 中，官方仓库 README 坦诚注明了一处评测背景——表中的 GRU4Rec 与 BERT4Rec 行直接引用自过往论文，那两行在训练时计算了全词表负样本（Full Negatives）；而 SASRec 与 HSTU 行则使用采样负样本（Sampled Negatives，例如每个正样本配 128 或 512 个随机负例）训练。即便在采样负例的近似条件下，HSTU 依然全面超越了全量负例训练的传统基线。
 
-结合官方仓库 README 公布的复现基准，HSTU-large 相比同管线下的 SASRec 取得了全面领先：
+### 6.2 工业召回与精排的渐进式上线策略
 
-| Dataset | HSTU-large HR@10 | HSTU-large NDCG@10 | 相对 SASRec HR@10 提升 |
-| --- | ---: | ---: | ---: |
-| ML-1M | `0.3294` | `0.1893` | `+15.5%` |
-| ML-20M | `0.3556` | `0.2098` | `+23.1%` |
-| Amazon Books | `0.0478` | `0.0262` | `+56.7%` |
-
-需要注意一处评测细节：官方 README 注明 Table 12 中 GRU4Rec 与 BERT4Rec 的数字直接引用自过往文献，且在训练时使用了全量负样本（full negatives）；而 SASRec 与 HSTU 则在同一套代码管线下使用采样负样本（sampled negatives，如 128 或 512 个负例）训练。因此，公开实验最核心的实证价值在于**严格控制变量下 HSTU 对 SASRec 的一致性超越**，证明了 HSTU 注意力与门控结构在标准物品序列预测上的建模优势。
-
-### 6.2 工业召回与排序的离线与线上 A/B 表现（Table 6 & Table 7）
-
-论文最具分量的实验来自大规模工业流式生产环境下的召回（Table 6）与排序（Table 7）离线/在线评测：
+当把舞台切换到日活十亿级的流式生产环境时，Table 6（召回阶段）与 Table 7（精排阶段）展示了 GR 是如何一步步击败千锤百炼的工业级 DLRM 的：
 
 ![Table 6: retrieval model offline/online 对比](/images/blog/generative-recommenders-hstu/hstu-table06-retrieval-offline-online.webp)
 
-*Source: Zhai et al., ICML 2024, Table 6, CC BY 4.0.*
-
 ![Table 7: ranking model offline/online 对比](/images/blog/generative-recommenders-hstu/hstu-table07-ranking-offline-online.webp)
 
-*Source: Zhai et al., ICML 2024, Table 7, CC BY 4.0.*
+注意看 Table 6 和 Table 7 左列展示的**三步渐进式工程演进路线**，这对任何想在生产系统落地新范式的团队都极具参考价值：
+1. **第一步：`GR (interactions only)`（纯交互序列裸跑验证）**：完全扔掉传统 DLRM 里苦心经营多年的几百个手工统计与交叉特征，只给 GR 喂纯粹的“内容 + 动作”历史交互序列。结果令人震惊——光靠一条纯交互序列，GR 在召回和精排上的离线指标就已经反超了挂满全量手工特征的庞大 DLRM 基线！
+2. **第二步：`GR (new source)`（作为增量新特征源/新召回源并入）**：不急着一刀切下掉老模型，先把 GR 作为一个新增的召回通道或精排打分源并入现有系统，与老 DLRM 互补共生，立刻在线上 A/B 测试中拿到了稳健的正向收益（精排线上主指标提升 `+6.2%`）。
+3. **第三步：`GR (replace source)`（彻底接管主路径并融入上下文特征）**：在验证了线上稳定性与 M-FALCON 推理吞吐后，用 GR 直接替换掉原有的核心 DLRM 路径，最终在生产环境线上 A/B 测试中斩获了召回 **`+4.7%`～`+6.9%`**、精排 **`+12.4%`** 的巨幅核心业务指标提升。
 
-在这两组工业对比中，论文系统展示了极具工程参考价值的三种渐进接入形态：
-- **`GR (interactions only)`**：仅输入纯用户交互历史序列，不依赖传统海量的手工统计与交叉特征，验证纯序列转导的基线能力；
-- **`GR (new source)`**：将 GR 作为一路新增的特征源或打分源接入现有系统，与传统 DLRM 协同工作；
-- **`GR (replace source)`**：直接用 GR 替换原有的核心 DLRM 模型路径。
+### 6.3 见证 1.5 万亿参数的推荐系统 Scaling Law
 
-在召回与排序两条链路上，GR 均显著改善了离线归一化熵（NE）与 Hit Rate，并在生产线上 A/B 测试中兑现了高达 **`+12.4%`** 的核心业务指标提升。
-
-### 6.3 万亿参数工业级 Scaling Law 与强基线对照（Fig. 7, Fig. 9, Table 13）
-
-Fig. 7 呈现了全文最核心的工业级发现——生成式推荐系统的算力扩展定律（Scaling Law）：
+整篇论文最激动人心的时刻，定格在 Fig. 7 这张工业级算力扩展曲线上：
 
 ![Fig. 7: DLRM 与 GR 在大规模工业设置下的 scaling behavior](/images/blog/generative-recommenders-hstu/hstu-fig07-industrial-scaling.webp)
 
-*Source: Zhai et al., ICML 2024, Fig. 7, CC BY 4.0.*
-
-当横轴的训练算力跨数量级增长（综合扩增序列长度至 8192、加深网络层数、加宽隐藏维度并扩展至 1.5 万亿参数）时，传统工业 DLRM 的质量改善迅速趋于平缓饱和，而 GR 的评估指标则呈现出清晰的幂律（power-law）持续优化趋势。为了证明这里的 DLRM 对照组并非人为简化的弱基线，论文在附录 Fig. 9 中给出了生产级 DLRM 排序基线的完整拓扑：
+看 Fig. 7 中蓝色曲线（传统 DLRM）与红色/绿色曲线（生成式推荐 GR）的分道扬镳：
+- 当横轴的训练算力（综合扩充序列长度至 `8192`、加深 HSTU 层数至数十层、加宽隐藏维数并将总参数量推至 **`1.5 trillion`（1.5 万亿）**）跨数量级增长时，蓝色 DLRM 曲线很快变成了水平线，继续砸算力根本降不下归一化熵（NE）；
+- 而生成式推荐 GR 的离线损失则像极了 GPT 系列的 Chinchilla Scaling Law，沿着对数坐标轴走出了一条**笔直向下的幂律（Power-Law）直线**，跨越三个数量级的算力增长依然没有出现丝毫饱和迹象！
 
 ![Fig. 9: DLRM DIN+DCN baseline architecture](/images/blog/generative-recommenders-hstu/hstu-fig09-dlrm-din-dcn-baseline.webp)
 
-*Source: Zhai et al., ICML 2024, Fig. 9, CC BY 4.0.*
-
-可以看到，该基线已经集成了稀疏序列 Embedding、池化表征、稠密浮点特征、DIN 风格的目标注意力序列模块以及 DCN 显式高阶交叉网络，代表了工业界历经多年打磨的成熟架构。此外，针对 Stochastic Length 在工业落地中的子序列筛选细节，附录 Table 13 进一步对比了贪心选择（greedy）、特征加权采样（feature-weighted）与纯随机采样（random）的效果：
-
 ![Table 13: Stochastic Length 中 subsequence selection 方法对比](/images/blog/generative-recommenders-hstu/hstu-table13-subsequence-selection.webp)
 
-*Source: Zhai et al., ICML 2024, Table 13, CC BY 4.0.*
+为了让读者确信图中那个被比下去的 DLRM 绝非纸糊的稻草人，作者在附录 Fig. 9 中亮出了该生产级 DLRM 精排基线的真实家底：它完整集成了稀疏序列 Embedding、池化表征、稠密浮点网络、DIN 目标注意力模块以及 DCN 高阶交叉网络，是工业界多年迭代的集大成者。同时，附录 Table 13 还披露了在万亿级训练中配合 Stochastic Length 抽稀子序列的工程细节：对比纯随机丢弃（Random）与贪心截断（Greedy），**按特征重要性加权采样**（Feature-weighted Selection，优先保留高信息量的关键交互事件）能显著降低归一化熵损耗，让稀疏训练事半功倍。
 
-其中基于特征重要性加权的子序列采样（weighted）在保持高稀疏度的同时取得了最佳指标，提示工程团队在落地历史序列截断与采样时，应结合交互行为类型与时间权重设计可控的采样策略。
+---
 
-## 7. 官方代码走读：meta-recsys/generative-recommenders 核心链路
+## 7. 源码深挖：从 `SequentialFeatures` 到 Jagged HSTU 与缓存核
 
-官方开源仓库 `meta-recsys/generative-recommenders` 提供了公开数据集复现（ML-1M、ML-20M、Amazon Books）、基于分形扩展（fractal expansion）的合成数据集 MovieLens-3B，以及 HSTU 的 PyTorch / Triton / C++ CUDA 算子实现。以下沿着训练启动、特征封装、HSTU 编码器到损失评估的核心调用链进行拆解。
-
-### 7.1 训练主链路与 Gin 配置体系（main.py / train.py / .gin）
-
-公开实验采用 PyTorch DDP 配合 Google `gin-config` 进行超参数注入。复现 ML-1M 上 HSTU-large 的标准命令如下：
-
-```bash
-mkdir -p tmp/ && python3 preprocess_public_data.py
-CUDA_VISIBLE_DEVICES=0 python3 main.py \
-  --gin_config_file=configs/ml-1m/hstu-sampled-softmax-n128-large-final.gin \
-  --master_port=12345
-```
-
-顶层入口 `main.py` 非常精简，负责解析 `.gin` 配置文件并通过 `torch.multiprocessing.spawn` 拉起分布式训练进程，直接进入 `generative_recommenders/research/trainer/train.py` 中的 `train_fn` 主循环：
+打开官方开源仓库 [`meta-recsys/generative-recommenders`](https://github.com/meta-recsys/generative-recommenders)，我们可以顺着代码的真实调用链，看清论文里的公式与不规则张量（Jagged Tensor）优化在 PyTorch 与 Triton/C++ 中是如何落地的：
 
 ```text
-main.py (parse gin_config_file & mp.spawn)
-  -> train.py: train_fn(rank, world_size, master_port)
-       -> get_reco_dataset(...) & create_data_loader(...)
-       -> LocalEmbeddingModule(...)
-       -> LearnablePositionalEmbeddingInputFeaturesPreprocessor(...)
-       -> get_sequential_encoder(main_module="HSTU")
-       -> SampledSoftmaxLoss(...)
-       -> DDP train / eval loop with get_top_k_module(...)
+main.py (解析 .gin 配置并 mp.spawn 拉起多卡 DDP)
+  -> generative_recommenders/research/trainer/train.py: train_fn()
+       -> get_reco_dataset() & movielens_seq_features_from_row()  # 组装 SequentialFeatures
+       -> LocalEmbeddingModule() & LearnablePositionalEmbeddingInputFeaturesPreprocessor()
+       -> get_sequential_encoder(main_module="HSTU")              # 构建 HSTUJagged 主干
+       -> SampledSoftmaxLoss()                                    # 负采样自回归损失
+       -> get_top_k_module("MIPSBruteForceTopK")                  # 暴力最大内积评估检索
 ```
 
-对照 `configs/ml-1m/hstu-sampled-softmax-n128-large-final.gin`，可以清晰看到公开基准上 HSTU-large 的具体超参数契约：
+### 7.1 统一序列数据契约与 Gin 配置注入
 
-| Gin 配置项 | 设定值 | 在训练链路中的职责 |
-| --- | --- | --- |
-| `train_fn.dataset_name` | `"ml-1m"` | 指定加载预处理后的 MovieLens-1M 序列数据 |
-| `train_fn.max_sequence_length` | `200` | 用户历史交互序列的最大截断长度 |
-| `train_fn.local_batch_size` | `128` | 单卡训练 batch size |
-| `train_fn.main_module` | `"HSTU"` | 选择序列编码器架构（可切换为 `"SASRec"` 做基线对比） |
-| `train_fn.item_embedding_dim` | `50` | 物品 ID Embedding 向量维度 |
-| `hstu_encoder.num_blocks` | `8` | 堆叠 8 层 HSTU 转导单元 |
-| `hstu_encoder.num_heads` | `2` | 注意力头数 |
-| `hstu_encoder.dqk` / `dv` | `25` / `25` | 每个注意力头的 Query/Key 与 Value 维度 |
-| `train_fn.loss_module` | `"SampledSoftmaxLoss"` | 采用负采样 Softmax 自回归训练目标 |
-| `train_fn.num_negatives` | `128` | 每个正样本配对采样的负样本数量 |
-| `train_fn.top_k_method` | `"MIPSBruteForceTopK"` | 评估阶段使用暴力最大内积搜索计算 HR@K 与 NDCG@K |
-
-### 7.2 序列特征契约与 HSTU 核心实现（features.py / hstu.py）
-
-在数据与模型的交界处，`generative_recommenders/research/data/features.py` 定义了贯穿全仓库的最小序列数据契约 `SequentialFeatures`：
+在 [`generative_recommenders/research/data/features.py`](https://github.com/meta-recsys/generative-recommenders/blob/main/generative_recommenders/research/data/features.py) 中，全仓库的数据流围绕着一个极简的四元组 `SequentialFeatures` 运转：
 
 ```python
 class SequentialFeatures(NamedTuple):
-    past_lengths: torch.Tensor
-    past_ids: torch.Tensor
-    past_embeddings: Optional[torch.Tensor]
-    past_payloads: Dict[str, torch.Tensor]
+    past_lengths: torch.Tensor                  # [B]，每个用户的真实有效历史长度
+    past_ids: torch.Tensor                      # [B, N]，历史交互物品 ID 序列
+    past_embeddings: Optional[torch.Tensor]     # [B, N, D]，转换后的稠密表征序列
+    past_payloads: Dict[str, torch.Tensor]      # 挂载 timestamps（时间戳）与 ratings（动作/评分）
 ```
 
-其中 `past_lengths` 记录每个样本的实际有效历史长度（供底层构造 Jagged Tensor），`past_ids` 与 `past_embeddings` 承载历史物品序列，而 `past_payloads` 字典则用于挂载时间戳（`timestamps`）、评分或动作类型（`ratings`）等附加序列信号。在公开 MovieLens 实验中，转换函数 `movielens_seq_features_from_row` 将原始行数据中的历史序列与目标监督项拆解组装为该结构。
+注意这里的 `past_lengths` 与 `past_payloads`：前者专门用来在进入编码器前将二维 Padding 矩阵压平为一维紧凑的 **Jagged Tensor**（彻底消灭无效零填充位置的计算），后者则把事件时间戳 `timestamps` 和用户反馈评分/动作 `ratings` 原封不动地传给预处理器与相对时空偏置模块。
 
-进入核心模型文件 `generative_recommenders/research/modeling/sequential/hstu.py`，论文第 3 节的公式被映射为以下核心类与函数：
+在 [`configs/ml-1m/hstu-sampled-softmax-n128-large-final.gin`](https://github.com/meta-recsys/generative-recommenders/blob/main/configs/ml-1m/hstu-sampled-softmax-n128-large-final.gin) 中，我们可以看到跑出 Table 4 中 ML-1M 最优成绩的 `HSTU-large` 完整超参设定：`max_sequence_length = 200`，`local_batch_size = 128`，`item_embedding_dim = 50`，堆叠 `num_blocks = 8` 层 HSTU，每层 `num_heads = 2`、头维度 `dqk = 25, dv = 25`，配合 `num_negatives = 128` 的 `SampledSoftmaxLoss` 训练。
 
-| 源码符号 | 对应论文概念 | 核心实现逻辑 |
-| --- | --- | --- |
-| `RelativePositionalBias` | 相对位置偏置 $r_{ab}^p$ | 构建可学习的相对位置偏移查找表，注入 $Q K^T$ 矩阵 |
-| `RelativeBucketedTimeAndPositionBasedBias` | 相对时空融合偏置 $r_{ab}^{p,t}$ | 对相邻或成对事件的时间戳差值做对数分桶（bucketization），与位置偏置叠加 |
-| `_hstu_attention_maybe_from_cache` | 带缓存的逐点激活注意力 | 计算 $\phi_2(QK^T + r_{ab}^{p,t})V$，支持从缓存状态增量拼接键值 |
-| `SequentialTransductionUnitJagged` | 单层 HSTU 算子（Jagged 路径） | 执行线性投影切分 $U,V,Q,K$，调用注意力算子，完成 LayerNorm 与 $\odot U(X)$ 门控 |
-| `HSTUJagged` / `HSTU` | 多层 HSTU 堆叠与对外编码器封装 | 管理多层残差堆叠，对接输入预处理器、Embedding 模块与输出后处理器 |
+### 7.2 `hstu.py` 核心拆解：分桶时空偏置、Jagged 路径与 Cache 状态
 
-特别值得注意的是，`hstu.py` 中显式定义了缓存状态元组：
+进入全仓库最核心的模型文件 [`generative_recommenders/research/modeling/sequential/hstu.py`](https://github.com/meta-recsys/generative-recommenders/blob/main/generative_recommenders/research/modeling/sequential/hstu.py)，论文第 3 节与第 5 节的精髓全部浓缩在以下几个关键类中：
+
+1. **对数时间差分桶偏置 `RelativeBucketedTimeAndPositionBasedBias`**：
+   源码是如何处理跨越几个月的连续时间戳差值的？如果直接拿秒级时间差 $|t_b - t_a|$ 建表，几千万秒的跨度根本没法建查找表。源码的做法非常巧妙：先将成对时间戳差值裁剪到正数并除以时间步基本单位（如 60 秒），然后**取自然对数再除以步长常数 $\log(\text{bucket\_divisor})$ 向下取整**，把从几秒钟到几个月的时间跨度平滑映射进有限的 `num_buckets`（默认 128 个桶）内！这样一来，近期几分钟内的时间差拥有极高的分辨率，而几个月前的远期历史则自动归并到大时间桶里，与相对位置偏置 `RelativePositionalBias` 相加后直接注入注意力矩阵。
+2. **一维紧凑的 `SequentialTransductionUnitJagged`**：
+   在单层 HSTU 的前向传播中，输入 `x` 摒弃了形状为 `[B, N, D]` 的三维填充稠密张量，直接采用形状为 `[sum(past_lengths), D]`、配有一个偏移量数组 `x_offsets` 的二维 **Jagged Tensor**！
+   代码首先对 `x` 做 LayerNorm 并通过单层线性层 `self._uvqk` 一口气算出拼接在一起的 `u, v, q, k`，经 `F.silu` 激活后切分开来；随后在 `_hstu_attention_maybe_from_cache()` 中计算 `QK^T + rel_attn_bias`，过一层 `F.silu(qk_attn) / n`（这就是废除 Softmax 后的逐点激活注意力！），乘上 `v` 后通过 `torch.ops.fbgemm.dense_to_jagged` 转回紧凑不规则张量；最后执行最核心的一行门控交叉：
+
+```python
+# Norm(A(X)V(X)) 与门控分支 u 做逐元素乘积，再经线性层 _o 投出并加上残差连接
+return self._o(
+    F.dropout(
+        self._norm_attn_output(attn_output) * u,
+        p=self._dropout_ratio,
+        training=self.training,
+    )
+) + x
+```
+
+3. **支撑 M-FALCON 的缓存元组 `HSTUCacheState`**：
+   在 `hstu.py` 顶部，源码显式定义了供增量推理复用的四元组缓存结构：
 
 ```python
 HSTUCacheState = Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
 ```
 
-用于持久化跨步的 `v`、`padded_q`、`padded_k` 与层输出张量；同时在 `SequentialTransductionUnitJagged` 中高频调用 `torch.ops.fbgemm.jagged_to_padded_dense` 与 `dense_to_jagged`，将变长序列压缩在紧凑的一维拼接内存中运算，从代码层面印证了 HSTU 对长尾变长用户历史以及 M-FALCON 缓存复用的工程支持。
+它精确保存了每一层前序历史计算出的 `(v, padded_q, padded_k, output)`。当开启缓存推理时，`_hstu_attention_maybe_from_cache()` 只对新增的候选差量部分计算查询与键值，直接拼接到缓存里的 `padded_k` 和 `v` 后面算注意力，在代码层印证了 M-FALCON 将历史编码成本摊销为 $O(1)$ 的工程路径。同时，仓库还在 `generative_recommenders/ops/triton` 与 `ops/cpp/hstu_attention` 下提供了深度融合的 Triton 与 CUDA C++ 高性能算子，将分桶偏置计算与不规则张量矩阵乘彻底融进单个 GPU Kernel 中。
 
-### 7.3 采样 Softmax 损失与 Brute-Force MIPS 评估模块
+---
 
-由于推荐系统的物品词表规模庞大，自回归生成训练通过 `SampledSoftmaxLoss`（位于 `autoregressive_losses.py`）近似全词表交叉熵。在每个有效序列位置上，模型将 HSTU 输出的上下文表征与真实下一个物品的正例 Embedding、以及随机抽样的 `num_negatives` 个负例 Embedding 计算相似度得分（点积或余弦相似度），进而最小化正例的负对数似然：
+## 8. 工程演进蓝图与推荐架构全景坐标
 
-```text
-positive = target_item_embedding
-negatives = sampled_item_embeddings
-logits = similarity(hstu_output, [positive, negatives])
-loss = -log_softmax(logits)[positive]
-```
+### 8.1 存量推荐系统向 GR/HSTU 演进的六步路线图
 
-在验证与测试阶段，`indexing/utils.py` 中的 `get_top_k_module` 根据配置实例化 `MIPSBruteForceTopK`（或混合内积模块 `MoLBruteForceTopK`），在全量候选物品库上执行精确的最大内积检索以统计 HR@K 与 NDCG@K。在工业生产环境中，这一评估检索层则会对接分布式 ANN 索引（召回阶段）或 M-FALCON 微批次打分引擎（排序阶段）。
+对于绝大多数拥有存量 DLRM 系统的工程团队而言，不可能一夜之间直接去训 1.5 万亿参数的模型。结合论文在 Table 6/7 中验证过的上线策略，最稳妥的渐进式演进路线可以分为六步：
 
-## 8. 工程落地演进路径、常见误区与总结
+1. **第一步：打通“内容 + 多维动作 + 时间戳”的统一序列日志契约**：改造样本拼接流，不再只保留用户正向点击过的物品列表，而是将曝光未点击、完播时长、点赞、收藏、购买、负反馈隐藏等全量动作连同精确时间戳、召回源上下文一起按时间轴序列化，并严格做好曝光时刻截断以防特征穿越。
+2. **第二步：在离线管线用 HSTU 平替传统序列子模块**：先不动线上大框架，在内部离线基准上用 `HSTU`（逐点 SiLU 注意力 + 对数时间差分桶偏置）替换原有的 SASRec 或普通 Transformer 序列编码器，验证非归一化逐点注意力在自有业务数据上的离线增益。
+3. **第三步：显式注入 Action Token 解锁多动作语义**：将用户反馈动作 $a_i$ 正式编码为序列中的交错 Token（或通过预处理层与内容 Token 深度融合），检验模型对正负反馈混合历史序列的区分能力。
+4. **第四步：以 `GR (new source)` 模式小流量挂接目标感知精排**：将待评候选 $\Phi_{i+1}$ 拼在用户序列末端预测动作分布，先作为原 DLRM 精排模型的一路新增特征分数或独立打分通道并入线上，跑通端到端链路。
+5. **第五步：落地 M-FALCON 历史缓存与微批次掩码打分**：当准备扩大模型层数与序列长度时，在推理服务层落地用户历史前缀的 `HSTUCacheState` 缓存与对角掩码微批次切分，把单请求多候选打分的 GPU 延迟压回 SLA 红线以内。
+6. **第六步：开启特征加权 Stochastic Length 冲击长周期 Scaling**：在推理吞吐稳住后，配合按特征重要性加权的 Stochastic Length 采样，将历史行为窗口从百级逐步推向数千步，释放长周期序列与大模型容量的 Scaling Law 红利。
 
-将 Generative Recommenders 置于推荐系统演进史中审视，它与经典的 **YouTube DNN**（确立召回+排序两阶段漏斗）、**Clippy**（保障大规模多任务排序在流式训练中的数值稳定性）以及**曝光日志闭环治理**形成了清晰的递进关系：没有可靠的曝光日志与真实反馈样本，再庞大的生成式序列模型也只会对偏差与噪声做昂贵拟合；而当系统已经建立起成熟的工业级排序基线后，GR/HSTU 则指明了如何突破异构特征工程的边际递减，通过统一序列建模持续吸收海量数据与算力。
+### 8.2 在推荐系统技术版图中的生态位与总结
 
-| 推荐系统演进阶段 | 核心工程矛盾 | 代表性架构与技术手段 |
-| --- | --- | --- |
-| 1. 冷启动与探索期 | 缺乏可靠曝光与正负反馈监督信号 | 内容先验表征、业务规则、探索策略、规范化曝光日志 |
-| 2. 基础双塔与排序闭环 | 建立端到端个性化召回与点击率预估 | 双塔召回、ANN 向量检索、GBDT / 基础 MLP 排序 |
-| 3. 成熟工业级 DLRM | 挖掘高阶异构特征交叉与多目标协同 | DLRM、DIN/DIEN、DCN-v2、MMoE/PLE、Clippy 稳定性优化 |
-| 4. 生成式 Scaling 推荐 | 突破手工特征瓶颈，可预测地吸收算力红利 | GR 序列转导、HSTU 编码器、Stochastic Length、M-FALCON 推理 |
+把 Generative Recommenders (HSTU) 放进本站精读过的工业推荐系统技术版图中横向对标，可以非常清晰地看懂近十年推荐架构的演进脉络：
 
-### 8.1 从传统推荐架构向 GR/HSTU 的渐进迁移步骤
+- **对比搜索式长序列 CTR 模型 [SIM](/blog/sim-search-based-user-interest-model-ctr-paper-reading/)**：面对数万步的用户终身历史，阿里 SIM 走的是 **“检索降维 + 局部注意力”** 路线——在传统 DLRM 框架内，先靠 22TB 的分布式用户行为树（UBT）把 54000 条行为粗筛成 100 条同类目子序列（SBS），再做轻量多头注意力；而 Meta 的 HSTU/GR 走的则是 **“统一序列端到端自回归 + 算力硬刚”** 路线——彻底革掉异构 DLRM 的命，靠 Stochastic Length、Jagged HSTU 算子与 M-FALCON 缓存，直接在长达 8192 的完整交错序列上跑数十层深层自注意力。在现代工业实践中，这两条路线正在加速合流：先用 SIM 式的快速检索从十万级终身行为里筛出几千条高相关上下文，再喂给 HSTU 式的生成式序列主干做深层转导。
+- **对比多任务排序训练稳定性方案 [Clippy](/blog/clippy-multitask-ranking-training-stability-paper-reading/)**：当推荐模型无论是沿着 DLRM 叠加交叉层，还是沿着 GR/HSTU 推高深度与算力时，流式非平稳数据下的训练失稳都是绕不开的拦路虎；Clippy 在优化器底层构建的逐坐标预条件步长护栏，与 HSTU 在架构层用逐点激活替代脆弱 Softmax、用 LayerNorm 配合门控抑制数值爆炸的设计，共同构成了超大规模推荐模型稳定收敛的双保险。
 
-对于希望在实际业务中借鉴 GR/HSTU 的工程团队，切忌盲目追求万亿参数规模，建议按照风险由低到高的六个阶段渐进演进：
-
-1. **对齐时间序列日志契约**：梳理用户历史交互流，确保曝光、点击、完播、购买、跳过、隐藏等正负向动作均带有精确时间戳、稳定物品 ID/内容表征以及召回源上下文，并在离线构造样本时严格按曝光时刻截断以防未来信息穿越。
-2. **建立同管线的序列推荐基线**：先在内部离线数据集上跑通基于采样 Softmax 的 SASRec 与基础版 HSTU，验证逐点激活注意力与相对时空偏置 $r_{ab}^{p,t}$ 在自有业务数据上的离线增益。
-3. **引入交错的动作 Token（Action Token）**：打破仅用正向点击物品构建序列的惯例，将多类型用户反馈动作 $a_i$ 显式编码进序列，检验动作语义对捕捉细粒度偏好的贡献。
-4. **改造目标感知排序（Target-Aware Ranking）**：在精排阶段将候选物品 $\Phi_{i+1}$ 追加至用户序列末端预测多任务动作概率，先作为原 DLRM 的一路增量特征或打分源（即论文中的 `GR (new source)` 模式）小流量上线验证。
-5. **落地历史缓存与微批次推理摊销**：针对目标感知排序带来的延迟上升，参照 M-FALCON 依次实施多候选掩码合批、用户历史前缀 KV/状态缓存以及微批次（microbatching）切分，压降单请求 GPU 耗时。
-6. **引入 Stochastic Length 扩展历史窗口**：在推理效率达标后，逐步拉长用户历史时间跨度（如从数百步扩展至数千步），配合特征加权的 Stochastic Length 采样控制训练成本，并通过线上 A/B 与长期留存护栏指标完成验收。
-
-### 8.2 常见认知误区、方法边界与总结
-
-在研读与转化这篇论文时，需要避免几类常见的简单化解读：
-- **误区一：“GR 就是把语言模型 GPT 直接搬来算推荐”**。虽然 GR 借用了因果自回归的形式，但推荐序列的输入是高基数动态内容 $\Phi_i$ 与反馈动作 $a_i$ 的交错流，排序阶段必须做显式条件于候选 $\Phi_{i+1}$ 的目标感知打分，且注意力算子（HSTU 的非 Softmax 逐点激活与相对时间偏置）针对推荐分布做了根本改造。
-- **误区二：“HSTU 可以无条件替代所有推荐模型或 Transformer”**。论文的万亿参数 Scaling Law 建立在海量流式交互数据、定制 Triton/CUDA 算子（Jagged Tensor、融合偏置）以及 M-FALCON 推理基础设施的协同之上；在特征稀疏但交互序列极短、或缺乏在线缓存改造能力的轻量系统中，传统 DLRM 依然具有极高的性价比。
-- **误区三：“生成式序列建模自动消除了推荐偏差与多目标治理难题”**。GR 提供了强大的序列表示与算力扩展范式，但位置偏差（position bias）、曝光选择偏差（selection bias）、多目标商业价值权衡、内容生态多样性以及安全合规护栏，依然需要依赖严谨的样本工程、去偏策略与在线策略层共同保障。
-
-总而言之，**Actions Speak Louder than Words** 的真正突破，在于它跳出了在 DLRM 内部局部修补交叉算子的思维定势，证明了**只要将用户的多维历史内容与反馈动作统一组织为因果序列转导问题，并配套解决长序列稀疏训练（Stochastic Length）、非平稳高效编码（HSTU）与多候选缓存摊销推理（M-FALCON），推荐系统同样能够走上随训练算力幂律扩展的 Scaling Law 轨道**。
+回望全文，**Actions Speak Louder than Words** 最深远的贡献，在于它用极其扎实的数学改造与系统工程（HSTU 编码器、Stochastic Length 稀疏训练、M-FALCON 缓存微批次推理），打破了“推荐系统只能靠堆人力做手工特征、吃不到大模型 Scaling Law”的行业宿命。它证明了：**在推荐系统里，用户的每一个动作就是最真实的语言；只要把内容与动作编织成统一的因果序列，并为之打造适配非平稳稀疏分布的转导算子与推理引擎，推荐系统同样能跨入万亿参数的基础模型时代。**
 
 ## 参考资料
 
-1. Jiaqi Zhai et al., [Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for Generative Recommendations](https://arxiv.org/abs/2402.17152), arXiv:2402.17152.
-2. Jiaqi Zhai et al., [PMLR ICML 2024 paper page](https://proceedings.mlr.press/v235/zhai24a.html).
-3. Meta RecSys, [generative-recommenders official GitHub repository](https://github.com/meta-recsys/generative-recommenders).
-4. Wang-Cheng Kang and Julian McAuley, [Self-Attentive Sequential Recommendation](https://arxiv.org/abs/1808.09781), ICDM 2018.
-5. Fei Sun et al., [BERT4Rec: Sequential Recommendation with Bidirectional Encoder Representations from Transformer](https://arxiv.org/abs/1904.06690), CIKM 2019.
-6. Alexandros Karatzoglou et al., [Session-based Recommendations with Recurrent Neural Networks](https://arxiv.org/abs/1511.06939), ICLR 2016 workshop.
-7. Maxim Naumov et al., [Deep Learning Recommendation Model for Personalization and Recommendation Systems](https://arxiv.org/abs/1906.00091), 2019.
-8. Paul Covington, Jay Adams, Emre Sargin, [Deep Neural Networks for YouTube Recommendations](https://research.google/pubs/deep-neural-networks-for-youtube-recommendations/), RecSys 2016.
-9. Tri Dao et al., [FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness](https://arxiv.org/abs/2205.14135), NeurIPS 2022.
-10. Xinyang Yi et al., [Revisiting Neural Retrieval on Accelerators](https://arxiv.org/abs/2306.04039), 2023.
+- Jiaqi Zhai, Lucy Liao, Xing Liu, Yueming Wang, Rui Li, Xuan Cao, Leon Gao, Zhaojie Gong, Fangda Gu, Michael He, Yinghai Lu, Yu Shi, [Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for Generative Recommendations](https://arxiv.org/abs/2402.17152), ICML 2024（[PMLR Vol. 235](https://proceedings.mlr.press/v235/zhai24a.html)）.
+- 官方开源仓库：[meta-recsys/generative-recommenders](https://github.com/meta-recsys/generative-recommenders).
+- 相关核心文献：[SASRec (ICDM 2018)](https://arxiv.org/abs/1808.09781)、[BERT4Rec (CIKM 2019)](https://arxiv.org/abs/1904.06690)、[DLRM (2019)](https://arxiv.org/abs/1906.00091)、[YouTube DNN (RecSys 2016)](https://research.google/pubs/deep-neural-networks-for-youtube-recommendations/)、[FlashAttention-2 (2023)](https://arxiv.org/abs/2307.08691).
