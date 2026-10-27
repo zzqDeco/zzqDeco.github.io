@@ -1275,6 +1275,320 @@
     "bytes": 59340,
     "sourceBytes": 90494
   },
+  "/images/blog/claude-code-hallucination-reduction-design/claude-code-analysis01-reliability-layers.webp": {
+    "width": 1426,
+    "height": 2076,
+    "bytes": 49816,
+    "sourceBytes": 118312,
+    "srcset": [
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-analysis01-reliability-layers-768w.webp",
+        "width": 768,
+        "height": 1118,
+        "bytes": 23468
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-analysis01-reliability-layers-1280w.webp",
+        "width": 1280,
+        "height": 1863,
+        "bytes": 43202
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-analysis01-reliability-layers.webp",
+        "width": 1426,
+        "height": 2076,
+        "bytes": 49816
+      }
+    ]
+  },
+  "/images/blog/claude-code-hallucination-reduction-design/claude-code-analysis02-read-edit-freshness.webp": {
+    "width": 1920,
+    "height": 1599,
+    "bytes": 67850,
+    "sourceBytes": 154494,
+    "srcset": [
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-analysis02-read-edit-freshness-768w.webp",
+        "width": 768,
+        "height": 639,
+        "bytes": 21776
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-analysis02-read-edit-freshness-1280w.webp",
+        "width": 1280,
+        "height": 1066,
+        "bytes": 42770
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-analysis02-read-edit-freshness.webp",
+        "width": 1920,
+        "height": 1599,
+        "bytes": 67850
+      }
+    ]
+  },
+  "/images/blog/claude-code-hallucination-reduction-design/claude-code-analysis03-evidence-loss-and-recovery.webp": {
+    "width": 1268,
+    "height": 2492,
+    "bytes": 55680,
+    "sourceBytes": 126274,
+    "srcset": [
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-analysis03-evidence-loss-and-recovery-768w.webp",
+        "width": 768,
+        "height": 1509,
+        "bytes": 30336
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-analysis03-evidence-loss-and-recovery.webp",
+        "width": 1268,
+        "height": 2492,
+        "bytes": 55680
+      }
+    ]
+  },
+  "/images/blog/claude-code-hallucination-reduction-design/claude-code-analysis04-completion-evidence.webp": {
+    "width": 1744,
+    "height": 2396,
+    "bytes": 66322,
+    "sourceBytes": 148285,
+    "srcset": [
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-analysis04-completion-evidence-768w.webp",
+        "width": 768,
+        "height": 1055,
+        "bytes": 23720
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-analysis04-completion-evidence-1280w.webp",
+        "width": 1280,
+        "height": 1759,
+        "bytes": 45832
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-analysis04-completion-evidence.webp",
+        "width": 1744,
+        "height": 2396,
+        "bytes": 66322
+      }
+    ]
+  },
+  "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo01-agent-loop.webp": {
+    "width": 892,
+    "height": 2494,
+    "bytes": 31842,
+    "sourceBytes": 71800,
+    "srcset": [
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo01-agent-loop-768w.webp",
+        "width": 768,
+        "height": 2147,
+        "bytes": 26536
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo01-agent-loop.webp",
+        "width": 892,
+        "height": 2494,
+        "bytes": 31842
+      }
+    ]
+  },
+  "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo02-context-construction.webp": {
+    "width": 1920,
+    "height": 327,
+    "bytes": 21600,
+    "sourceBytes": 126739,
+    "srcset": [
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo02-context-construction-768w.webp",
+        "width": 768,
+        "height": 131,
+        "bytes": 5492
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo02-context-construction-1280w.webp",
+        "width": 1280,
+        "height": 218,
+        "bytes": 11736
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo02-context-construction.webp",
+        "width": 1920,
+        "height": 327,
+        "bytes": 21600
+      }
+    ]
+  },
+  "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo03-compaction-pipeline.webp": {
+    "width": 648,
+    "height": 1900,
+    "bytes": 47276,
+    "sourceBytes": 122186
+  },
+  "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo04-tool-lifecycle.webp": {
+    "width": 1000,
+    "height": 3024,
+    "bytes": 62542,
+    "sourceBytes": 163154,
+    "srcset": [
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo04-tool-lifecycle-768w.webp",
+        "width": 768,
+        "height": 2322,
+        "bytes": 45178
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo04-tool-lifecycle.webp",
+        "width": 1000,
+        "height": 3024,
+        "bytes": 62542
+      }
+    ]
+  },
+  "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo05-edit-tool-integration.webp": {
+    "width": 1540,
+    "height": 1436,
+    "bytes": 45658,
+    "sourceBytes": 99218,
+    "srcset": [
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo05-edit-tool-integration-768w.webp",
+        "width": 768,
+        "height": 716,
+        "bytes": 19324
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo05-edit-tool-integration-1280w.webp",
+        "width": 1280,
+        "height": 1194,
+        "bytes": 35538
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo05-edit-tool-integration.webp",
+        "width": 1540,
+        "height": 1436,
+        "bytes": 45658
+      }
+    ]
+  },
+  "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo06-hook-engine.webp": {
+    "width": 1030,
+    "height": 2216,
+    "bytes": 40350,
+    "sourceBytes": 100388,
+    "srcset": [
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo06-hook-engine-768w.webp",
+        "width": 768,
+        "height": 1652,
+        "bytes": 29368
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo06-hook-engine.webp",
+        "width": 1030,
+        "height": 2216,
+        "bytes": 40350
+      }
+    ]
+  },
+  "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo07-subagent-context.webp": {
+    "width": 1920,
+    "height": 430,
+    "bytes": 34160,
+    "sourceBytes": 151509,
+    "srcset": [
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo07-subagent-context-768w.webp",
+        "width": 768,
+        "height": 172,
+        "bytes": 9454
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo07-subagent-context-1280w.webp",
+        "width": 1280,
+        "height": 286,
+        "bytes": 20036
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo07-subagent-context.webp",
+        "width": 1920,
+        "height": 430,
+        "bytes": 34160
+      }
+    ]
+  },
+  "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo08-memory-decision.webp": {
+    "width": 1920,
+    "height": 1776,
+    "bytes": 50660,
+    "sourceBytes": 136879,
+    "srcset": [
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo08-memory-decision-768w.webp",
+        "width": 768,
+        "height": 710,
+        "bytes": 15176
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo08-memory-decision-1280w.webp",
+        "width": 1280,
+        "height": 1184,
+        "bytes": 30852
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo08-memory-decision.webp",
+        "width": 1920,
+        "height": 1776,
+        "bytes": 50660
+      }
+    ]
+  },
+  "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo09-skill-execution.webp": {
+    "width": 1246,
+    "height": 2132,
+    "bytes": 45186,
+    "sourceBytes": 106379,
+    "srcset": [
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo09-skill-execution-768w.webp",
+        "width": 768,
+        "height": 1314,
+        "bytes": 25994
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo09-skill-execution.webp",
+        "width": 1246,
+        "height": 2132,
+        "bytes": 45186
+      }
+    ]
+  },
+  "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo10-plan-sequence.webp": {
+    "width": 1920,
+    "height": 2868,
+    "bytes": 104516,
+    "sourceBytes": 265695,
+    "srcset": [
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo10-plan-sequence-768w.webp",
+        "width": 768,
+        "height": 1147,
+        "bytes": 33332
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo10-plan-sequence-1280w.webp",
+        "width": 1280,
+        "height": 1912,
+        "bytes": 65646
+      },
+      {
+        "url": "/images/blog/claude-code-hallucination-reduction-design/claude-code-repo10-plan-sequence.webp",
+        "width": 1920,
+        "height": 2868,
+        "bytes": 104516
+      }
+    ]
+  },
   "/images/blog/clippy-multitask-ranking-stability/clippy-algorithm1-adagrad-with-clippy.webp": {
     "width": 835,
     "height": 600,
