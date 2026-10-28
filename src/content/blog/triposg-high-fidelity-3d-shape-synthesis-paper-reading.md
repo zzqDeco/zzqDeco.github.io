@@ -22,16 +22,13 @@ VAST、香港大学、德克萨斯大学奥斯汀分校与上海人工智能实�
 
 ![TripoSG teaser](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig01-teaser.webp)
 
-透过 Fig. 1 中那些连昆虫触角、机械齿轮、哥特建筑尖顶与动漫服饰飘带都雕刻得毫发毕现的白模网格，TripoSG 的成功建立在**四条环环相扣的设计哲学**之上：
+为了在三维几何生成中复现二维扩散与流匹配模型的规模效应（Scaling Law），TripoSG 在数据清洗管线、高保真 SDF-VAE 与混合专家流变换器上确立了四项核心设计：
 
 1. **三维数据先过“信噪比生死线”，再谈“规模定律”**（Data Quality Gate Before Scaling Law）：二维互联网图片哪怕构图再差，至少是一张合法的自然光学投影；而原始三维资产库里充斥着法线反装、内部碎面、扫描破洞与朝向错乱的“几何毒药”。实验证明，直接用 80 万未清洗 Objaverse 训练，几何分布误差 Normal-FID 高达 `11.61`；用自动化评分与过滤管线狠心砍掉 78% 的脏数据、仅保留 18 万高纯度样本训练，Normal-FID 反而骤降至 `9.47`。只有先守住这道几何信噪比底线，再通过修复与多焦距增强将干净样本扩充到 **200 万**（2M），三维 Scaling Law 才会真正爆发（Normal-FID 大幅压低至 **`3.36`**）。
 2. **同时在“标量值域”与“一阶梯度域”监督 SDF-VAE，用自动微分锁死刀锋折角**（Value + Gradient Domain Supervision over Binary Occupancy）：二值占用率（Occupancy）分类天然会在曲面上留下等高线台阶；而如果只用 $\ell_1/\ell_2$ 监督连续符号距离场（SDF）的标量值，细小的凹槽和衣纹依然会被平滑吞没。TripoSG 在 VAE 解码器中直接对三维查询点坐标求一阶自动微分 $\nabla \mathcal{D}(x,f)$，用**表面法线方向对齐损失**雕刻锐利转折，再用 **Eikonal 单位梯度模长正则**抚平过强法线引导诱发的场震荡。
 3. **用 U-ViT 长跳跃连接保住浅层几何，用 CLIP + DINOv2 双路交叉注意力兼顾全局语义与毫米级纹理**（Long Skip Connections + Dual Global/Local Conditioning）：纯堆叠深层 Transformer Block 会让三维局部几何线索在逐层抽象中流失，引入连接对称编码-解码块的 Long Skip Connection 单项改动就能让 Normal-FID 下降近 1 个点；同时每一层并行注入 CLIP 全局语义特征（防类别与朝向错乱）和 DINOv2 局部结构特征（对齐局部褶皱与部件），配合直线轨迹的 Rectified Flow 与对数正态时间步重加权，实现精准的图模对齐。
 4. **靠无位置编码 FPS 查询直接外推 4096 Token，只在解码器深层挂载 MoE 扩容至 4B**（Pos-Encoding-Free Token Extrapolation & Deep-Layer MoE）：由于前端点集 VAE 靠最远点采样（FPS）提取查询点，不依赖固定长度的绝对位置编码，因此流模型微调时能丝滑地将潜空间序列从 2048 直接翻倍外推至 **4096 Token**（开源社区版提供 `1.5B / 2048-token` 权重，论文旗舰版扩展至 `4B / 4096-token`）；并且只在专门负责局部高频细节合成的最后 6 层解码器 Block 中将 FFN 替换为 Top-2 + 共享专家的混合专家层（MoE），用极小的推理算力增量换取了 4B 参数的几何容量。
 
-下面我们就顺着这四条设计哲学，结合论文推导与开源仓库源码，逐一拆解 TripoSG 的核心机制。
-
----
 
 ## 1. 为什么 3D 形状生成长期落后于 2D 图像？双系统架构总览
 
@@ -331,7 +328,7 @@ vertices, faces, normals, _ = measure.marching_cubes(...)
 
 ---
 
-## 7. 工程边界与横向生态坐标：在 3D 视觉版图中的位置
+## 7. 工程边界与高保真三维几何生成谱系对比
 
 客观审视 TripoSG 的定位，有两处边界值得工程团队留意：
 - **论文旗舰模型与开源权重的规格梯度**：论文主表与 Teaser 展示的极限效果来自 **4B MoE / 4096-token** 旗舰模型（配合未开源的 2M 清洗数据集）；而 Hugging Face 上以 MIT 许可公开的 `VAST-AI/TripoSG` 权重为 **1.5B 稠密架构 / 2048-token** 版本（且 `triposg_transformer.py` 头部注明部分注意力代码改编自 Tencent HunyuanDiT，商用时需同步留意相关衍生声明）。

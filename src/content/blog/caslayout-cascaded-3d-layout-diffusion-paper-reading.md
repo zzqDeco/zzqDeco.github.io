@@ -17,7 +17,7 @@ draft: false
 
 然而，主流的端到端 3D 场景生成模型却试图在一步之内同时猜出所有答案。无论是单阶段扩散模型（如 [DiffuScene](https://arxiv.org/abs/2303.14207)）还是直接用大语言模型回归三维坐标（如 [LayoutGPT](https://arxiv.org/abs/2305.15393)），往往要把家具数量、类别、长宽高、形状特征、位置与旋转角全部塞进同一个高维联合分布里一步预测。在仅有数千个房间的专业 3D 室内数据集（如 3D-FRONT）上，这种“一步登天”的联合建模极易导致家具穿墙挡门、餐椅悬空散落，或者对局部关系指令置若罔闻。与此同时，传统的场景图生成方法习惯在任意两个物体之间都连一条边，形成 $O(N^2)$ 的全连接稠密关系图——把毫不相干的“卧室台灯”与“玄关鞋柜”强行绑定空间约束，反而让模型淹没在高熵背景噪声里。
 
-由中科院自动化所、北航与微软亚洲研究院团队（Yingrui Wu、Youkang Kong、Mingyang Zhao、Weize Quan、Dong-Ming Yan、Yang Liu）发表的 [CasLayout: Cascaded 3D Layout Diffusion for Indoor Scene Synthesis with Implicit Relation Modeling](https://arxiv.org/abs/2604.27361)（DOI `10.1145/3811347`，官方仓库 [YingruiWoo/CasLayout](https://github.com/YingruiWoo/CasLayout)），正面拆解了 3D 室内布局生成中的维度爆炸与关系冗余难题。通读全文，我们可以提炼出 CasLayout 最值得借鉴的 **4 个核心设计哲学**：
+由中科院自动化所、北航与微软亚洲研究院团队（Yingrui Wu、Youkang Kong、Mingyang Zhao、Weize Quan、Dong-Ming Yan、Yang Liu）发表的 [CasLayout: Cascaded 3D Layout Diffusion for Indoor Scene Synthesis with Implicit Relation Modeling](https://arxiv.org/abs/2604.27361)（DOI `10.1145/3811347`，官方仓库 [YingruiWoo/CasLayout](https://github.com/YingruiWoo/CasLayout)），正面拆解了 3D 室内布局生成中的维度爆炸与关系冗余难题。针对三维室内布局中的联合分布高维耦合与场景图边冗余问题，CasLayout 提出了四项关键架构设计：
 
 1. **按因果次序拆解高维联合分布**（Causal Cascaded Factorization over Joint Distribution）：放弃直接拟合完整布局的高维联合分布 $p(L\mid A)$，严格遵循人类设计的因果依赖，将其拆解为“家具类别与数量 $\to$ 尺寸与几何检索特征 $\to$ 节点对齐稀疏关系潜变量 $\to$ 三维包围盒坐标与朝向”四个级联条件扩散阶段。未知家具尺寸便无法定义“紧贴”与“对齐”，未知功能关系便无法求解连续落位；先定尺度、再定关系、最后落位，消除了变量间的耦合歧义。
 2. **功能分区稀疏关系图滤除二次方背景噪声**（Functional-Zone Sparse Graph over Dense Pairwise Edges）：摒弃 $O(N^2)$ 的全连接场景图，按睡眠区、就餐区、休闲区等功能分区（Functional Zones）保留区内细粒度关系，跨区仅选定单一核心锚点物体（Anchor Item）建立连接。这一稀疏化策略将客厅方位关系的信息熵从稠密图的 `1.62` 大幅压降至 `1.04`，剔除了偶然相对位置带来的干扰。
@@ -31,8 +31,6 @@ draft: false
   -> Stage 3: 节点对齐稀疏关系潜变量 (Relation Latent Diffusion via Bidirectional Relation VAE)
   -> Stage 4: 最终三维包围盒布局 (Box Layout Diffusion)
 ```
-
----
 
 ## 1. 为什么单阶段生成与稠密场景图在室内布局中频频失效？
 

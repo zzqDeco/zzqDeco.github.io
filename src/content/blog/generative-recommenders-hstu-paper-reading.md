@@ -20,16 +20,13 @@ draft: false
 
 Meta 团队在 ICML 2024 发表的里程碑论文 **[Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for Generative Recommendations](https://arxiv.org/abs/2402.17152)**（[PMLR 论文页](https://proceedings.mlr.press/v235/zhai24a.html)、[官方代码仓库 meta-recsys/generative-recommenders](https://github.com/meta-recsys/generative-recommenders)），给出了一个直击本质的诊断：**阻碍推荐系统扩展的罪魁祸首，正是把用户行为拆成碎片化手工特征与孤立模块的 DLRM 范式本身**。为此，作者提出了 **生成式推荐系统**（Generative Recommenders, GRs），将模型规模一举推上 **`1.5 trillion`（1.5 万亿参数）**，在 8192 序列长度下实现比 FlashAttention-2 快 **`5.3x`～`15.2x`** 的编码效率，并在十亿用户级生产环境的线上 A/B 测试中拿下了 **`+12.4%`** 的核心排序指标提升。
 
-如果拨开繁复的实验表格与算子实现，整篇论文的突破建立在**四条环环相扣的设计哲学**之上：
+为了将工业级召回与精排统一转化为具备幂律扩展能力的生成式序列建模问题，论文在特征表示、注意力算子与推理缓存上做出了四项核心重构：
 
 1. **用“内容与动作交错的统一序列转导”终结碎片化特征拼装**（Interleaved Content-Action Transduction over Fragmented Feature Engineering）：放弃将用户行为切碎成数百个稀疏/稠密特征桶的做法，把用户接触到的内容表征 $\Phi_i$ 与产生的反馈动作 $a_i$ 按真实时间轴交错排成一条因果序列。在这条统一序列上，预测下一个内容 $\Phi_{i+1}$ 就是**召回**（Retrieval），在序列末尾塞入候选内容 $\Phi_{i+1}$ 预测动作 $a_{i+1}$ 就是**目标感知精排**（Target-Aware Ranking）。
 2. **抛弃行归一化 Softmax 与独立 FFN，用逐点门控注意力保留偏好强度**（Pointwise Gated Attention over Normalized Softmax）：标准 Transformer 的 Softmax 强制令所有历史位置的注意力权重加和为 $1$，这在推荐场景下会抹杀一个致命信号——**用户对某个候选类目的历史交互总频次与总强度**。HSTU 编码器果断用非归一化的逐点激活函数（如 SiLU）替代 Softmax，融入相对时间与位置分桶偏置 $r_{ab}^{p,t}$，并通过逐元素门控分支 $\mathrm{Norm}(A(X)V(X))\odot U(X)$ 在单一算子内同时完成序列聚合与高阶特征交叉，一举省去了笨重的独立 FFN 子层。
 3. **在数据层用幂律随机截断制造稀疏性，破解长序列训练的算力困局**（Stochastic Length as Data-Level Sparsification）：用户的长周期历史行为存在极高的时间冗余。与其在每个训练步都硬扛 $O(n^2)$ 的全长序列开销，或者削足适履只训短序列，**随机序列长度采样**（Stochastic Length）按幂律分布与特征重要性动态抽稀训练序列——既把长序列训练成本砍掉了大半，又逼着模型学会在跨月度的稀疏历史线索中提取长期偏好。
 4. **用掩码隔离微批次与编码器缓存，把多候选打分摊销为单次历史编码**（Amortize Target-Aware Scoring via M-FALCON）：目标感知精排要求每个候选物品都与长达数千步的用户历史做深层自注意力交互。如果对 $m$ 个候选分别跑一遍前向传播，线上 GPU 瞬间就会瘫痪。**M-FALCON** 将共享的用户历史前缀只编码 1 次并固化为编码器缓存，随后把 $m$ 个候选切成微批次（Microbatches）拼在缓存后面并行打分，通过注意力掩码让候选之间彼此不可见——从而让单次理论计算量高出 `285 倍` 的生成式大模型，在线上跑出了反超传统 DLRM 的吞吐量。
 
-下面我们就顺着这四条设计哲学，结合论文推导与开源仓库代码，由浅入深拆解这套万亿参数生成式推荐架构。
-
----
 
 ## 1. 为什么传统工业 DLRM 跑不出 Scaling Law？
 
@@ -153,7 +150,7 @@ $$
 
 盯着 Table 2 和 Table 5 里的四行配置看，每一个变量的贡献都清清楚楚：
 - 把完整版 `HSTU` 里的相对时空偏置拿掉，变成 `HSTU (-rabp,t)`，各项 HR 与 NDCG 指标随即出现第一波下滑，印证了显式时间间隔分桶对捕捉兴趣演化的价值；
-- 更震撼的是对比 `HSTU (-rabp,t)` 与 `HSTU (-rabp,t, Softmax)`——两者结构完全一模一样，仅仅是把逐点激活函数 $\phi_2$ 换回了标准的 **Softmax**，在 Table 2 流式合成实验以及 Table 5 的 Amazon Books 等长尾稀疏数据集上，指标均出现大幅下滑（几乎退化至普通 `Transformer` 基线水平）。这一对比直接印证了前文的理论推导：在推荐序列建模中，打破 Softmax 的行和为 1 束缚、保留历史交互频次的幅值信息，是拉开精度差距的胜负手。
+- 更具说服力的是对比 `HSTU (-rabp,t)` 与 `HSTU (-rabp,t, Softmax)`——两者结构完全一模一样，仅仅是把逐点激活函数 $\phi_2$ 换回了标准的 **Softmax**，在 Table 2 流式合成实验以及 Table 5 的 Amazon Books 等长尾稀疏数据集上，指标均出现大幅下滑（几乎退化至普通 `Transformer` 基线水平）。这一对比直接印证了前文的理论推导：在推荐序列建模中，打破 Softmax 的行和为 1 束缚、保留历史交互频次的幅值信息，是拉开精度差距的胜负手。
 
 ---
 
@@ -189,7 +186,7 @@ Stochastic Length 的物理直觉来自推荐行为的一个天然属性：**用
 
 ![Fig. 10: Stochastic Length 对 ranking metrics 的影响](/images/blog/generative-recommenders-hstu/hstu-fig10-sl-ranking-metrics.webp)
 
-作者在附录 Table 16 与 Fig. 10 中把这些方案拉出来做了正面比拼。结果非常说明问题：只靠短序列训练加零样本外推（Zero-shot）或位置编码插值，在推荐精排指标上明显落后于 Stochastic Length。原因在于，如果训练时只截最近 1000 步，模型在训练期永远只见过“最近几天内的密集行为”，从来没见过“两个月前的稀疏长尾行为与当前候选交互”的时间跨度分布（即 $r_{ab}^{p,t}$ 中的大时间桶在训练期根本没被激活过。）。而 Stochastic Length 从长达数月的完整历史中抽稀采样，让模型在省算力的同时，全程都在接触跨月度的真实时间跨度。
+作者在附录 Table 16 与 Fig. 10 中把这些方案拉出来做了正面比拼。结果非常说明问题：只靠短序列训练加零样本外推（Zero-shot）或位置编码插值，在推荐精排指标上明显落后于 Stochastic Length。原因在于，如果训练时只截最近 1000 步，模型在训练期永远只见过“最近几天内的密集行为”，从来没见过“两个月前的稀疏长尾行为与当前候选交互”的时间跨度分布（即 $r_{ab}^{p,t}$ 中的大时间桶在训练期根本没被激活过）。而 Stochastic Length 从长达数月的完整历史中抽稀采样，让模型在省算力的同时，全程都在接触跨月度的真实时间跨度。
 
 ---
 
@@ -323,7 +320,7 @@ class SequentialFeatures(NamedTuple):
    源码是如何处理跨越几个月的连续时间戳差值的？如果直接拿秒级时间差 $|t_b - t_a|$ 建表，几千万秒的跨度根本没法建查找表。源码的做法非常巧妙：先将成对时间戳差值裁剪到正数并除以时间步基本单位（如 60 秒），然后**取自然对数再除以步长常数 $\log(\text{bucket\_divisor})$ 向下取整**，把从几秒钟到几个月的时间跨度平滑映射进有限的 `num_buckets`（默认 128 个桶）内。这样一来，近期几分钟内的时间差拥有极高的分辨率，而几个月前的远期历史则自动归并到大时间桶里，与相对位置偏置 `RelativePositionalBias` 相加后直接注入注意力矩阵。
 2. **一维紧凑的 `SequentialTransductionUnitJagged`**：
    在单层 HSTU 的前向传播中，输入 `x` 摒弃了形状为 `[B, N, D]` 的三维填充稠密张量，直接采用形状为 `[sum(past_lengths), D]`、配有一个偏移量数组 `x_offsets` 的二维 **Jagged Tensor**。
-   代码首先对 `x` 做 LayerNorm 并通过单层线性层 `self._uvqk` 一口气算出拼接在一起的 `u, v, q, k`，经 `F.silu` 激活后切分开来；随后在 `_hstu_attention_maybe_from_cache()` 中计算 `QK^T + rel_attn_bias`，过一层 `F.silu(qk_attn) / n`（这就是废除 Softmax 后的逐点激活注意力。），乘上 `v` 后通过 `torch.ops.fbgemm.dense_to_jagged` 转回紧凑不规则张量；最后执行最核心的一行门控交叉：
+   代码首先对 `x` 做 LayerNorm 并通过单层线性层 `self._uvqk` 一口气算出拼接在一起的 `u, v, q, k`，经 `F.silu` 激活后切分开来；随后在 `_hstu_attention_maybe_from_cache()` 中计算 `QK^T + rel_attn_bias`，过一层 `F.silu(qk_attn) / n`（这就是废除 Softmax 后的逐点激活注意力），乘上 `v` 后通过 `torch.ops.fbgemm.dense_to_jagged` 转回紧凑不规则张量；最后执行最核心的一行门控交叉：
 
 ```python
 # Norm(A(X)V(X)) 与门控分支 u 做逐元素乘积，再经线性层 _o 投出并加上残差连接

@@ -18,16 +18,13 @@ draft: false
 
 为什么大规模多任务排序模型这么容易在训练中途突然“暴毙”？为什么大家熟知的标准梯度裁剪（Gradient Clipping, GC）和自适应梯度裁剪（Adaptive Gradient Clipping, AGC），到了基于 Adagrad 训练的推荐模型里常常拦不住这种崩盘？
 
-Google 与 YouTube 团队在 KDD 2023 发表的 **[Improving Training Stability for Multitask Ranking Models in Recommender Systems](https://dl.acm.org/doi/10.1145/3580305.3599846)**（[arXiv 预印本](https://arxiv.org/abs/2302.09178)、[TensorFlow Recommenders 官方源码](https://github.com/tensorflow/recommenders/blob/main/tensorflow_recommenders/experimental/optimizers/clippy_adagrad.py)），正是为了彻底解决这一工业痛点。透过具体的公式与实验，这篇论文提炼出了**四条极具启发性的优化器设计哲学**：
+Google 与 YouTube 团队在 KDD 2023 发表的 **[Improving Training Stability for Multitask Ranking Models in Recommender Systems](https://dl.acm.org/doi/10.1145/3580305.3599846)**（[arXiv 预印本](https://arxiv.org/abs/2302.09178)、[TensorFlow Recommenders 官方源码](https://github.com/tensorflow/recommenders/blob/main/tensorflow_recommenders/experimental/optimizers/clippy_adagrad.py)），正是为了彻底解决这一工业痛点。围绕大规模多任务精排模型的训练失稳机理，Clippy 在优化器动力学层面确立了四项核心设计原则：
 
 1. **约束“参数真正走出的步长”，放弃只盯原始梯度**（Clip the Effective Update, Not the Raw Gradient）：在 Adagrad 优化器中，决定参数移动多少的是经过历史梯度平方累加器缩放、并乘上当前学习率后的实际更新量 $\Delta w_t = \eta_t g_t G_t^{-1/2}$。一个平时罕见激活的坐标哪怕原始梯度 $g_t$ 并不算大，除以极小的累加器 $G_t^{1/2}$ 后也会变成巨大的参数跳变；盯着原始梯度做裁剪，根本管不住预条件化之后的步长失控。
 2. **用逐坐标无穷范数取代被大层宽稀释的二范数**（Coordinate-wise $L_\infty$ Bound over $L_2$ Dilution）：精排模型的共享隐藏层动辄宽达 4096 维（单层超过 1600 万个参数）。当某几个特征坐标在失稳前夜出现极端跳变时，全局 $L_2$ 范数会被上千万个正常坐标大幅摊薄，导致 GC 与 AGC 给出的缩放力度弱了整整两个数量级。Clippy 改为逐坐标核算安全上界，并取全层最严苛的缩放比统一作用于整层——既保住了该层更新矢量的几何方向，又绝不允许任何一个单点坐标越界。
 3. **双阈值阶段自适应：初期靠绝对下界破冰，中后期靠相对尺度巡航**（Absolute Floor for Cold Start, Relative Bound for Mature Scaling）：如果只限制更新量与参数模长的相对比例（$\lambda_{\mathrm{rel}}|w_t|$），零初始化的偏置项与初期极小的权重就会因为上界为 0 而被死锁。引入绝对安全下界 $\lambda_{\mathrm{abs}}$ 后，Clippy 在参数接近 0 的起步期自动表现为定值裁剪，待参数增长成型后平滑切换为按参数模长比例放缩的相对控制。
 4. **把优化器变成层间稳定性探针，隔离异常梯度污染**（Optimizer as a Diagnostic Probe with Outlier Isolation）：通过导出每一层的裁剪系数 $\sigma_t$，并在源码实现中采用“延迟累加器更新（Delayed Accumulator Update）”，系统不仅能实时定位全网最脆弱的瓶颈层，还能防止单次极端异常梯度永久撑大 Adagrad 累加器、进而废掉该坐标后续的学习能力。
 
-下面我们顺着这四条设计哲学，从多任务精排的失稳机理出发，一步步拆解 Clippy 的数学设计、实验证据与生产级源码实现。
-
----
 
 ## 1. 为什么多任务精排模型总在训练中途崩盘？
 
@@ -222,7 +219,7 @@ $$
 
 ![Fig. 8: Statistics from other layers](/images/blog/clippy-multitask-ranking-stability/clippy-fig8-other-layer-stats.webp)
 
-补充材料 Fig. 8 还展示了失稳时刻 `step-b` 在其余各层上的表现。最抓人眼球的是中间列（Classification Task Layer Weights，二分类任务头）：在 `step-b` 时刻，这一层的全局梯度二范数几乎没有任何起伏，导致 GC 和 AGC 给出的裁剪系数恒等于 `1.0`（完全未触发裁剪）；而 Clippy 却依靠逐坐标检查，敏锐抓住了该任务头内部少数坐标上的预条件步长突变，果断将裁剪系数压低到 `0.1` 以下完成拦截。
+补充材料 Fig. 8 还展示了失稳时刻 `step-b` 在其余各层上的表现。尤为典型的是中间列（Classification Task Layer Weights，二分类任务头）：在 `step-b` 时刻，这一层的全局梯度二范数几乎没有任何起伏，导致 GC 和 AGC 给出的裁剪系数恒等于 `1.0`（完全未触发裁剪）；而 Clippy 却依靠逐坐标检查，敏锐抓住了该任务头内部少数坐标上的预条件步长突变，果断将裁剪系数压低到 `0.1` 以下完成拦截。
 
 ### 4.3 走出推荐系统：Transformer 机器翻译上的边界检验
 
@@ -282,7 +279,7 @@ $$
 
 在论文 Algorithm 1 中，第 2 步是先把当前梯度平方 $g_t^2$ 加进累加器 $G_t = G_{t-1} + g_t^2$，第 3 步再用新的 $G_t$ 算预条件步长 $r_t = g_t G_t^{-1/2}$。
 
-但在真实的流式训练中，这样做有一个严重的隐患：万一某一步因为上游日志异常，产生了一个比平时大一万倍的极端离群梯度（Outlier Gradient）$g_t$，如果直接将 $g_t^2$（放大一亿倍。）累加进 $G_t$，那么哪怕这一步的更新 $\Delta w_t$ 被 Clippy 成功拦住了，**累加器 $G_t$ 却已经被这一个异常 batch 永久撑爆了**。由于 Adagrad 的累加器只增不减，在此后的几百万步里，$G_t^{-1/2}$ 都会趋近于 0，相当于这个参数坐标的有效学习率被永久废掉了。
+但在真实的流式训练中，这样做有一个严重的隐患：万一某一步因为上游日志异常，产生了一个比平时大一万倍的极端离群梯度（Outlier Gradient）$g_t$，如果直接将 $g_t^2$（放大一亿倍）累加进 $G_t$，那么哪怕这一步的更新 $\Delta w_t$ 被 Clippy 成功拦住了，**累加器 $G_t$ 却已经被这一个异常 batch 永久撑爆了**。由于 Adagrad 的累加器只增不减，在此后的几百万步里，$G_t^{-1/2}$ 都会趋近于 0，相当于这个参数坐标的有效学习率被永久废掉了。
 
 为了堵住这个漏洞，`ClippyAdagrad` 在源码中引入了两个精妙的控制开关（默认 `use_standard_accumulator_update=False`）：
 1. **先用旧累加器算步长并裁剪**：在 `step` 开始时，暂不更新累加器，先拿上一步的旧累加器 $G_{t-1}$ 计算预条件因子 `(G_{t-1} + epsilon)^{-1/2}` 与未裁剪步长 `delta`，并调用 `shrink_by_references` 算出本步的裁剪系数 `clipping_factor`（即 $\sigma_t$）。

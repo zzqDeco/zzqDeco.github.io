@@ -18,16 +18,13 @@ draft: false
 
 这件事如果交给传统的单目深度估计或神经表面重建，你只能拿到一层像石膏外壳一样的“2.5D 前表面”：稍微转个视角，书桌背面和被挡住的墙角全是大黑洞，而且所有物体粘成一张大网格，根本没法单独拖动那台笔记本电脑。反过来，如果交给 Scan2CAD、ROCA 这类传统的端到端室内 CAD 对齐网络，它们受限于封闭的训练词表，眼里只有“床、沙发、大桌子”这八九类大件家具，桌上的电脑、书本、台灯和墙上的挂画统统会被当成背景噪点无视掉；更糟糕的是，逐个物体独立预测出的三维位姿一旦拼进同一个房间，立刻会出现桌子悬空、椅子腿插进地板、书本飘在半空的穿模灾难。
 
-面对这一连串棘手的系统级耦合难题，西蒙菲莎大学（SFU）与布朗大学团队提出的 **[Diorama: Unleashing Zero-shot Single-view 3D Scene Modeling](https://arxiv.org/abs/2411.19492v1)**（入选 ICCV 2025 Highlight，[项目主页](https://3dlg-hcvc.github.io/diorama/) / [官方代码](https://github.com/3dlg-hcvc/diorama)）交出了一份极具工程穿透力的答卷。透过繁复的六个子模块看本质，Diorama 的整套架构建立在**四条核心设计哲学**之上：
+面对这一连串棘手的系统级耦合难题，西蒙菲莎大学（SFU）与布朗大学团队提出的 **[Diorama: Unleashing Zero-shot Single-view 3D Scene Modeling](https://arxiv.org/abs/2411.19492v1)**（入选 ICCV 2025 Highlight，[项目主页](https://3dlg-hcvc.github.io/diorama/) / [官方代码](https://github.com/3dlg-hcvc/diorama)）交出了一份极具工程穿透力的答卷。为了在零样本条件下从单张复杂室内照片恢复可编辑的三维场景，Diorama 在感知、检索与物理布局优化上构建了四层解耦机制：
 
 1. **承认单视角欠约束，用“分析即合成”的多假设 CAD 装配替代病态像素重建**（Analysis-by-Synthesis with Multi-Hypothesis CAD Assembly）：单张照片本质上不可能唯一决定被遮挡背面的真实几何与绝对尺度。Diorama 果断放弃逐像素捏网格的路线，转而将输出契约定义为结构化的 `SceneSpec`（有界建筑平面 + 带 9-DoF 位姿与支撑父节点的 CAD 资产集合），并保留多个检索候选生成多组合理的场景装配假设（Arrangements）——主动牺牲像素级表面花纹的精确复刻，换取 100% 完整的三维拓扑与开箱即用的对象级交互编辑能力。
 2. **先擦除家具再拟合房间，用“空房修复 + 法线聚类”攻克非曼哈顿建筑外壳**（Foreground Erasing before Plane Fitting in PlainRecon）：在塞满家具的室内点云里直接跑平面拟合，大书柜、桌面与墙面的点云法线几乎平行，算法根本分不清哪块是墙、哪块是柜子。PlainRecon 采取了绝妙的逆向拆解：先用高召回率前景分割配合图像修复（Inpainting）把照片里的家具统统“搬空”，还原出干净的毛坯空房图像，再在单目几何上做迭代法线聚类与旋转卡壳边界提取，无需正交长方体（Manhattan）假设即可实现 100% 稳定的房间外壳重建。
 3. **让多模态大模型推理“谁撑着谁”，让稠密块特征配准“摆在哪儿”**（VLM for Topological Support Tree, Patch Correspondence for Metric Pose）：严守不同基础模型的能力边界——GPT-4o 直接报三维米制坐标极不靠谱，但配合图像上的数字标签（Set-of-Mark），它极其擅长看图推理出“书本放在书桌上、显示器架在支架上、挂画挂在右墙上”的有向无环支撑树；而定量的 9-DoF 初始位姿，则交给 DINOv2 在 180 个预渲染视图上的双向循环块匹配、Umeyama-RANSAC 与 GigaPose 尺度回归网络协同求解。
 4. **用四阶段课程优化解开“贴合支撑面”与“防穿模排斥”的梯度死锁**（Stage-Wise Curriculum over All-in-One Layout Optimization）：如果把法线朝向对齐、贴合支撑面和三维包围盒（OBB）防碰撞损失一锅端同时放开优化（All-in-One），物体还没转正就被非光滑的碰撞排斥梯度推飞了，整体布局合格率只有惨淡的 `0.15`。Diorama 通过选择性梯度截断（`detach`），严格按照“先掰正接触面朝向（Orientation）$\rightarrow$ 再垂直拉向支撑平面（Placement）$\rightarrow$ 接着在支撑面内推开穿模物体（Space）$\rightarrow$ 最后回补高度与贴墙粘附（Refinement）”的四步课程推进，将布局合格率一举拉升至 `0.92`。
 
-下面我们就顺着这四条设计哲学，结合论文推导与开源仓库（基线提交 [`ec54d826`](https://github.com/3dlg-hcvc/diorama/tree/ec54d826cf6b39c6daf88947da897ff9626e5d61)）的实现细节，层层剖析这套零样本单图三维场景建模系统。
-
----
 
 ## 1. 任务重塑与系统全景：把单图恢复转化为结构化场景装配
 
@@ -317,7 +314,7 @@ $$
 ![DiffCAD、ROCA 与 Diorama 使用的 Scan2CAD 评价集合差异](/images/blog/diorama-zero-shot-single-view-3d-scene-modeling/diorama-fig13-evaluation-set-differences.webp)
 
 把 Fig. 7、Table 6 与 Fig. 13 对照起来看，非常客观地揭示了“域内强监督专家”与“开放世界零样本通才”之间的真实权衡：
-- **在传统封闭大件家具上，域内强监督依然占优**：在 Table 6 统计的浴缸、床、垃圾桶、沙发等 9 类常见家具上，背熟了 ScanNet 相机分布与资产库先验的全监督模型 ROCA 拿到了 `8.72 / 12.87` 的类别/实例平均准确率，高于零样本无训练的 Diorama（`3.55 / 5.87`）。这很大程度上是因为真实 ScanNet 视频帧存在严重的运动模糊与残缺视角，原生 DINOv2 零样本块匹配在模糊大家具上的鲁棒性不如专门在大规模 NOC 数据集上微调过的几何特征（这也正是本系列精读的后续工作 **[SUFLECA](/blog/sufleca-cad-to-image-alignment-feature-learning-paper-reading/)** 重点攻克并大幅反超全监督方法的突破口。）。
+- **在传统封闭大件家具上，域内强监督依然占优**：在 Table 6 统计的浴缸、床、垃圾桶、沙发等 9 类常见家具上，背熟了 ScanNet 相机分布与资产库先验的全监督模型 ROCA 拿到了 `8.72 / 12.87` 的类别/实例平均准确率，高于零样本无训练的 Diorama（`3.55 / 5.87`）。这很大程度上是因为真实 ScanNet 视频帧存在严重的运动模糊与残缺视角，原生 DINOv2 零样本块匹配在模糊大家具上的鲁棒性不如专门在大规模 NOC 数据集上微调过的几何特征（这也正是本系列精读的后续工作 **[SUFLECA](/blog/sufleca-cad-to-image-alignment-feature-learning-paper-reading/)** 重点攻克并大幅反超全监督方法的突破口）。
 - **在开放世界小物体与空间物理合理性上，Diorama 展现出显著优势**：看 Table 6 的 `others`（开放长尾类别）一列，受限于封闭分类头的 ROCA 与 DiffCAD 无法处理（`-`），而 Diorama 稳稳拿下了 `4.76`；再看 Fig. 7 的定性渲染，ROCA 和 DiffCAD 不仅彻底漏掉了办公桌上的两台显示器、键盘和地面杂物，而且预测出的办公椅横七竖八地插在桌子里面；Diorama 则凭借场景图与四阶段优化，把椅子、桌子与桌面双显示器整理得井井有条。
 
 ### 6.3 互联网野生照片、文本生场景与对象级交互编辑
@@ -388,7 +385,7 @@ $$
 - **检索式 CAD 表示的“形似而非真身”**：用检索出的现成 CAD 模型替代原图物体，虽然换来了干净完整的 3D 网格，但搜出来的沙发在布料褶皱、抱枕花纹和扶手弧度上毕竟跟照片里的实物存在差异，无法满足文物数字化或高精度工业数字孪生对像素级一致性的要求。
 - **“免训练”背后的重型推理栈**：虽然不需要在目标场景上做端到端训练，但跑通一次完整推理需要依次加载七八个视觉大模型、遍历 180 张参考渲染图算块匹配，还要调商业 GPT-4o API，冷启动与单图计算开销依然不轻。
 
-### 8.2 在 3D 场景建模与生成版图中的位置
+### 8.2 单图三维场景重建与生成路线对比
 
 如果把 Diorama 放进本站精读过的整个三维视觉技术版图中，你会看到一条非常精彩的互补与进化脉络：
 

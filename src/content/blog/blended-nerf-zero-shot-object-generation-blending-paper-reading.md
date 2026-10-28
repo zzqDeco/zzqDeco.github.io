@@ -21,16 +21,13 @@ draft: false
 
 为什么在现有 NeRF 里做局部语义编辑这么难？因为标准 NeRF 把整个三维世界的几何密度与辐射颜色全部耦合进了同一个多层感知机（MLP）的权重里。第一，网络内部根本没有 `object_id=pinecone` 这样的显式实例边界，牵一发而动全身，直接用文本损失微调网络权重会让背景跟着一起扭曲退化；第二，零样本视觉语言模型（如 CLIP 或 BLIP）提供的图文余弦相似度监督粒度极粗，如果直接拿去优化三维空间，网络会疯狂钻空子——要么利用周围背景的颜色骗取高分，要么在半空中刷出一层只有正对着看才像目标物体的二维扁平贴纸（Billboard Effect）；第三，如果强行用三维包围盒把新旧两个场硬拼在一起，包围盒的六个切面上就会暴露出刀割般的几何断层与色彩接缝。
 
-面对这一连串工程痛点，耶路撒冷希伯来大学团队提出的 **[Blended-NeRF: Zero-Shot Object Generation and Blending in Existing Neural Radiance Fields](https://arxiv.org/abs/2306.12760v2)**（[项目主页](https://www.vision.huji.ac.il/blended-nerf/) / [官方代码](https://github.com/orig333/Blended-NeRF)）给出了一套干净利落的解法。如果剥开具体的实现细节看骨架，Blended-NeRF 的成功建立在**四条核心设计哲学**之上：
+面对这一连串工程痛点，耶路撒冷希伯来大学团队提出的 **[Blended-NeRF: Zero-Shot Object Generation and Blending in Existing Neural Radiance Fields](https://arxiv.org/abs/2306.12760v2)**（[项目主页](https://www.vision.huji.ac.il/blended-nerf/) / [官方代码](https://github.com/orig333/Blended-NeRF)）给出了一套干净利落的解法。为了在不破坏原场景辐射场的前提下实现零样本局部增删改，Blended-NeRF 在体积渲染管线中引入了四项核心机制：
 
 1. **克隆原场景作生成起点，用双分支隔离守护背景保真度**（Clone-and-Freeze Dual-Branch Architecture）：系统并行维护两个结构完全一致的辐射场——一份彻底冻结的**原始分支** $F^O_\theta$ 用来锁死非编辑区，另一份**生成分支** $F^G_\theta$ 直接从 $F^O_\theta$ 的收敛权重克隆初始化。继承原场景权重相当于把相机坐标系、空间尺度与局部光照基调直接赋予了生成分支，使其无需从随机噪声摸索整个世界；而在训练期，系统仅对穿过 3D ROI 包围盒的光线片段做积分（ROI-only Rendering），从物理上斩断了语义梯度篡改背景的可能。
 2. **用三维距离衰减算子替代二维羽化，在光线采样点层消除盒边界接缝**（Sample-Level Distance Smoothing over 2D Feathering）：摒弃在渲染后的 2D 图像上做图层叠加的思路，将新旧场的混合下沉到三维光线采样点（Ray Sample）层级。通过定义从 ROI 中心向四周指数衰减的距离平滑函数 $f(\mathbf{x})$，让盒内核心区由生成分支主导、越靠近盒边缘越平滑过渡回原始分支，从而保证从任意 360 度环绕视角观察都不会露出硬切面。
 3. **把“增量包裹”与“擦除替换”浓缩为激活函数内外的代数位置选择**（Pre-Activation vs. Post-Activation Density Algebra）：体密度必须经过非负激活函数 $\phi(\cdot)$ 才能变成合法的物理不透明度。作者巧妙利用了这一非线性边界：若在激活函数**外部**将双分支密度相加（$\phi(\sigma_O)+\phi(\sigma_G)$），两项均非负，生成分支只能往原空间里加东西，天然对应“藤蔓包裹车轮”的增量共生；若在激活函数**内部**将预激活 logit 相加（$\phi(\sigma_O+\sigma_G)$），生成分支就能输出负值 $\sigma_G < 0$ 把原物体的正密度抵消归零，天然实现“擦除旧松果、长出新菠萝”的原位替换。
 4. **用透射率下限与视差方差对抗 CLIP 的“二维贴纸”作弊**（Geometric Priors against 2D Adversarial Cheating）：为了堵死 CLIP 靠半透明雾气或扁平纸片骗分的漏洞，系统在 ROI 局部渲染之上配套了自适应包围盒尺寸的环绕相机采样、随机背景填充、强迫盒内长出不透明实体的**透射率损失**（Transmittance Loss），以及强迫局部视差图产生三维起伏的**深度方差损失**（Depth Variance Loss），逼着二维语义信号凝结成扎实的三维体积。
 
-下面我们就顺着这四条设计哲学，结合论文数学推演与开源 PyTorch 源码，把整套局部编辑与体融合机制拆解清楚。
-
----
 
 ## 1. 为什么在现有 NeRF 里做局部“微创手术”这么难？
 

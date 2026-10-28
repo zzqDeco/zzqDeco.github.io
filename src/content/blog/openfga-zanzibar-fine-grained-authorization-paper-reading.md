@@ -26,7 +26,7 @@ draft: false
 
 2019 年，Google 在 USENIX ATC 发表了 **Zanzibar** 论文，首次公开了支撑 Google Docs、Drive、Calendar、Cloud、YouTube 等数十亿级产品统一细粒度授权的底层架构；而 CNCF 生态的 **OpenFGA** 则将 Zanzibar 的关系授权思想转化为开源、可自托管、支持通用 SQL 数据库与声明式建模语言的工程引擎。
 
-透过论文与源码的表象，Zanzibar 与 OpenFGA 的整套体系建立在**四条核心设计哲学**之上：
+结合 Google Zanzibar 论文与 OpenFGA 源码实现，现代细粒度关系授权系统（ReBAC）的工程架构建立在四项核心机制之上：
 
 1. **将权限判断升维为有向图可达性搜索**（Authorization as Directed Graph Reachability）：抛弃散落的代码分支与写时权限冗余展开，用极简的关系元组 `<object>#<relation>@<user>` 记录原子事实（指针），用静态版本化的授权模型（`schema 1.1`）声明继承与集合代数规则。于是，“用户 $u$ 能否访问资源 $o$”被严格转化为有向图上的起点到终点可达性搜索问题。
 2. **用因果快照一致性对抗分布式“新敌人问题”**（Causal Snapshot Consistency against the New Enemy Problem）：在多副本与缓存架构下，“先踢出前员工、紧接着写入机密文档”极易因权限缓存滞后而导致机密泄露。Zanzibar 设计了不透明一致性令牌 **Zookie**，结合 Google Spanner 的 TrueTime 外部一致性，让 98% 以上的请求在本地安全快照（`Check Safe`）中极速完成，仅在发生权限变更的敏感窗口内触发最新同步读（`Check Recent`）；OpenFGA 则在通用 PostgreSQL/MySQL 之上，通过请求级 `consistency` 策略与带模型版本的缓存键，赋予业务在毫秒级低延迟与强实时读取之间按需切换的控制权。
@@ -34,8 +34,6 @@ draft: false
 4. **静态关系拓扑与动态上下文的正交融合**（Orthogonal Fusion of ReBAC Graph and ABAC Context）：纯关系图难以表达时间窗口、IP 网段等动态标量约束，纯属性策略（ABAC）又难以表达多层资源拓扑。OpenFGA 通过持久层 **Conditions**（基于 Google CEL 的类型化条件函数）与请求期 **Contextual Tuples**（仅在单次请求内存中参与图推导、不落盘的瞬态元组），在不污染底层关系图的前提下实现了 ReBAC 与 ABAC 的无缝合流。
 
 本文将沿着**“Zanzibar 论文机制推导”**与**“OpenFGA（`v1.18.1`）+ CLI（`v0.7.17`）源码工程实现”**双线展开，从关系元组语法、Schema 1.1 建模、图遍历源码执行、Zookie 一致性协议，一路推演到生产级 SaaS 建模、RAG 权限过滤与存量系统平滑迁移。
-
----
 
 ## 1. 为什么传统 RBAC 会失效？授权系统的三层正交解耦
 

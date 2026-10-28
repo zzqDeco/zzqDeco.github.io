@@ -22,7 +22,7 @@ draft: false
 
 面对这些痛点，蚂蚁集团知识图谱团队与浙江大学联合提出的 **[KAG: Boosting LLMs in Professional Domains via Knowledge Augmented Generation](https://arxiv.org/abs/2409.13731v3)**（配套开源仓库 [OpenSPG/KAG](https://github.com/OpenSPG/KAG) 与知识底座 [OpenSPG](https://github.com/OpenSPG/openspg)），给出了一套将符号知识工程与大语言模型深度融合的系统方案。在 HotpotQA、2WikiMultiHopQA 与 MuSiQue 三大多跳推理基准上，KAG 相比同基座模型的 IRCoT + HippoRAG 取得了 **`+12.5`、`+19.1` 与 `+12.2` 个百分点**的 F1 绝对提升（相对提升分别达 `19.6%`、`33.5%` 与 `33.4%`）。
 
-透过具体的模块与实验表格，KAG 的核心突破建立在**四条环环相扣的设计哲学**之上：
+针对专业领域问答中向量检索缺乏逻辑跳数与纯图谱检索缺乏原文容错的矛盾，OpenSPG-KAG 在知识表示、对齐与混合求解上构建了四层核心机制：
 
 1. **三层知识表征与图-文互索引：用结构层做精确导航，用原文层做无损兜底**（Hierarchical Representation with Mutual Indexing）：纯专家 Schema 图谱太僵硬、覆盖慢，纯开放信息抽取（OpenIE）噪声大、缺规范，而纯文本块（Chunk）缺逻辑结构。KAG 通过 LLMFriSPG 将三者统一在同一套双向互索引体系中——上层图结构负责锁定实体约束与多跳路径，底层原文 Chunk 负责保留长尾条件与完整语境。
 2. **离线与在线双重概念对齐：用受控语义关系弥合开放抽取的粒度鸿沟**（Concept-Bridged Semantic Alignment）：开放抽取会产生海量同义词碎片与粒度错位。KAG 引入显式的概念图（Concept Graph）与六类有向语义关系（`isA`、`belongTo`、`isPartOf`、`contains`、`synonym`、`causes`），离线阶段将零散实例挂载到稳定的概念层级树上，在线阶段则顺着概念桥接路径把用户的口语化提问导航至专业知识索引。
@@ -30,8 +30,6 @@ draft: false
 4. **离线构建与在线求解共享模型底座：NLU、NLI、NLG 协同微调**（Co-designed Builder/Solver Capabilities）：知识图谱构建（抽实体、判同义、写摘要）与在线问答求解（解析逻辑形式、判蕴含、受控生成）本质上依赖同一组底层语言能力。通过指令重构、语义关系推断与知识反馈对齐增强基座模型，能同时抬高离线构图质量与在线推理上限。
 
 ![KAG framework](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig01-framework.webp)
-
----
 
 ## 1. 为什么向量 RAG 搞不定专业领域问答？系统全景与架构权衡
 

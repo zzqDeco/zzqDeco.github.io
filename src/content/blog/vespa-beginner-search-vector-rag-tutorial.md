@@ -18,16 +18,13 @@ draft: false
 
 这套拼装架构在 Demo 阶段跑得顺风顺水，可一旦上了生产高并发流量，延迟和成本就会迅速失控。原因很直观：假设每次查询需要从文本路和向量路各召回 500 个候选文档，为了给这 1,000 个候选打分排序，业务网关必须先把 1,000 个文档 ID 拉回内存，再去 Redis 批量捞取上千条实时属性，拼接成庞大的 JSON/Protobuf 载荷发给排序服务。最终你会发现，**80% 的 P99 延迟和 CPU 开销都浪费在了跨服务的网络序列化与候选数据搬运上**，真正花在相关性计算上的时间反而微乎其微。
 
-**Vespa**（Vespa.ai / Vespa Engine）正是为了终结这种“数据到处搬运”的碎片化架构而生的开源大规模实时检索与服务引擎。透过繁多的配置项看本质，Vespa 的整套架构建立在**四条环环相扣的设计哲学**之上：
+**Vespa**（Vespa.ai / Vespa Engine）正是为了终结这种“数据到处搬运”的碎片化架构而生的开源大规模实时检索与服务引擎。围绕大规模低延迟混合检索与多阶段实时排序，Vespa 的底层存储与计算架构建立在四项核心工程原则之上：
 
 1. **计算向数据靠拢**（Compute-near-Data over Data Movement）：将词法倒排索引（Inverted Index）、HNSW 向量图索引、内存列式属性（Attribute）以及张量/模型推理引擎统一部署在同一个有状态内容节点（Content Node）中。检索出上千个候选后，直接在数据所在的内存地址上原地读取特征、执行多阶段打分，最后只把胜出的几十条结果摘要通过网络传回上层。
 2. **多阶段级联排序漏斗**（Cascaded Phased Ranking）：相关性精度与算力开销天生存在矛盾。Vespa 在架构层面原生定义了三阶段排序漏斗：在每个数据分片上用廉价代数表达式对全量匹配候选做粗排（`first-phase`），仅对分片内前 $N$ 名运行特征交叉、GBDT 或轻量网络做精排（`second-phase`），最后在无状态容器层对跨分片归并后的全局前 $K$ 名做重型交叉编码器重排或分数归一化（`global-phase`）。
 3. **单次执行计划内的过滤与双路召回融合**（Single-Pass Filtered Hybrid Retrieval）：在分离架构中，“先过滤还是先做向量近邻”是个臭名昭著的两难问题——后置过滤（Post-filtering）极易把 Top-$K$ 候选滤空，而外置前置过滤又会破坏 HNSW 图的连通性。Vespa 将结构化属性位图（Bitvector）直接注入 HNSW 图游走与倒排求交算子内部，在单次 YQL 查询计划中同时完成多租户硬过滤、BM25 词面召回与向量近邻搜索。
 4. **声明式应用包与白盒特征归因**（Declarative Application Package & White-Box Match Features）：把集群拓扑（`services.xml`）、字段物理布局（`index` / `attribute` / `summary`）和排序公式（`rank-profile`）收拢进统一的声明式配置包，并允许通过 `match-features` 随每条命中文档输出所有子特征的真实计算值，让线上相关性调优彻底告别黑盒盲猜。
 
-下面我们就顺着这四条设计哲学，用一个贯穿全文的 `docs-search` 实战工程，从本地 Docker 容器启动开始，一步步走完应用包配置、Schema 物理存储设计、数据实时写入、YQL 检索、BM25 与 HNSW 混合排序调试，直至演进为生产级多租户 RAG Chunk 检索后端。
-
----
 
 ## 1. 架构全貌与核心心智模型：为什么不把所有需求都塞进普通向量库？
 
@@ -684,7 +681,7 @@ rank-profile hybrid-production inherits semantic {
 }
 ```
 
-看看这段配置里的精妙之处：在 `global-phase` 中，内置算子 `reciprocal_rank(feature, k)` 会自动根据当前 Top-20 候选在该特征上的相对名次 $r \in \{1, 2, \dots, 20\}$ 计算 $\frac{1}{k + r}$（常取 $k=60$）。这样一来，不管 `lexical_score` 是 30 分还是 3 分，也不管向量用的是余弦距离还是内积，它们在 `global-phase` 里都被转换成了量纲完全一致的名次得分，彻底解决了混合检索的分值支配难题。
+这段配置的核心机制在于：在 `global-phase` 中，内置算子 `reciprocal_rank(feature, k)` 会自动根据当前 Top-20 候选在该特征上的相对名次 $r \in \{1, 2, \dots, 20\}$ 计算 $\frac{1}{k + r}$（常取 $k=60$）。这样一来，不管 `lexical_score` 是 30 分还是 3 分，也不管向量用的是余弦距离还是内积，它们在 `global-phase` 里都被转换成了量纲完全一致的名次得分，彻底解决了混合检索的分值支配难题。
 
 ### 7.2 响应结构拆解与 `tracelevel` 执行计划剖析
 

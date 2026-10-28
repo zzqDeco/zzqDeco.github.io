@@ -24,16 +24,13 @@ draft: false
 
 为了系统性拆解这四堵墙，清华大学与 Z.AI 团队推出了 **[AgentRL: Scaling Agentic Reinforcement Learning with a Multi-Turn, Multi-Task Framework](https://arxiv.org/abs/2510.04206)**（并完整开源了包含训练引擎与环境控制面的 [THUDM/AgentRL](https://github.com/THUDM/AgentRL) 代码库）。在不做任何冷启动 SFT 的前提下，AgentRL 将 `Qwen2.5-32B-Instruct` 在五大环境上的平均成功率从 `37.2%` 拉升至 **`70.4%`**，用单一多任务模型追平了五个单任务专家模型的组合上限（14B 规模下 `67.7%` vs. `67.8%`），并在 16～64 张 H800 GPU 上实现了接近同步基线 **2 倍** 的训练吞吐率。
 
-透过论文推导与开源源码看本质，AgentRL 的成功建立在**四条软硬协同的核心设计哲学**之上：
+围绕多轮多任务强化学习的系统吞吐与策略探索瓶颈，AgentRL 在训练基础设施与算法层面做出了四项核心架构设计：
 
 1. **物理切分推理与训练资源池，用“跨组全异步 + 组内聚拢”消除全局空泡**（Group-Aware Asynchronous Decoupling）：将集群 GPU 物理划分为独立的 SGLang 推理池与 FSDP 训练池，配合有界队列打破“全批次生成完才能进训练”的全局屏障；同时在 `Buffer` 内部以 `group_id` 为键聚拢同一问题的 8 条轨迹——既消除了跨样本与跨阶段的等待气泡，又保住了 GRPO 无需维护同规模 Critic 的显存红利。
 2. **把有状态容器从 GPU 进程剥离，收敛为统一的 Function-Call 控制面**（Centralized Environment Control Plane）：用高并发 Go Controller 与容器化 TaskWorker 统一接管数据库、操作系统等异构沙箱的生命周期，向训练侧仅暴露 `start / observation / end` 三个标准 OpenAI Function-Call 原语，并在 Agent Loop 中通过对话模板差分编码严格隔离模型动作 Token（`loss_mask=1`）与环境观测 Token（`loss_mask=0`）。
 3. **把异步系统的“策略陈旧性”变废为宝，用滞后引擎构造步骤级跨策略探索**（Turn Stale Engines into Step-Level Cross-Policy Explorers）：常规异步 RL 视旧版本策略为需要压制的噪声，AgentRL 却反其道而行之——从推理 GPU 池中专门切出 25% 算力作为每隔 25 步才更新一次权重的 **Stale Rollout Engine**，在单条多轮轨迹的每一个环境步骤（Step）按概率随机切换最新策略与陈旧策略，以零异构模型部署成本实现了跨策略采样（Cross-Policy Sampling），打破单一策略的局部动作死循环。
 4. **在 GRPO 组内比较之上叠加“任务级 Token 标准化”，平抑跨任务梯度干扰**（Two-Level Advantage Normalization）：GRPO 的组内归一化只回答了“同一个问题下哪条轨迹更好”，却解决不了不同任务之间的方差与 Token 数量失衡。AgentRL 在每个训练批次内按任务类别（`data_source`）收集所有有效动作 Token 的优势值做二次标准化，让稀疏难任务与高频短任务在共享梯度中拥有对等的话语权。
 
-下面我们顺着这四条设计哲学，结合论文数学建模与官方仓库源码，逐层剖析整套系统的运转机理。
-
----
 
 ## 1. 从单轮 RLVR 到多轮多任务智能体：问题空间与架构全景
 

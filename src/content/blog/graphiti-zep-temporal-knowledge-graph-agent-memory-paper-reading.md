@@ -24,14 +24,12 @@ draft: false
 
 ![Zep paper title and abstract](/images/blog/graphiti-zep-temporal-knowledge-graph-agent-memory/graphiti-zep-paper-title-abstract.webp)
 
-透过论文推导与 [Graphiti `v0.29.2`](https://github.com/getzep/graphiti/tree/ff7e29ccd127d8d9721b5cbb2163a6407ef915fe) 开源代码，这套架构最核心的工程巧思可以提炼为**四条设计哲学**：
+结合 Zep 论文与 [Graphiti `v0.29.2`](https://github.com/getzep/graphiti/tree/ff7e29ccd127d8d9721b5cbb2163a6407ef915fe) 源码实现，该时序知识图谱记忆引擎的核心架构包含四项关键设计：
 
 1. **三层解耦的记忆图：用原始 Episode 无损溯源，用语义层与社区层加速导航**（Three-Tier Memory Graph with Non-Lossy Provenance）：递归文本摘要最怕一旦漏掉某个细节就永远无法找回。Graphiti 将记忆图拆成原始事件层（Episode Subgraph）、语义实体层（Semantic Entity Subgraph）与高阶社区层（Community Subgraph），并用双向溯源边锁死关联——上层实体和社区负责提炼关系与全局背景，底层 Episode 永远保留一字不改的原始输入。
 2. **双时态事实生命周期：区分“现实何时发生”与“系统何时得知”，用有效期闭合替代物理删除**（Bitemporal Edge Lifecycle）：用户在现实中搬家的时间（Valid Time）和三天后在聊天里告诉 Agent 的时间（Transaction Time）往往不一致。Graphiti 为每条事实边维护四个时间戳，当新事件推翻旧状态时，通过闭合旧边的有效时间窗口将其平滑转为历史归档，从而同时支持“当前状态查询”、“历史时点回溯”与“系统认知审计”。
 3. **局部邻域消歧与增量图维护：拒绝全图重算，把每次写入开销收敛在局部子图**（Localized Incremental Maintenance）：流式记忆系统承受不起每次来一条消息就扫描全图。无论是用“向量 + 全文检索”召回候选节点做实体消歧，还是把事实去重与矛盾检测严格限制在“同一对源/目标实体之间的已有边集合”内，抑或是用邻居多数投票动态更新社区归属，本质上都是为了把单次写入复杂度锁定在局部常数级。
 4. **查询路径去 LLM 化：多路检索 + 轻量级重排 + 线性模板拼装，守住毫秒级在线延迟**（Fast Hybrid Retrieval without LLM-in-the-Loop）：把繁重的 LLM 抽取与消歧留在异步写入阶段，而在用户发起查询的在线关键路径上，纯粹组合余弦相似度、BM25 全文检索与图广度优先遍历（BFS），配合 RRF、MMR、图距离或轻量级 Cross Encoder 毫秒级合成最终上下文。
-
----
 
 ## 1. 为什么传统方案撑不起 Agent 长期记忆？问题拆解与生态位边界
 

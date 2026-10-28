@@ -20,11 +20,9 @@ draft: false
 
 针对这一核心系统矛盾，来自北京大学与 DeepSeek-AI 的研究团队（Xin Cheng、Xingkai Yu、Chenze Shao、Jiashi Li、Yunfan Xiong 等）在 2026 年发布了技术报告 [DSpark: Confidence-Scheduled Speculative Decoding with Semi-Autoregressive Generation](https://github.com/deepseek-ai/DeepSpec/blob/main/DSpark_paper.pdf)，并同步开源了完整的训练与评测框架 [deepseek-ai/DeepSpec](https://github.com/deepseek-ai/DeepSpec)（及 Hugging Face 预训练权重如 [dspark_qwen3_4b_block7](https://huggingface.co/deepseek-ai/dspark_qwen3_4b_block7)）。DSpark 跳出了单纯比拼离线单步接受长度的局部视角，从**草稿生成端**（Draft Better）与**目标验证端**（Verify Smarter）双向重构了高并发推测解码的设计范式。
 
----
-
 ## 1. 如何同时攻克“后缀衰减”与“批容量膨胀”？
 
-在深入数学推导与 `DeepSpec` 源码之前，我们先提炼出 DSpark 贯穿模型架构、训练损失与在线调度的 **4 项核心设计哲学**：
+围绕高并发服务下的验证算力预算与草稿接受率权衡，DSpark 在草稿架构、训练目标与在线调度三个层面引入了四项核心机制：
 
 1. **并行主干保容量与 $O(1)$ 延迟，轻量半自回归顺序头治“后缀衰减”**（Parallel Backbone + Lightweight Sequential Head for Suffix Consistency）：草稿模型设计长期困在“自回归派”与“并行派”的两难中——自回归草稿（如 Eagle3）逐词串行生成，块内前后连贯但耗时呈 $O(\gamma)$ 增长，迫使网络只能做得很浅（单层），牺牲了最关键的首词预测能力；纯并行草稿（如 DFlash）可以堆叠 5 层深网络并在 $O(1)$ 步内同时吐出全部候选位置，但由于位置 $j$ 看不到位置 $j-1$ 实际采样出了什么词，遇到多分支语境时极易拼出语法断裂的后缀，导致条件接受率随位置后移陡峭滑坡（即**后缀衰减**，Suffix Decay）。DSpark 选择在 5 层并行 Transformer 主干之上嫁接一个极轻量的低秩顺序头（Markov / RNN Head）：主干一次性并行算出全局隐藏状态与基础 logits，顺序头仅用占总耗时不到 `1%` 的矩阵向量乘逐步注入前序采样词元依赖，以几乎零延迟代价根治了后缀冲突。
 2. **拒绝“草稿模型自嗨概率”，让置信度头直接拟合分布重叠面积并做后验校准**（Predict Distribution Overlap with Post-Hoc Calibration）：要裁剪低价值草稿后缀，首先得知道每个位置有多大把握通过目标模型验证。传统做法直接使用草稿模型自身的词表最大概率 $\max_v q(v)$，但小容量的草稿模型极易过度自信。DSpark 从拒绝采样的数学本质出发，让专门的置信度头（Confidence Head）直接拟合草稿分布 $q$ 与目标分布 $p$ 的真实重叠面积 $\alpha = 1 - \frac{1}{2}\lVert p - q \rVert_1$；同时考虑到前缀存活率是逐位置置信度的连乘 $a_{r,j} = \prod_{i \le j} c_{r,i}$，任何微小的单步偏差都会在连乘中指数级放大，DSpark 引入了针对累积乘积的后验校准（Post-Hoc Calibration），将期望校准误差（ECE）死死压在 `1%` 左右。

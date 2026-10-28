@@ -26,14 +26,12 @@ draft: false
 
 ![Neo4j property graph model](/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig01-property-graph-model.webp)
 
-纵览整座代码库与论文体系，Neo4j 之所以能在百亿级图规模下保持毫秒级局部多跳遍历与强事务一致性，归根结底建立在**四条核心设计哲学**之上：
+结合 Cypher 形式化语义论文与 Neo4j 内核源码，其能够在百亿级图规模下兼顾毫秒级局部多跳遍历与 ACID 事务一致性，主要源于四层核心架构设计：
 
 1. **免索引邻接与定长记录算术寻址：把 $O(\log N)$ 的全局 B+Tree 查找变成 $O(1)$ 的物理偏移量指针跳转**（Index-Free Adjacency via Fixed-Size Record Offset Arithmetic）：在 `RecordStorageEngine` 中，节点、关系与属性被拆分为各自独立的**定长物理记录文件**。只要知道一个节点或关系的内部长整型 ID，就能通过一行乘法 $\operatorname{offset}(id) = \operatorname{headerSize} + id \cdot \operatorname{recordSize}$ 直接算出它在磁盘与页缓存中的精确字节位置。每个节点记录直接存着第一条关系的物理 ID，每条关系记录又用双向链表串起共享同一端点的前驱与后继关系，彻底省去了多跳连接时的全局索引树搜索。
 2. **声明式图模式与关系代数多集语义的统一：用“表到表的函数复合”管住模式匹配的组合语义**（Declarative Pattern Matching Grounded in Bag Relational Algebra）：用户在 Cypher 中用直观的 ASCII-Art 箭头 `(a)-[:KNOWS]->(b)` 描绘想要寻找的图拓扑，而执行引擎在底层将其严格映射为**变量绑定记录的多集表**（Bag of Records）上的关系代数算子复合，并引入**边同态匹配约束**（Edge Isomorphism，即单条模式内禁止重复经过同一条物理关系）从语言层阻断无意义环路死循环。
 3. **基于统计与迭代动态规划的成本优化器 + 槽位化运行时：把“匹配什么形状”编译成“从哪个锚点出发最省步数”**（IDP Cost-Based Planning + Slotted/Pipelined Execution）：同一个三角或长链模式，从百万级普通标签起步还是从唯一索引锚点起步，中间状态数可以相差上万倍。`CypherPlanner` 读取内核级基数统计（Count Store）与索引选择率，利用迭代动态规划（Iterative Dynamic Programming, IDP）搜索最优逻辑计划，再编译到预分配长整型槽位数组的 `Slotted Runtime`（或企业版按块流转的 `Pipelined Runtime`）执行，将 JVM 堆对象分配压到最低。
 4. **事务状态叠加视图、WAL 预写日志与世代 B+ 树：在指针密集型图结构上守住 ACID 纪律**（Transactional Overlay State + WAL + Generation-Aware Page Management）：在图数据库里插入一条边，需要同时修改源节点、目标节点及相邻关系的多个双向链表指针。Neo4j 通过在事务私有内存 `TransactionState` 中叠加底层 `MuninnPageCache` 快照实现“读己之所写”，提交时转化为物理存储命令顺序追加至 WAL 日志，配合双世代指针写时复制的 `GBPTree` 与 Lucene 全文/向量索引，实现了图结构与 ACID 事务的严密咬合。
-
----
 
 ## 1. 为什么关系表搞不定多跳图遍历？属性图模型与复杂度本质
 
@@ -123,7 +121,7 @@ RETURN r.name, studentsSupervised,
 
 ![Cypher variable bindings](/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig02-variable-bindings.webp)
 
-论文一针见血地指出：Cypher 查询的每一步输出，本质上都是一张由**变量绑定记录**（Record）组成的**多集表**（Bag / Multiset of Records）。
+论文明确指出：Cypher 查询的每一步输出，本质上都是一张由**变量绑定记录**（Record）组成的**多集表**（Bag / Multiset of Records）。
 - **什么是绑定记录 $u$？** 每当图上的一条子路径成功匹配了模式中的变量（如 `r` 和 `s`），就会产出一条从变量名到图元素 ID（节点、关系、路径或标量值）的映射字典，例如 $u = \{r \mapsto n_6, s \mapsto n_7\}$。
 - **为什么必须是多集而非集合**（Bag vs. Set，允许重复行）？因为在执行聚合（如 `sum(x.price)` 或 `count(*)`）之前，不同的匹配路径完全可能投影出相同的剩余变量组合。如果默认去重，不仅每次子句转换都要付出高昂的哈希去重代价，还会把原本来自不同分支的有效计数吞掉。
 - **为什么中间必须插入 `WITH r, count(s) AS studentsSupervised`？** 这是新手写 Cypher 最容易踩的“扇出笛卡尔积”大坑。假设某位研究员指导了 **3 名学生**，同时发表了 **4 篇论文**。如果省掉中间那行 `WITH` 聚合，直接连写两行 `MATCH (r)-[:SUPERVISES]->(s)` 和 `MATCH (r)-[:AUTHORS]->(p1)`，那么第一阶段产出的 3 行绑定记录会在第二阶段各自扩展出 4 篇论文，中间表瞬间膨胀为 $3 \times 4 = 12$ 行。此时再去 `count(s)`，统计出的学生数就会从 3 变成错误的 12。`WITH` 子句在 Cypher 中充当了**显式的关系代数阶段边界与作用域屏障**——只有被 `WITH` 点名导出的变量才能存活到下一阶段，从而在进入下一段一对多扩展前把基数重新拍扁为每个研究员一行。
@@ -354,7 +352,7 @@ neostore.nodestore.db (定长 15 Bytes/条, aligned 格式按页对齐)
 ### 4.2 密集节点（Dense Node）与 `RelationshipGroupStore`：如何拆解超级节点的长链？
 
 顺着上面的链表设计往深处想，你一定会发现一个致命的极端情况（Edge Case）：
-假设节点 $u$ 是一个拥有 **100,000 条 `:FOLLOWS` 粉丝边**、但只有 **2 条 `:WORKED_AT` 雇主边**的大 V 用户。如果这 100,002 条边全都混在上面那条单一的双向链表里，当查询问出 `MATCH (u)-[:WORKED_AT]->(company)` 时，存储游标岂不是要在链表上苦苦遍历十万条毫不相干的 `:FOLLOWS` 边，才能找到那 2 条 `:WORKED_AT` 边？。
+假设节点 $u$ 是一个拥有 **100,000 条 `:FOLLOWS` 粉丝边**、但只有 **2 条 `:WORKED_AT` 雇主边**的大 V 用户。如果这 100,002 条边全都混在上面那条单一的双向链表里，当查询问出 `MATCH (u)-[:WORKED_AT]->(company)` 时，存储游标就必须在链表上顺序扫描十万条无关的 `:FOLLOWS` 边，才能定位到那 2 条 `:WORKED_AT` 边。
 
 为了解决这个痛点，`RecordStorageEngine` 引入了**密集节点自动分桶机制**（Dense Node）：
 - 当一个节点关联的边数量少于阈值（默认配置 `db.relationship_grouping_threshold = 50`）时，它是普通稀疏节点，`nextRelId` 直接指向单条合并的关系双向链表，节省空间；

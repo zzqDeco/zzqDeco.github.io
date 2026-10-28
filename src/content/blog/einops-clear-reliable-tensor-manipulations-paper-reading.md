@@ -22,7 +22,7 @@ Alex Rogozhnikov 发表在 ICLR 2022（Oral）的代表作 **Einops: Clear and R
 
 ![Einops paper title and abstract](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-title-abstract.webp)
 
-深入研读 ICLR 2022 论文与 `einops`（`v0.8.2`）源码可以发现，它的成功建立在**四条高度凝练的设计哲学**之上：
+结合 ICLR 2022 原论文与 `einops`（`v0.8.2`）源码实现，其张量变换原语与编译器架构可归纳为四项核心设计原则：
 
 1. **将隐式位置契约升维为显式轴语义声明**（Declarative Axis Semantics over Positional Index Arithmetic）：拒绝使用脱离上下文的整数下标（如 `permute(0, 2, 3, 1)`）和充满歧义的 `-1` 占位符，强制将“输入各维叫什么、输出各维怎么排、复合维度按什么次序拆合”编码进同一行字符串 Pattern（如 `'b c h w -> b (h w) c'`）。每一处调用既是维度变换指令，也是一道自带上下文的运行时结构断言。
 2. **用三原语集合不变量锁死元素守恒与增减边界**（Set Invariants Separating `rearrange`, `reduce`, and `repeat`）：刻意不设计大包大揽的单一 `transform()` 接口，而是依据左右基本轴集合 $A_L$ 与 $A_R$ 的严格关系切分出三个正交原语——`rearrange`（$A_L = A_R$，双射重排与元素守恒）、`reduce`（$A_R \subset A_L$，显式消轴归约）与 `repeat`（$A_L \subset A_R$，显式增轴复制）。原本在 NumPy/PyTorch 中碎片化的十余种异构 API 由此收拢为统一的集合代数模型。
@@ -30,8 +30,6 @@ Alex Rogozhnikov 发表在 ICLR 2022（Oral）的代表作 **Einops: Clear and R
 4. **零核心依赖的最小后端契约与编译图穿透**（Zero-Dependency Lazy Dispatch & Graph Compiler Penetration）：通过检查 `sys.modules` 实现惰性后端加载（`get_backend`），仅用 `AbstractBackend` 的 9 个最小方法抹平 NumPy、PyTorch、JAX、TensorFlow、Apple MLX 等十余个框架的 API 差异；同时通过 `SymInt` 符号维度传递与 `torch._dynamo.allow_in_graph` 白名单，确保高层字符串 DSL 能够被现代 JIT 编译器（如 `torch.compile`）无损穿透并完成底层算子融合。
 
 本文将沿着**“ICLR 2022 论文设计推导”**与**“`einops v0.8.2` 编译器源码实现”**双线展开，完整剖析 Einstein-like Pattern 语法机制、经典深度学习模型重构案例、两阶段 Recipe 编译器源码、内存视图（View vs Copy）物理条件以及生产级测试规范。
-
----
 
 ## 1. 为什么位置下标 API 是静默 Bug 的温床？
 
@@ -449,13 +447,13 @@ left.composition = [
    因为调用方传入了关键字参数 `axes_names=('kh', 'kw')`，所以在静态编译期，轴 `3 (kh)` 和轴 `5 (kw)` 是已知轴，其余 `0 (b)`, `1 (c)`, `2 (h)`, `4 (w)` 是待从输入 `x.shape` 中推导的未知轴。编译器据此生成 `input_composition_known_unknown`：
    - 物理维 0 (`b`): `known=[], unknown=[0]`
    - 物理维 1 (`c`): `known=[], unknown=[1]`
-   - 物理维 2 (`(h kh)`): `known=[3], unknown=[2]`（仅 1 个未知数 `2`，合法。）
-   - 物理维 3 (`(w kw)`): `known=[5], unknown=[4]`（仅 1 个未知数 `4`，合法。）
+   - 物理维 2 (`(h kh)`): `known=[3], unknown=[2]`（仅 1 个未知数 `2`，合法）
+   - 物理维 3 (`(w kw)`): `known=[5], unknown=[4]`（仅 1 个未知数 `4`，合法）
 3. **计算基本轴置换数组 `axes_permutation` 与归约分界点 `first_reduced_axis`**：
    编译器观察右侧表达式 `'b h w c'`，发现需要保留的基本轴按输出顺序是 `[0 (b), 2 (h), 4 (w), 1 (c)]`；而被消去（需要做 `mean` 归约）的基本轴是 `[3 (kh), 5 (kw)]`。
    编译器将“保留轴”排在前面，“待归约轴”统一排到尾部，得到：
    - `axes_permutation = [0, 2, 4, 1, 3, 5]`
-   - `first_reduced_axis = 4`（意味着置换后的第 4、5 号维度将被一次性 `reduce` 消掉。）
+   - `first_reduced_axis = 4`（意味着置换后的第 4、5 号维度将被一次性 `reduce` 消掉）
 4. **记录最终输出合并规则 `output_composite_axes`**：
    归约消掉尾部两个轴后，剩下的 4 个轴刚好一一对应右侧的 `'b h w c'`，故 `output_composite_axes = [[0], [1], [2], [3]]`。
 

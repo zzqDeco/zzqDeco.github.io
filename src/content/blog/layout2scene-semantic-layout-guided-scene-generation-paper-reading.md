@@ -18,7 +18,7 @@ draft: false
 
 这正是困扰三维场景生成领域的**局部视角语义漂移与重复幻觉**（Local-View Semantic Drift & Duplicate Hallucination）。不仅如此，纯文本驱动的场景生成还面临另外两座大山：其一，如果像 DreamFusion 那样用单个 RGB 扩散模型的分数蒸馏采样（SDS）同时优化三维几何与表面颜色，2D 扩散模型极易“偷懒”——把阴影和凹凸细节直接画在平坦甚至畸变的几何表面上（即“拿贴图伪装几何”），导致换个角度观看时立体结构瞬间崩塌；其二，如果把整间屋子烘焙成一张连续的单体网格（Monolithic Mesh，如 [Text2Room](https://arxiv.org/abs/2303.11989)）或慢速体渲染的组合 NeRF（如 [Set-the-Scene](https://arxiv.org/abs/2303.13450)），用户既无法单独把某把椅子平移 20 厘米，也无法以 30 FPS 的帧率实时漫游。
 
-由中山大学、国防科技大学与空军航空大学团队（Minglin Chen、Longguang Wang、Sheng Ao、Ye Zhang、Kai Xu、Yulan Guo）提出的 [Layout2Scene: 3D Semantic Layout Guided Scene Generation via Geometry and Appearance Diffusion Priors](https://arxiv.org/abs/2501.02519v1)（[HTML 版本](https://arxiv.org/html/2501.02519v1)、[PDF](https://arxiv.org/pdf/2501.02519)），给出了一套解耦极其克制的系统方案。通读全文，我们可以提炼出 Layout2Scene 最核心的 **4 个设计哲学**：
+由中山大学、国防科技大学与空军航空大学团队（Minglin Chen、Longguang Wang、Sheng Ao、Ye Zhang、Kai Xu、Yulan Guo）提出的 [Layout2Scene: 3D Semantic Layout Guided Scene Generation via Geometry and Appearance Diffusion Priors](https://arxiv.org/abs/2501.02519v1)（[HTML 版本](https://arxiv.org/html/2501.02519v1)、[PDF](https://arxiv.org/pdf/2501.02519)），给出了一套解耦极其克制的系统方案。为了在保证三维空间布局精确可控的同时消除多视角几何伪影与光照烘死问题，Layout2Scene 在场景表征与两阶段分数蒸馏上确立了四项核心设计：
 
 1. **三维布局透视投影消除局部视角语义漂移**（Perspective-Projected 2D Semantic Maps over Global Text Prompts）：放弃仅靠一段文本同时控制语义、风格与空间位置的粗放做法，引入由墙面多边形与三维物体包围盒构成的 **3D 语义布局**（3D Semantic Layout）。在任意相机视角下，系统将 3D 布局实时透视投影为像素级对齐的 2D 布局语义图（$\hat{\mathcal{S}}_l$）与布局深度图（$\hat{\mathcal{D}}_l$）送入扩散模型。当相机对准角落时，投影语义图明确告知扩散网络“当前视野仅有床头柜与墙面”，从根源上消灭了局部视角的多床幻觉。
 2. **前景规范空间 2DGS 与背景哈希多边形的混合表征**（Hybrid Representation: Canonical Object 2DGS + Hash-Grid Polygons）：拒绝用同一种三维图元硬套所有场景元素。对几何复杂且需独立移动的前景家具，采用定义在各自规范空间（Canonical Space）中的 **2D 高斯泼溅**（2D Gaussian Splatting, 2DGS），兼顾表面法线平滑度与刚体变换可编辑性；对大面积平坦的墙壁、地板与天花板，则直接采用**显式三维多边形 + 2D 多分辨率哈希网格 + 轻量 MLP 纹理场**。这种分治混合表征将单场景渲染帧率推升至 **30 FPS**（相比 0.08 FPS 的组合 NeRF 基线提速 **375 倍**）。
@@ -26,8 +26,6 @@ draft: false
 4. **基于截断符号距离场（TSDF）的相机视点自适应采样**（Layout-TSDF Camera Sampling against Blind Spots & Clipping）：在家具密集排布的狭小室内空间中，随机采样相机极易钻进沙发包围盒内部穿模，或者面壁拍出一片空白。系统预先从 3D 语义布局构建房间级 TSDF 场，对备选相机轨迹做预渲染过滤，确保每一次扩散蒸馏迭代都能覆盖有效物体表面并回传高质量梯度。
 
 ![Fig. 1: Layout2Scene teaser](/images/blog/layout2scene-semantic-layout-guided-scene-generation/layout2scene-fig01-teaser.webp)
-
----
 
 ## 1. 为什么纯文本生成 3D 场景既难控位置、又容易几何崩塌？
 
@@ -337,7 +335,7 @@ $$
 
 ---
 
-## References
+## 参考资料
 
 - Chen, Minglin, Longguang Wang, Sheng Ao, Ye Zhang, Kai Xu, and Yulan Guo. [Layout2Scene: 3D Semantic Layout Guided Scene Generation via Geometry and Appearance Diffusion Priors](https://arxiv.org/abs/2501.02519v1). arXiv:2501.02519v1, 2025.
 - arXiv HTML v1: [https://arxiv.org/html/2501.02519v1](https://arxiv.org/html/2501.02519v1)

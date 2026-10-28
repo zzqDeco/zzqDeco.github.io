@@ -20,7 +20,7 @@ draft: false
 
 那么，能否借用 2D 图像生成模型的“审美大脑”先画出一张高水准的室内效果图，再将其逆向解析并组装成一套由工业级 3D 资产构成的真实三维场景？由清华大学、腾讯等机构团队（Xiaoming Zhu、Xu Huang、Qinghongbing Xie、Zhi Deng、Junsheng Yu、Yirui Guan、Zhongyuan Liu、Lin Zhu、Qijun Zhao、Ligang Liu、Long Zeng）发表于 **SIGGRAPH Asia 2025 & ACM Transactions on Graphics (TOG)** 的 [Imaginarium: Vision-guided High-Quality 3D Scene Layout Generation](https://arxiv.org/abs/2510.15564)（[项目主页](https://ydove0324.github.io/Imaginarium/)、[开源代码仓库](https://github.com/HiHiAllen/Imaginarium)、[核心数据集](https://huggingface.co/datasets/HiHiAllen/Imaginarium-Dataset)、[预计算派生数据集](https://huggingface.co/datasets/binicey/Imaginarium-3D-Derived-Dataset)），正是将这一设想推向工业级落地的代表作。
 
-结合原论文与官方 `main` 分支源码，我们可以提炼出 Imaginarium 贯穿算法与系统工程的 **4 个核心设计哲学**：
+为了从单句文本生成包含 30 余个物体且满足物理支撑约束的复杂三维场景，Imaginarium 在视觉先验引入、位姿对齐与物理仿真上采用了四项核心设计：
 
 1. **以域对齐 2D 引导图弥合 3D 数据荒漠**（Domain-Aligned 2D Visual Guide over Direct 3D Generation）：放弃在稀缺的 3D 布局数据上直接拟合复杂陈设分布，改为利用自有高质量 3D 资产库的多视角渲染图对 `FLUX.1-dev` 进行 LoRA 微调（`r=16`）。这一步既借用了 2D 基础模型的审美与构图先验，又将生成画面的家具几何形态拉回自有资产库的分布域内，使下游 3D 资产检索的 Top-1 命中率从微调前的 `48.57%` 大幅跃升至 **`68.70%`**。
 2. **受控词表 VLM 抽取离散拓扑与成套分组**（Constrained VLM Scene Graph & Grouping over Coordinate Regression）：视觉语言模型（VLM）擅长理解语义关系，却对连续三维坐标极不敏感。系统通过三层层级遍历提示词（`Area -> Parent -> Child`）强制 VLM 在预定义资产类别表内输出离散支撑树（$\text{obj}_a \prec \text{obj}_b$）、靠墙/吊挂属性、正面朝向与成套家具分组（Groups），并硬性规定同组实例（如围绕餐桌的多把餐椅）复用同一检索资产，从源头杜绝风格杂乱。
@@ -36,8 +36,6 @@ draft: false
   -> [S3 Pose] 162 视角 AENet 粗匹配 + 单应性 SVD 正交精排 + OBB 几何方向融合与小物体回退
   -> [S4 Layout] 容器内部子空间对齐 + 预计算体素模拟退火 + Blender 刚体物理下落仿真
 ```
-
----
 
 ## 1. 任务边界与问题形式化：如何将一句文本转化为 30+ 物体的 3D 场景？
 

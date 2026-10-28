@@ -20,20 +20,17 @@ draft: false
 
 为什么大面积掩码修复（Large Mask Inpainting）和高分辨率泛化对传统卷积网络如此残酷？
 
-三星莫斯科 AI 中心（Samsung AI Center-Moscow）提出的经典工作 [**Resolution-robust Large Mask Inpainting with Fourier Convolutions**](https://arxiv.org/abs/2109.07161v2)（LaMa，发表于 [WACV 2022](https://openaccess.thecvf.com/content/WACV2022/html/Suvorov_Resolution-Robust_Large_Mask_Inpainting_With_Fourier_Convolutions_WACV_2022_paper.html)，[官方代码](https://github.com/advimman/lama)）一针见血地指出了病根：**大孔洞修复失败的本质，是网络在早期层缺乏跨越孔洞的全局有效感受野**。为此，LaMa 抛弃了繁琐的“先预测边缘或语义图、再填涂颜色”的多阶段套路，仅用 **27M 参数**的单阶段全卷积网络（扩展版 Big LaMa 为 51M），在仅使用 $256\times 256$ 裁剪块训练的前提下，实现了惊艳的周期性结构恢复与近 2K 分辨率的零样本直接推理。
+三星莫斯科 AI 中心（Samsung AI Center-Moscow）提出的经典工作 [**Resolution-robust Large Mask Inpainting with Fourier Convolutions**](https://arxiv.org/abs/2109.07161v2)（LaMa，发表于 [WACV 2022](https://openaccess.thecvf.com/content/WACV2022/html/Suvorov_Resolution-Robust_Large_Mask_Inpainting_With_Fourier_Convolutions_WACV_2022_paper.html)，[官方代码](https://github.com/advimman/lama)）直接指出了核心症结：**大孔洞修复失败的本质，是网络在早期层缺乏跨越孔洞的全局有效感受野**。为此，LaMa 抛弃了繁琐的“先预测边缘或语义图、再填涂颜色”的多阶段套路，仅用 **27M 参数**的单阶段全卷积网络（扩展版 Big LaMa 为 51M），在仅使用 $256\times 256$ 裁剪块训练的前提下，实现了惊艳的周期性结构恢复与近 2K 分辨率的零样本直接推理。
 
 ![LaMa teaser：大区域对象移除与结构恢复](/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig01-teaser.webp)
 
-透过简洁的架构图，LaMa 的成功凝聚在**四条高度协同的设计哲学**之中：
+围绕大孔洞修复中的早期全局感受野与跨分辨率泛化难题，LaMa 在卷积算子、感知损失与掩码采样策略上构建了四项核心机制：
 
 1. **在网络最早期层直接接通全图视野，拒绝靠堆叠局部卷积慢慢爬行**（Early Image-Wide Receptive Field via FFC）：对于一个宽达上百像素的实心孔洞，孔洞内部的初始像素全为 0。普通 $3\times 3$ 卷积在前十几层里只能在全 0 的洞内空转，等到了深层虽然纸面上的“理论感受野”够大了，但呈高斯衰减的“有效感受野”（ERF）依然抓不住对岸信息。LaMa 将残差块中 75% 的通道送入频域做**快速傅里叶卷积**（Fast Fourier Convolution, FFC）——由于每个傅里叶频谱系数都是全图所有像素的线性求和，在频域做一次 $1\times 1$ 卷积再逆变换回来，就能让第一个残差块的每一个像素当场看清孔洞两岸的栅栏间距与周期相位。
 2. **看得远的生成器，必须配一把“看得远的监督尺子”**（High Receptive Field Perceptual Loss）：大孔洞内部天然存在多解性（被挡住的墙后既可以是白墙也可以是窗框），逐像素 $L_1/L_2$ 损失会把多种可能平均成模糊色块；而常规 ImageNet 分类 VGG 提取的感知特征又过于偏向局部纹理块。LaMa 改用在 ADE20K 密集语义分割上预训练、且后层带有**扩张卷积**（Dilated Conv）的 ResNet50 作为感知损失主干（HRFPL），配合只追究掩码交集区域的 PatchGAN 对抗损失，从监督端逼迫生成器对齐大尺度的建筑结构与场景布局。
 3. **用激进的宽孔洞训练分布，堵死模型“靠局部插值抄近道”的退路**（Aggressive Large-Mask Curriculum）：如果训练时只喂细碎的随机涂鸦掩码，每个缺失像素离可见背景只有三五个像素，哪怕给网络装上 FFC，优化器也会偷懒走局部插值的捷径。LaMa 以 50:50 的概率混合最大笔宽达 100 像素的粗折线与大矩形框，大幅拉高缺失像素到可见边界的平均欧氏距离（Mask Width），让模型唯有调用远距离频域通道才能把训练损失降下来。
 4. **利用全图 FFT 的相对视野恒定性，实现从 $256^2$ 到高清大图的跨分辨率泛化**（Scale-Robust Generalization）：当测试图像从训练时的 $256\times 256$ 放大 3 倍到 $768$ 或 $1536$ 时，固定大小的空间卷积核相对于整张图的视野比例缩水成了原来的 $1/3$，再次退化为“管中窥豹”；而 FFC 的全局分支在任何尺寸下都对整张特征图做 2D FFT，视野覆盖率永远是 100%，加上自然图像低频结构与频域 $1\times 1$ 卷积权重的尺度共享特性，使模型无需切片拼接即可直接修复高分辨率大图。
 
-下面我们就顺着这四条设计哲学，结合数学推演、消融实验与开源仓库实现，彻底拆解 LaMa 的工作机理与工程边界。
-
----
 
 ## 1. 为什么大孔洞会击穿普通卷积？问题建模与感受野困局
 
@@ -171,7 +168,7 @@ NLayerDiscriminator(
 
 在设计对抗损失时，LaMa 做了一个极契合修复任务的工程处理——**掩码对齐局部真假标签**（Mask-Aligned Patch Discrimination）。
 
-想一想：在一张修复后的图像里，掩码外面的像素（$m=0$）本来就是从真实原图直接贴回去的真像素。如果像普通 GAN 那样把整张生成图的所有 Patch 统统标为 Fake（假），判别器就会对已知区域施加不必要的梯度惩罚，迫使生成器消耗额外容量去拟合根本不需要它管的已知区域。因此，源码 [`training/losses/adversarial.py`](https://github.com/advimman/lama/blob/786f5936b27fb3dacd2b1ad799e4de968ea697e7/saicinpainting/training/losses/adversarial.py) 将二值掩码下采样到判别器输出特征图的尺寸：**只有那些感受野与掩码孔洞（$m=1$）存在交集的 Patch 才被当作 Fake 监督；完全落在已知背景里的 Patch 哪怕在生成图上也一律当作 Real 对待**。同时，因为跨越孔洞边缘的 Patch 感受野同时包含了真背景和新生成的像素，判别器会极其严厉地盯着接缝处看有没有色彩或纹理突变，天然起到了消除边界接缝的作用。
+在一张修复后的图像里，掩码外面的像素（$m=0$）本来就是从真实原图直接贴回去的真像素。如果像普通 GAN 那样把整张生成图的所有 Patch 统统标为 Fake（假），判别器就会对已知区域施加不必要的梯度惩罚，迫使生成器消耗额外容量去拟合根本不需要它管的已知区域。因此，源码 [`training/losses/adversarial.py`](https://github.com/advimman/lama/blob/786f5936b27fb3dacd2b1ad799e4de968ea697e7/saicinpainting/training/losses/adversarial.py) 将二值掩码下采样到判别器输出特征图的尺寸：**只有那些感受野与掩码孔洞（$m=1$）存在交集的 Patch 才被当作 Fake 监督；完全落在已知背景里的 Patch 哪怕在生成图上也一律当作 Real 对待**。同时，因为跨越孔洞边缘的 Patch 感受野同时包含了真背景和新生成的像素，判别器会极其严厉地盯着接缝处看有没有色彩或纹理突变，天然起到了消除边界接缝的作用。
 
 在此基础上，为防止对抗训练震荡或产生高频棋盘格噪声，系统还加上了判别器中间层特征匹配损失 $\mathcal L_{\mathrm{DiscPL}}$（Feature Matching，$L_1$ 距离）和真实图像梯度惩罚 $R_1=\mathbb E_{\mathbf x}[\|\nabla_{\mathbf x}D_\xi(\mathbf x)\|_2^2]$，最终形成四项联合目标函数：
 
@@ -256,7 +253,7 @@ $$
 - **Table 4 揭示了“宽掩码训练”跨模型迁移的普适性与前提**：
   把 LaMa 的宽掩码训练策略移植给 LaMa-Regular、RegionWise、DeepFillv2 和 EdgeConnect 四个模型后，**四个模型在 Wide 测试集上的 FID 全部获得大幅改善**（例如 LaMa-Regular 从 `5.41` 大幅降至 `3.51`）。但仔细看 Narrow 一列：单阶段大容量的 LaMa-Regular 和 RegionWise 在改用宽掩码训练后，连带窄洞指标也变好了（因为戒掉了局部插值懒惰习性）；而两阶段的 EdgeConnect（先预测边缘图再填色）在被宽掩码轰炸后，第一阶段边缘预测器吃不消崩溃了，导致窄洞 FID 反而从 `1.33` 恶化到了 `2.78`。这说明激进的数据课程必须配得上能够消化远距离信息的模型骨架。
 
-### 5.3 核心设计哲学四：为什么只在 256×256 上训练，却能直接修 1920×1536 大图？
+### 5.3 跨分辨率泛化机理：为什么 256×256 训练能直接外推至 1920×1536？
 
 ![LaMa 跨分辨率修复](/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig05-high-resolution-transfer.webp)
 

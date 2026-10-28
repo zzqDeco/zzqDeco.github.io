@@ -28,8 +28,6 @@ draft: false
 
 本文结合开源社区对 Claude Code 的深度架构分析仓库 [how-claude-code-works](https://github.com/Windy3f3f3f3f/how-claude-code-works) 与 Anthropic 官方文档，沿着“主循环与取证 → 文件编辑防线 → 上下文与五级压缩 → 记忆、技能与规划 → 多 Agent 隔离 → Hooks 门禁与验证闭环”的主线，拆解这套终端编程 Agent 是如何把上述设计哲学落成具体工程机制的。
 
----
-
 ## 1. 五层可靠性防线与工程错误分类
 
 ### 1.1 区分“事实虚构”与“状态失真”
