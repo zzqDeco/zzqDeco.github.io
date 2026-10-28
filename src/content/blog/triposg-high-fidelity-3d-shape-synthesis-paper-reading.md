@@ -29,8 +29,7 @@ VAST、香港大学、德克萨斯大学奥斯汀分校与上海人工智能实�
 3. **用 U-ViT 长跳跃连接保住浅层几何，用 CLIP + DINOv2 双路交叉注意力兼顾全局语义与毫米级纹理**（Long Skip Connections + Dual Global/Local Conditioning）：纯堆叠深层 Transformer Block 会让三维局部几何线索在逐层抽象中流失，引入连接对称编码-解码块的 Long Skip Connection 单项改动就能让 Normal-FID 下降近 1 个点；同时每一层并行注入 CLIP 全局语义特征（防类别与朝向错乱）和 DINOv2 局部结构特征（对齐局部褶皱与部件），配合直线轨迹的 Rectified Flow 与对数正态时间步重加权，实现精准的图模对齐。
 4. **靠无位置编码 FPS 查询直接外推 4096 Token，只在解码器深层挂载 MoE 扩容至 4B**（Pos-Encoding-Free Token Extrapolation & Deep-Layer MoE）：由于前端点集 VAE 靠最远点采样（FPS）提取查询点，不依赖固定长度的绝对位置编码，因此流模型微调时能丝滑地将潜空间序列从 2048 直接翻倍外推至 **4096 Token**（开源社区版提供 `1.5B / 2048-token` 权重，论文旗舰版扩展至 `4B / 4096-token`）；并且只在专门负责局部高频细节合成的最后 6 层解码器 Block 中将 FFN 替换为 Top-2 + 共享专家的混合专家层（MoE），用极小的推理算力增量换取了 4B 参数的几何容量。
 
-
-## 1. 为什么 3D 形状生成长期落后于 2D 图像？双系统架构总览
+## 为什么 3D 形状生成长期落后于 2D 图像？双系统架构总览
 
 回看图像与视频大模型的崛起，它们天然站在三个肩膀上：**过硬的训练数据质量**、**几乎无损的高倍率 VAE 潜空间**、以及**极具扩展性的 DiT + Flow Matching 主干**。而在单图三维形状生成（$I \rightarrow z \rightarrow \mathcal{S}$）中，这三根支柱全都需要从头加固：
 
@@ -44,11 +43,9 @@ VAST、香港大学、德克萨斯大学奥斯汀分校与上海人工智能实�
 1. **上半部分**（Data-Building System）：从多源原始三维模型出发，依次走过打分（Scoring）、过滤（Filtering）、网格修复与多视角相机增强（Fixing & Augmentation）以及隐式距离场生产（Field Data Production），炼出 200 万对高纯度 Image-SDF 样本；
 2. **下半部分**（TripoSG Model）：先训练混合监督的 Transformer SDF-VAE 将三维表面编码为潜空间 Token，再训练融合了 CLIP 与 DINOv2 双条件的 Rectified Flow Transformer 从噪声生成潜变量，最终经八叉树等值面提取输出高精度三角网格。
 
----
+## 同时在“值域”与“梯度域”监督的高保真 SDF-VAE
 
-## 2. 同时在“值域”与“梯度域”监督的高保真 SDF-VAE
-
-### 2.1 为什么二值 Occupancy 必然产生台阶，而单靠 SDF 数值回归还不够？
+### 为什么二值 Occupancy 必然产生台阶，而单靠 SDF 数值回归还不够？
 
 ![TripoSG VAE architecture](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig04-vae-architecture.webp)
 
@@ -70,7 +67,7 @@ $$
 
 可以立刻消除大面积的阶梯走样（Fig. 5 右列）。但作者敏锐地发现：**只管住 SDF 的标量值 $s$ 依然不够**。为什么？因为盔甲上的细微刻痕、嘴唇的折角、衣服的薄褶皱，在 SDF 标量值上的起伏可能只有零点几个毫米，单靠 $\mathcal{L}_{sdf}$ 很容易被网络当成高频噪声平滑抹掉；但这些细微结构在**表面朝向**（即隐式场对空间坐标的一阶偏导数 $\nabla_x \mathcal{D}(x,f)$）上却有着剧烈的方向转折。
 
-### 2.2 表面法线梯度引导与 Eikonal 正则化的黄金搭档
+### 表面法线梯度引导与 Eikonal 正则化的黄金搭档
 
 为了把毫米级的折角逼出来，TripoSG 直接在 VAE 训练阶段打开了针对三维查询点坐标 $x$ 的二阶计算图（对照源码 `autoencoder_kl_triposg.py` 中的 `torch.autograd.grad(..., create_graph=self.training)`），实时算出解码器输出对输入坐标 $x$ 的空间梯度向量 $\nabla \mathcal{D}(x,f)$，并施加两项梯度域约束：
 
@@ -110,15 +107,13 @@ $$
 +\lambda_{kl}\mathcal{L}_{kl}.
 $$
 
----
-
-## 3. U-ViT 长跳跃连接、双路视觉注入与 4B MoE 矫正流
+## U-ViT 长跳跃连接、双路视觉注入与 4B MoE 矫正流
 
 ![TripoSG shape generation pipeline](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig03-shapegen-pipeline.webp)
 
 有了高质量的 SDF-VAE 潜空间 $X \in \mathbb{R}^{L \times 64}$ 后，Fig. 3 展示了后端的 **Rectified Flow Transformer** 是如何把单张参考图转化为三维潜变量的。
 
-### 3.1 为什么加一条 U-ViT 长跳跃连接，Normal-FID 就能猛降近 1 个点？
+### 为什么加一条 U-ViT 长跳跃连接，Normal-FID 就能猛降近 1 个点？
 
 在标准 DiT 中，20 多层 Transformer Block 像一根直筒一样从头叠到尾。这在二维图像生成里问题不大，但在无序点集潜变量（VecSet）上却有个明显的痛点：浅层 Block 好不容易捕捉到的局部高频几何特征，经过十几层全局自注意力的反复混合与抽象后，到了输出端往往变得模糊退化。
 
@@ -133,7 +128,7 @@ $$
 
 在源码 `triposg_transformer.py` 中，解码器块直接把对应浅层编码器块的特征拼接回来再经线性层融合。这条直通车让浅层的局部几何锐度得以绕过深层语义瓶颈直达输出端——后文 Table 1 的消融实验证实，仅仅加上这条长跳跃连接，Normal-FID 就从 `10.61` 大幅改善至 `9.47`。
 
-### 3.2 为什么要同时喂 CLIP 和 DINOv2？
+### 为什么要同时喂 CLIP 和 DINOv2？
 
 再看 Fig. 3 中间的单个 Transformer Block 内部结构：在自注意力层之后，模型串联了**两个独立的交叉注意力层**（Cross-Attention），分别接入：
 - **$I_{\text{local}}$**（由 DINOv2-Large 提取的密集局部 Patch 特征）：DINOv2 在自监督像素级对齐上极强，能看清图片里的衣扣位置、盔甲纹路与边缘轮廓；
@@ -155,7 +150,7 @@ $$
 
 双剑合璧之下，DINOv2 负责把正面看得见的毫米级褶皱死死钉在对应位置，CLIP 则负责在看不见的背面合理补全符合该物种语义的完整结构。
 
-### 3.3 Rectified Flow 线性轨迹与时间步重加权/分辨率偏移
+### Rectified Flow 线性轨迹与时间步重加权/分辨率偏移
 
 在扩散/流匹配轨迹的选择上，传统 DDPM 的 $x_t=\sqrt{\bar{\alpha}_t}x_0+\sqrt{1-\bar{\alpha}_t}\epsilon$ 与 EDM 的 $x_t=x_0+\sigma(t)\epsilon$ 走的是弯曲轨迹，采样时步长一大就会偏离流形。TripoSG 采用 **Rectified Flow**（矫正流），直接在噪声 $\epsilon$（$t=0$）与真实三维潜变量 $x_0$（$t=1$）之间拉一条笔直的线性插值轨道：
 
@@ -187,10 +182,10 @@ $$
 
 确保模型在扩展到 4096 Token 时依然面对一致的有效信噪比日程。
 
-### 3.4 零位置编码外推 4096 Token 与解码器深层 MoE
+### 零位置编码外推 4096 Token 与解码器深层 MoE
 
 怎么把 1.5B 的基础流模型进一步推向 4B 旗舰规模？TripoSG 走了两条极高性价比的扩展路径：
-- **利用无位置编码特性直接外推 $L=4096$ Token**：回顾第 2.1 节的 SDF-VAE，它的编码器靠最远点采样（FPS）从点云里抽查询点，全程**没有使用任何写死序列长度的固定位置编码**。这意味着同一个训好的 VAE，天然支持把潜变量 Token 数量从 2048 直接翻倍到 **4096**，瞬间让三维潜空间能容纳的几何细节翻倍。
+- **利用无位置编码特性直接外推 $L=4096$ Token**：回顾前文的 SDF-VAE，它的编码器靠最远点采样（FPS）从点云里抽查询点，全程**没有使用任何写死序列长度的固定位置编码**。这意味着同一个训好的 VAE，天然支持把潜变量 Token 数量从 2048 直接翻倍到 **4096**，瞬间让三维潜空间能容纳的几何细节翻倍。
 - **只在解码器最后 6 层引入混合专家**（Deep-Layer MoE，见 Fig. 3 右侧）：如果把所有层都粗暴加宽到 4B 参数，训练和推理算力都会翻倍。作者洞察到：网络的前半截编码器主要在处理跨类别共享的粗粒度三维姿态与大轮廓，根本不需要那么多参数；只有到了**解码器的最后 6 层**，模型才开始分化处理“昆虫翅膀纹路”、“机械齿轮齿牙”或“哥特教堂窗花”等高度特异化的局部细节。因此，TripoSG 仅在最后 6 个 Decoder Block 中将标准 FFN 替换为 **8 专家 MoE 层**（每次由 Router 动态激活 Top-2 路由专家 + 1 个常驻共享专家，配合负载均衡辅助损失）：
 
 $$
@@ -205,13 +200,11 @@ $$
 
 这样一来，单次前向推理激活的计算量（FLOPs）几乎保持在 1.5B 模型的水位，却实打实地拥有了 **4B 参数**的几何细节记忆库。
 
----
-
-## 4. 为什么 18 万干净数据能打赢 80 万原始 Objaverse？
+## 为什么 18 万干净数据能打赢 80 万原始 Objaverse？
 
 ![TripoSG data process pipeline](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig06-data-process-pipeline.webp)
 
-除了高保真 VAE 与流匹配架构外，第 4 节的**数据构建系统**（Data-Building System）同样是决定模型上限的核心基石。为什么以前大家在 Objaverse 上训不出三维 Scaling Law？因为原始 Objaverse 里的 80 万个模型，有大半根本不适合直接用来训练单图生成。
+除了高保真 VAE 与流匹配架构外，论文的**数据构建系统**（Data-Building System）同样是决定模型上限的核心基石。为什么以前大家在 Objaverse 上训不出三维 Scaling Law？因为原始 Objaverse 里的 80 万个模型，有大半根本不适合直接用来训练单图生成。
 
 看看作者是如何用四道流水线把“原始矿石”提炼成 **200 万**（2M）**高纯度 Image-SDF 燃料**的：
 
@@ -225,11 +218,9 @@ $$
 4. **高精度距离场生产**（Field Data Production）：
    最后在修复好的水密网格周围密集采样空间查询点、计算精确的真值 TSDF 与表面法向量，打包成 200 万组标准化的 `Image-SDF` 训练对。
 
----
+## 实验验证：四组硬核消融如何拆解出每个模块的真实含金量？
 
-## 5. 实验验证：四组硬核消融如何拆解出每个模块的真实含金量？
-
-### 5.1 Normal-FID 与 GPTEval3D 全方位对比
+### Normal-FID 与 GPTEval3D 全方位对比
 
 为了公平评价**纯几何形状**的好坏、不被花哨的贴图颜色遮掩几何缺陷，论文提出了 **Normal-FID** 指标：先在测试集真值模型上渲染正视图 RGB 与真值法线图；把 RGB 喂给模型生成三维网格后，在完全相同的相机角度下渲染生成网格的**法线图**（Normal Map），计算生成法线图与真值法线图之间的 FID 分布距离（越低代表几何结构与表面朝向越接近真值）。
 
@@ -239,7 +230,7 @@ $$
 
 对照下图中的法线定性对比（Fig. 7）与基于 Claude 3.5 多模态评测的 **GPTEval3D 五维雷达图**（Fig. 8，涵盖三维合理性、图模对齐、几何细节、纹理细节、纹几一致性）：相比 TripoSR、MeshLRM、InstantMesh、CRM 与 Craftsman 等主流基线，TripoSG 在复杂空间镂空结构（如镂空球体与复杂机械架）、跨风格输入（照片、卡通、素描）以及细微服饰配件还原上展现出了代差级的几何锐度，在雷达图的全部五个维度上实现了满圈包络。
 
-### 5.2 四大核心消融实验深度归因
+### 四大核心消融实验深度归因
 
 论文在 32 张 A100 上跑了整整四组控制变量消融（Table 1–4 与 Fig. 9–10），每一张表都对应着一条关键的工程结论：
 
@@ -271,7 +262,7 @@ $$
 - **消融四：少而精 vs. 多而脏的正面交锋**：
   Table 4 直观验证了“数据质量先于数量”的规律：拿未经清洗的 **800K 全量 Objaverse** 硬训，Normal-FID 是惨淡的 `11.61`（对应 Fig. 10 左一，生成的宇航员和椅子结构扭曲破损）；而经过数据管线过滤，**哪怕只用其中 180K 干净样本**（砍掉近四分之三数据），Normal-FID 立刻飞跃到 `9.47`（Fig. 10 左二，结构瞬间端正干净）；最后在同样的高标准下把干净数据扩充到 **2M**，Normal-FID 降到 `5.81`（512 Token 设置下），叠加 4096 Token 与 MoE 后最终定格在完美的 `3.36`（Fig. 10 右一）。
 
-### 5.3 纯几何白模画廊与外接多视图贴图展示
+### 纯几何白模画廊与外接多视图贴图展示
 
 ![TripoSG texture-free results](/images/blog/triposg-high-fidelity-3d-shape-synthesis/triposg-fig11-texture-free-results.webp)
 
@@ -279,13 +270,11 @@ $$
 
 Fig. 11 展示了模型直接输出的纯几何白模（零后处理平滑、零碎块剔除），无论是复杂的多人物互动雕塑还是繁复的机甲零件都干净利落；而如 Fig. 12 所示，正因为底层白模的几何轮廓与表面法线足够精准，哪怕直接拿现成的多视角纹理生成工具以渲染法线图为条件往白模上投射贴图，也能轻松获得严丝合缝的彩色三维模型。
 
----
-
-## 6. 源码深挖：从自动微分法线梯度到由粗到精八叉树提取
+## 源码深挖：从自动微分法线梯度到由粗到精八叉树提取
 
 对照官方开源仓库 [`VAST-AI-Research/TripoSG`](https://github.com/VAST-AI-Research/TripoSG)，整套代码基于 `diffusers` 风格构建，以下三处核心源码实现最值得细读：
 
-### 6.1 解码器里的一阶自动微分：`TripoSGDecoder.query_geometry()`
+### 解码器里的一阶自动微分：`TripoSGDecoder.query_geometry()`
 
 在 [`triposg/models/autoencoders/autoencoder_kl_triposg.py`](https://github.com/VAST-AI-Research/TripoSG/blob/main/triposg/models/autoencoders/autoencoder_kl_triposg.py) 中，解码器是如何在训练时算出隐式场梯度 $\nabla \mathcal{D}(x,f)$ 来计算法线损失 $\mathcal{L}_{sn}$ 和 Eikonal 损失 $\mathcal{L}_{eik}$ 的？看这段核心实现：
 
@@ -300,7 +289,7 @@ grad_value = torch.autograd.grad(
 
 这里 `queries_d` 是开启了 `requires_grad_(True)` 的三维空间查询点坐标 $x$，`res_d` 是交叉注意力解码器预测出的 SDF 标量值。通过直接调用 `torch.autograd.grad` 并设置 `create_graph=self.training`，PyTorch 会在反向传播图内部解析地求出预测 SDF 对输入坐标 $(x,y,z)$ 的偏导数向量 `grad_value`（即 $\nabla_x \mathcal{D}(x,f)$），并允许外层的法线余弦损失与 Eikonal 范数损失继续对网络权重求二阶导数。而在测试推理时，则完全跳过这段求导分支，只做前向 SDF 数值查询。
 
-### 6.2 为什么不在 512³ 全空间傻算 SDF？由粗到精八叉树窄带提取
+### 为什么不在 512³ 全空间傻算 SDF？由粗到精八叉树窄带提取
 
 在推理阶段（[`triposg/pipelines/pipeline_triposg.py`](https://github.com/VAST-AI-Research/TripoSG/blob/main/triposg/pipelines/pipeline_triposg.py)），当 50 步 Rectified Flow 去噪结束（由 `RectifiedFlowScheduler` 驱动 `time_shift` 与欧拉步更新）、拿到 2048 个三维潜变量 Token 后，我们需要从连续 SDF 场中提取出相当于 $512^3$ 分辨率（八叉树深度 `hierarchical_octree_depth=9`）的精细三角网格。
 
@@ -320,15 +309,13 @@ vertices, faces, normals, _ = measure.marching_cubes(...)
 2. **锁定零等值面窄带**（`find_candidates_band`）：因为物体表面只存在于 SDF 接近 $0$ 的薄壳处，算法直接丢弃掉远离表面的浩瀚内部与外部空白区域，只挑出绝对值小于 `band_threshold` 的边界候选格点；
 3. **膨胀细分查询**（`expand_edge_region_fast`）：将候选窄带向外安全膨胀一圈，只在这些极少数紧贴表面的体素内部细分为 $2\times 2\times 2$ 的深度 9（$512^3$）子格点再去调用解码器查询 SDF，最后送入 `marching_cubes` 抽出高精度网格。这一招省掉了超过 95% 的空白区域无效注意力查询。
 
-### 6.3 输入前景居中预处理与 `TripoSG-scribble` 扩展分支
+### 输入前景居中预处理与 `TripoSG-scribble` 扩展分支
 
 在推理脚本 [`scripts/inference_triposg.py`](https://github.com/VAST-AI-Research/TripoSG/blob/main/scripts/inference_triposg.py) 与 [`scripts/image_process.py`](https://github.com/VAST-AI-Research/TripoSG/blob/main/scripts/image_process.py) 中，系统同样内置了严谨的输入分布对齐：自动调用 `briaai/RMBG-1.4` 剥离杂乱背景，裁出前景物体的紧致包围盒，四周留白填充为正方形画布并合成纯白背景（`bg_color=[1.0, 1.0, 1.0]`），还支持通过 `--faces` 参数调用 `pymeshlab` 将输出网格简化至指定面数预算。
 
 此外，开源仓库还额外公开了一个有趣的轻量级衍生模型 **`TripoSG-scribble`**（入口为 `scripts/inference_triposg_scribble.py`）：这是一个经过 CFG 蒸馏、仅使用 **512 个潜空间 Token** 的快速原型变体，支持用户随手画几笔二维简笔草图（Scribble）再配上一句文本提示词（Prompt，通过 `--scribble-conf` 控制草图轮廓约束的强弱），几秒钟内就能把草图变成三维白模。
 
----
-
-## 7. 工程边界与高保真三维几何生成谱系对比
+## 工程边界与高保真三维几何生成谱系对比
 
 客观审视 TripoSG 的定位，有两处边界值得工程团队留意：
 - **论文旗舰模型与开源权重的规格梯度**：论文主表与 Teaser 展示的极限效果来自 **4B MoE / 4096-token** 旗舰模型（配合未开源的 2M 清洗数据集）；而 Hugging Face 上以 MIT 许可公开的 `VAST-AI/TripoSG` 权重为 **1.5B 稠密架构 / 2048-token** 版本（且 `triposg_transformer.py` 头部注明部分注意力代码改编自 Tencent HunyuanDiT，商用时需同步留意相关衍生声明）。

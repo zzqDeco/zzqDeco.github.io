@@ -31,9 +31,9 @@ draft: false
 3. **局部邻域消歧与增量图维护：拒绝全图重算，把每次写入开销收敛在局部子图**（Localized Incremental Maintenance）：流式记忆系统承受不起每次来一条消息就扫描全图。无论是用“向量 + 全文检索”召回候选节点做实体消歧，还是把事实去重与矛盾检测严格限制在“同一对源/目标实体之间的已有边集合”内，抑或是用邻居多数投票动态更新社区归属，本质上都是为了把单次写入复杂度锁定在局部常数级。
 4. **查询路径去 LLM 化：多路检索 + 轻量级重排 + 线性模板拼装，守住毫秒级在线延迟**（Fast Hybrid Retrieval without LLM-in-the-Loop）：把繁重的 LLM 抽取与消歧留在异步写入阶段，而在用户发起查询的在线关键路径上，纯粹组合余弦相似度、BM25 全文检索与图广度优先遍历（BFS），配合 RRF、MMR、图距离或轻量级 Cross Encoder 毫秒级合成最终上下文。
 
-## 1. 为什么传统方案撑不起 Agent 长期记忆？问题拆解与生态位边界
+## 为什么传统方案撑不起 Agent 长期记忆？问题拆解与生态位边界
 
-### 1.1 长上下文、静态向量 RAG 与递归摘要的三大软肋
+### 长上下文、静态向量 RAG 与递归摘要的三大软肋
 
 在工程上，“把历史存下来”只算完成了日志收集；真正的 Agent 长期记忆必须同时解决**状态演化、跨会话关联与低延迟召回**。审视现有的三类常见替代方案，可以清楚看到各自的失效边界：
 
@@ -45,7 +45,7 @@ draft: false
 
 真正棘手的记忆难题是“**承认某条事实曾经正确，但现在已经失效**”。比如客户去年签约的是基础版，今年升级成了旗舰版——如果用户问“我现在有哪些权限？”，系统必须只用旗舰版事实作答；但如果财务审计问“去年 10 月这位客户是什么套餐？”，系统又必须能精准调出当年那条已归档的历史记录。这正是将时态知识图谱（Temporal Knowledge Graph）引入 Agent 记忆的直接动因。
 
-### 1.2 Graphiti 开源引擎、论文 Zep 服务与商业产品的架构边界
+### Graphiti 开源引擎、论文 Zep 服务与商业产品的架构边界
 
 在深入源码之前，有必要厘清生态中经常出现的三个名称：
 - **开源引擎 [Graphiti](https://github.com/getzep/graphiti)**（Apache-2.0，当前稳定基线 `v0.29.2`）：负责动态时态知识图谱构建、双时态事实维护与混合检索的核心 Python 库，支持插拔 Neo4j、FalkorDB、Amazon Neptune 等图数据库驱动与多种大模型供应商，并提供可选的 MCP Server 与 FastAPI 封装。
@@ -54,11 +54,9 @@ draft: false
 
 理解这一分层，就能明白 Graphiti 在技术栈中的准确位置：它处在“上游业务事件流（对话、工单、JSON）”与“下游大模型 Prompt 上下文”之间，是一个**持续将非结构化事件流编译为双时态结构化记忆，并在查询时按需逆向合成为精简文本上下文**的记忆中间件。
 
----
+## 三层解耦的记忆图与非损失证据溯源
 
-## 2. 三层解耦的记忆图与非损失证据溯源
-
-### 2.1 有向多图形式化与三层子图拓扑
+### 有向多图形式化与三层子图拓扑
 
 论文将整张记忆图定义为带关联函数的有向多图（Directed Multigraph）：
 
@@ -80,7 +78,7 @@ $$
 
 观察上图的拓扑连接，为什么一定要拆成这三层？因为“**保留原始证据保真度**”、“**支持细粒度关系计算**”与“**提供宏观全局背景**”**这三件事，需要的图粒度完全不同**：
 
-### 2.2 原始事件子图（Episode Subgraph）：为什么叫“非损失（Non-Lossy）”记忆？
+### 原始事件子图（Episode Subgraph）：为什么叫“非损失（Non-Lossy）”记忆？
 
 位于最底层的 $\mathcal{G}_e$ 保存所有进入系统的原始事件节点（`EpisodicNode`）。在论文中，输入事件支持三种形态：对话消息（`message`）、自由文本（`text`）和结构化业务数据（`json`）；到了 `v0.29.2` 源码中，还新增了允许直接注入确定性三元组的 `fact_triple` 以及自定义 `metadata`。每一个 Episode 节点都记录了原始正文、来源描述、分区标识 `group_id`，以及极其关键的**事件参考时间** `reference_time`（即该事件在现实中发生的时间，严格区别于写库时间）。
 
@@ -89,7 +87,7 @@ $$
 2. **细粒度原文回退**：当用户询问“他当时原话是怎么评价那个方案的？”时，高度浓缩的实体摘要和三元组不足以还原语气与细节，检索器可以顺着溯源边直接把原始 Episode 捞出来拼进上下文。
 3. **支持多来源交叉印证**：在 `EntityEdge`（事实边）上维护了一个 `episodes: list[str]` 数组，记录所有印证该事实的 Episode UUID。一条被 10 次不同对话反复提及的核心偏好，与仅在闲聊中顺嘴提过一次的信息，在后续重排时拥有截然不同的证据权重。
 
-### 2.3 语义实体子图与社区摘要子图：从局部关系到全局脉络
+### 语义实体子图与社区摘要子图：从局部关系到全局脉络
 
 中间层的 **语义实体子图**（Semantic Entity Subgraph, $\mathcal{G}_s$）承载从 Episode 中提炼出的结构化知识：
 - **实体节点**（`EntityNode`）：代表人物、组织、地点、产品、工单等核心对象，保存实体名称、类型标签、1024 维名称/概念 Embedding，以及一段汇总了该实体核心背景的动态 `summary`。
@@ -99,11 +97,9 @@ $$
 
 更重要的是，面对持续写入的流式事件，Microsoft GraphRAG 那种动辄重跑全图 Leiden 聚类的做法成本太高。Graphiti 为社区层设计了**“局部多数投票增量扩展 + 周期性全量刷新”**的双轨机制：每当新实体节点 $n_i$ 被写入 $\mathcal{G}_s$ 时，系统直接查看它刚连上的所有一跳邻居节点所属的社区，将该实体直接归入**邻居占多数的那个现有社区**（Majority Community），并仅触发该单一社区的摘要增量更新；只有当累积变化达到一定规模时，才在后台低峰期运行一次全图 LPA 刷新以消除长期增量带来的聚类漂移。
 
----
+## 双时态边模型与局部增量知识维护
 
-## 3. 双时态边模型与局部增量知识维护
-
-### 3.1 四维双时态模型：Valid Time 与 Transaction Time 如何各司其职？
+### 四维双时态模型：Valid Time 与 Transaction Time 如何各司其职？
 
 为什么普通数据库里的一个 `created_at` 加一个 `updated_at` 搞不定 Agent 记忆？
 
@@ -124,7 +120,7 @@ $$
 
 为了从自然语言里的相对时间词（如“上周三”、“明年一季度”、“三个月前”）推算出准确的 $t_{\mathrm{valid}}$ 与 $t_{\mathrm{invalid}}$，Graphiti 在抽取时会将当前 Episode 的 `reference_time` 作为时间锚点一并喂给大模型；而对于像“Alice 喜欢喝手冲咖啡”这类没有明确起止日期的长期习惯或静态事实，源码则保持区间端点为 `None`（开放区间），绝不强行编造伪精确日期。
 
-### 3.2 增量抽取、混合候选消歧与端点约束下的矛盾失效
+### 增量抽取、混合候选消歧与端点约束下的矛盾失效
 
 当一条新消息进入系统时，怎样在不扫描全图的前提下，完成从文本到双时态图的增量更新？我们顺着论文与源码 [`graphiti_core/utils/maintenance/`](https://github.com/getzep/graphiti/tree/ff7e29ccd127d8d9721b5cbb2163a6407ef915fe/graphiti_core/utils/maintenance) 拆解这条四步流水线：
 
@@ -149,9 +145,7 @@ $$
 
 一行赋值，既让旧事实退出了“当前有效视图”，又把“这段关系从何时持续到何时、因哪次写入而终结”完整封存在了历史图谱里。
 
----
-
-## 4. 去 LLM 化的毫秒级混合检索与上下文拼装
+## 去 LLM 化的毫秒级混合检索与上下文拼装
 
 在写入侧用足大模型能力把图维护好之后，到了用户实时提问的读取侧，设计目标立刻切换为：**快、准、省 Token**。论文将整个在线检索过程形式化为三个算子的复合函数：
 
@@ -161,7 +155,7 @@ $$
 
 其中 $\alpha$ 是用户查询字符串，$\varphi$ 是多路候选召回器（Search），$\rho$ 是跨模态重排器（Reranker），$\chi$ 是线性上下文构造器（Constructor），最终输出一段直接塞进 Agent Prompt 的高密度文本 $\beta$。整条查询链路**完全不需要调用缓慢的生成式大模型**，从而把检索耗时稳定控制在百毫秒级。
 
-### 4.1 为什么候选召回必须“余弦 + BM25 + 图 BFS”三路齐发？
+### 为什么候选召回必须“余弦 + BM25 + 图 BFS”三路齐发？
 
 在 $\varphi(\alpha)$ 阶段，系统针对 `EntityEdge`（事实边）、`EntityNode`（实体节点）与 `CommunityNode`（社区节点）并行发起三路互补检索：
 
@@ -169,7 +163,7 @@ $$
 2. **Lucene / BM25 全文检索**：弥补稠密向量的词面盲区。当查询包含精确的工单编号 `TICKET-8848`、生僻人名、API 错误码或专有型号时，BM25 倒排索引能一击必中。
 3. **以锚点为中心的图广度优先遍历**（Breadth-First Search, BFS）：前两路检索本质上还是在找“跟问题长得像的单条边或单个点”。但在多跳关系问题中，某条关键事实在字面上可能跟问题毫无重合，仅仅因为它连在问题主角的邻居节点上才变得重要。因此，Graphiti 会从前两路锁定的核心实体（或调用方显式指定的 `center_node_uuid`）出发，在图上向外扩展 $k$ 跳 BFS 邻域，把结构上紧密相连的周边事实一并收入候选池。
 
-### 4.2 五种重排策略（Rerankers）的取舍与适用边界
+### 五种重排策略（Rerankers）的取舍与适用边界
 
 三路召回捞上来的候选对象，有的带着余弦相似度（$[-1, 1]$），有的带着无上界的 BM25 分数，有的只带着 BFS 图跳数（$1, 2, \dots$）。怎么把这些不同量纲的候选排出一份统一的 Top-$k$ 名单？
 
@@ -185,7 +179,7 @@ Graphiti 在 $\rho(\cdot)$ 阶段提供了五种各具所长的重排武器（�
 
 ![Graphiti search pipeline](/images/blog/graphiti-zep-temporal-knowledge-graph-agent-memory/graphiti-zep-diagram04-search-rerank-constructor.svg)
 
-### 4.3 线性上下文构造器：如何把图结构重新喂给 LLM？
+### 线性上下文构造器：如何把图结构重新喂给 LLM？
 
 选出 Top-$k$ 的事实边、实体节点与社区节点后，最后一步 $\chi(\cdot)$ 是将它们拼装成大模型一眼就能看懂的 Prompt 文本。
 
@@ -195,15 +189,13 @@ Graphiti 在 $\rho(\cdot)$ 阶段提供了五种各具所长的重排武器（�
 - 在 **`<FACTS>`** 区块中，每一条事实后面都紧跟着显式的有效日期区间 `(Date range: t_valid - t_invalid)`（若仍有效则写 `present`）。这样无需任何复杂的图形符号，生成模型只要顺着读一行自然语言，就能同时看清**“发生了什么事”**以及**“这件事从哪天到哪天有效”**，遇到历史变迁问题时可以轻松按时间线串联作答。
 - 在 **`<ENTITIES>`**（及可选的社区区块）中，则附上相关核心实体的名称与聚合摘要 `entity_summary`，为零散的事实边补齐人物背景与全局上下文。
 
----
-
-## 5. Graphiti v0.29.2 源码深挖：从 `add_episode()` 到多后端驱动
+## Graphiti v0.29.2 源码深挖：从 `add_episode()` 到多后端驱动
 
 ![Graphiti repository simple graph](/images/blog/graphiti-zep-temporal-knowledge-graph-agent-memory/graphiti-official-simple-graph.svg)
 
 打开固定基线 [`Graphiti v0.29.2`](https://github.com/getzep/graphiti/tree/ff7e29ccd127d8d9721b5cbb2163a6407ef915fe) 的核心目录 `graphiti_core/`，可以看到整个引擎是如何把论文思想落成高内聚的工程代码的。
 
-### 5.1 `Graphiti` 依赖注入与 `add_episode()` 写入主链
+### `Graphiti` 依赖注入与 `add_episode()` 写入主链
 
 在主入口 [`graphiti_core/graphiti.py`](https://github.com/getzep/graphiti/blob/ff7e29ccd127d8d9721b5cbb2163a6407ef915fe/graphiti_core/graphiti.py) 中，`Graphiti` 类的构造函数通过依赖注入接收五大核心组件：`graph_driver`（图数据库驱动）、`llm_client`（结构化抽取大模型客户端）、`embedder`（向量嵌入器）、`cross_encoder`（精排器）与 `tracer`（遥测追踪器）。
 
@@ -240,7 +232,7 @@ class SupportTicket(BaseModel):
 源码会自动将这些 Pydantic 模型的字段 Schema 注入抽取 Prompt 的 JSON Schema 约束中，让大模型在开放抽取的同时，稳定填好业务系统必需的结构化字段（并自动拒绝将核心字段写入保留属性名）。
 3. **批量导入 `add_episode_bulk()` 与三元组直写 `add_triplet()`**：针对初次上线需要导入几万条历史工单或已有知识库的场景，逐条调 `add_episode()` 往返太慢。`v0.29.2` 专门提供了批处理通道 `add_episode_bulk()`，以及绕过自然语言抽取、直接把上游可信的 `(source_node, edge, target_node)` 写进双时态图的 `add_triplet()`（对应 `EpisodeType.fact_triple`）。
 
-### 5.2 `SagaNode`、预置检索配方（Search Recipes）与多图后端抽象
+### `SagaNode`、预置检索配方（Search Recipes）与多图后端抽象
 
 ![Graphiti temporal graph walkthrough](/images/blog/graphiti-zep-temporal-knowledge-graph-agent-memory/graphiti-official-temporal-walkthrough.gif)
 
@@ -250,19 +242,17 @@ class SupportTicket(BaseModel):
 - **`CommunityNode`**（空间拓扑上的聚类）：回答“哪些人物、公司和产品在关系网里经常绑在一起”；
 - **`SagaNode`**（时间叙事线上的串联）：通过 chronology 边把属于同一场长周期业务过程（例如一次持续两周的线上故障排查、一个季度的销售跟单全流程）的多个 Episode 按时间顺序串成一条故事线，并支持调用 `summarize_saga()` 生成过程复盘摘要。
 
-在检索端，[`search_config_recipes.py`](https://github.com/getzep/graphiti/blob/ff7e29ccd127d8d9721b5cbb2163a6407ef915fe/graphiti_core/search/search_config_recipes.py) 将前文第 4 节的多种检索器与重排器预先组装成了十余套开箱即用的 `SearchConfig` 配方（例如 `COMBINED_HYBRID_SEARCH_RRF`、`COMBINED_HYBRID_SEARCH_MMR`、`COMBINED_HYBRID_SEARCH_CROSS_ENCODER`、`EDGE_HYBRID_SEARCH_NODE_DISTANCE` 等）。调用者既可以用一行 `await graphiti.search(query, center_node_uuid=...)` 走默认混合检索，也可以调用底层 `await graphiti.search_(query, config=..., search_filter=...)` 同时拿回匹配的边、节点、Episode 与社区对象。
+在检索端，[`search_config_recipes.py`](https://github.com/getzep/graphiti/blob/ff7e29ccd127d8d9721b5cbb2163a6407ef915fe/graphiti_core/search/search_config_recipes.py) 将前文介绍的多种检索器与重排器预先组装成了十余套开箱即用的 `SearchConfig` 配方（例如 `COMBINED_HYBRID_SEARCH_RRF`、`COMBINED_HYBRID_SEARCH_MMR`、`COMBINED_HYBRID_SEARCH_CROSS_ENCODER`、`EDGE_HYBRID_SEARCH_NODE_DISTANCE` 等）。调用者既可以用一行 `await graphiti.search(query, center_node_uuid=...)` 走默认混合检索，也可以调用底层 `await graphiti.search_(query, config=..., search_filter=...)` 同时拿回匹配的边、节点、Episode 与社区对象。
 
 而在存储与模型适配层，[`graphiti_core/driver/`](https://github.com/getzep/graphiti/tree/ff7e29ccd127d8d9721b5cbb2163a6407ef915fe/graphiti_core/driver) 通过统一的 `GraphDriver` 抽象屏蔽了不同图数据库的方言差异——目前主力支持 **Neo4j**、**FalkorDB** 以及 **Amazon Neptune + OpenSearch**（早期实验性的 Kuzu 驱动已在 `v0.29.2` 标记为 deprecated）；同时在检索过滤器 [`search_filters.py`](https://github.com/getzep/graphiti/blob/ff7e29ccd127d8d9721b5cbb2163a6407ef915fe/graphiti_core/search/search_filters.py) 中对所有属性名、标签与时间条件做了严格的的参数化绑定与字符校验，从驱动底层杜绝了把用户输入拼进 Cypher 语句引发的查询注入风险。
 
 ![Structured and unstructured ingestion in Graphiti](/images/blog/graphiti-zep-temporal-knowledge-graph-agent-memory/graphiti-official-structured-unstructured.gif)
 
----
-
-## 6. 实验复盘：DMR 与 LongMemEval 的收益、延迟与回退归因
+## 实验复盘：DMR 与 LongMemEval 的收益、延迟与回退归因
 
 论文在两套复杂度截然不同的长期记忆基准上检验了系统表现（实验统一使用 `gpt-4o-mini-2024-07-18` 构建图谱，BGE-M3 负责 Embedding 与重排，生成端分别测试 `gpt-4-turbo`、`gpt-4o-mini` 与 `gpt-4o`）。
 
-### 6.1 DMR 基准：为什么 60 条消息的短会话测不出图记忆的真正实力？
+### DMR 基准：为什么 60 条消息的短会话测不出图记忆的真正实力？
 
 ![DMR results](/images/blog/graphiti-zep-temporal-knowledge-graph-agent-memory/graphiti-zep-table01-dmr.webp)
 
@@ -272,7 +262,7 @@ class SupportTicket(BaseModel):
 
 但如果我们客观对比表中紧挨着的 `Full-conversation`（把整场对话原封不动塞进窗口），会发现 Zep 相比全量上下文其实只高了微弱的 `0.4` 和 `0.2` 个百分点（`94.8% vs 94.4%`，`98.2% vs 98.0%`）。为什么在 DMR 上拉不开差距？因为 DMR 数据集的每段对话只有区区 **60 条简短消息**，总长不过几千 Token，现代大模型直接全量通读毫不费力，且题目大多是简单的单点事实复述，缺乏复杂的跨月状态变更。因此，DMR 只证明了 Graphiti 的图抽取没有丢失信息，真正大考还在后面。
 
-### 6.2 LongMemEval 总体表现：压缩 98.6% 上下文，为什么准确率反而涨了 11 个点？
+### LongMemEval 总体表现：压缩 98.6% 上下文，为什么准确率反而涨了 11 个点？
 
 为了贴近真实企业级 Agent 的运行环境，论文引入了 **LongMemEval**（`oracle` 之外的完整历史集 `LongMemEval_s`）：每段多会话历史平均长达 **115,000 Tokens**，跨越漫长的时间跨度并包含大量日常寒暄噪音与状态更新。
 
@@ -294,7 +284,7 @@ $$
 
 当一段记忆入库后会被后续几十上百次会话反复检索复用（即查询次数 $N_q$ 较大）时，`115k -> 1.6k` 省下的海量在线 Token 费用会远远覆盖掉写入期的抽取开销。
 
-### 6.3 六大题型拆解：哪些任务暴涨，为什么 `single-session-assistant` 会回退？
+### 六大题型拆解：哪些任务暴涨，为什么 `single-session-assistant` 会回退？
 
 ![LongMemEval breakdown](/images/blog/graphiti-zep-temporal-knowledge-graph-agent-memory/graphiti-zep-table03-longmemeval-breakdown.webp)
 
@@ -311,11 +301,9 @@ $$
 
 原因直指三元组抽取的本质局限：Graphiti 的抽取 Prompt 天然围绕“用户（User）及其关联的外部实体状态”构建关系边；当 Assistant 在某一轮输出了一大段长篇大论的方案建议、代码列表或散文式分析时，将其拆成零碎的 `(Entity)-[Fact]->(Entity)` 三元组会丢失大量篇章结构与原话细节。这也给生产系统设计提了一个醒：**当意图识别发现用户正在追问“你刚才/上次给我写的方案里第 3 条是什么”时，检索层应当直接顺着 provenance 拉出对应的原始 `EpisodicNode` 原文，避免仅向模型投喂零散的三元组事实边**。
 
----
+## 生产工程落地：并发挑战、安全边界与横向生态坐标
 
-## 7. 生产工程落地：并发挑战、安全边界与横向生态坐标
-
-### 7.1 把 Graphiti 推向生产的四大工程挑战
+### 把 Graphiti 推向生产的四大工程挑战
 
 将双时态记忆图从论文实验搬进高并发生产环境，架构师必须在代码外围处理好四个棘手问题：
 
@@ -324,7 +312,7 @@ $$
 3. **多租户隔离红线：`group_id` 仅充当逻辑分区键，不具备 RBAC 鉴权能力**：在 Graphiti 源码中，`group_id` 被广泛用于在图查询、向量检索和全文检索中划分数据命名空间。但 `group_id` 本身不具备任何密码学身份校验——如果允许前端或大模型自己在 Tool Call 参数里随意填写 `group_id`，攻击者只需通过一行 Prompt 注入就能跨租户读取他人记忆。在生产架构中，`group_id` 必须由服务端 API 网关根据已认证的会话 Token 强行注入，且在执行 GDPR 数据擦除时，必须顺着 `EpisodicNode -> EntityEdge -> EntityNode -> CommunityNode / SagaNode` 彻底清理所有派生摘要与向量索引。
 4. **记忆与权威业务主库（System of Record）的职责边界**：Agent 记忆图本质上是由概率模型从对话流中提炼出的“认知缓存”。对于闲聊偏好、历史沟通脉络，直接采信记忆图毫无问题；但一旦涉及账户实时余额、库存扣减或合同法律状态，必须以实时业务数据库（System of Record）的强一致 API 为准，严禁拿记忆图里的模糊印象代替实时账本查询。
 
-### 7.2 在知识图谱与 Agent 生态中的横向坐标
+### 在知识图谱与 Agent 生态中的横向坐标
 
 最后，我们将 **Graphiti / Zep** 与同领域的 **MemGPT / Letta**、**Microsoft GraphRAG**，以及本站同系列的 **[OpenSPG KAG](/blog/openspg-kag-knowledge-augmented-generation-paper-reading)** 和 **[Neo4j 源码精读](/blog/neo4j-graph-database-cypher-storage-engine-source-reading)** 放在同一张架构坐标系中对比：
 

@@ -31,9 +31,9 @@ draft: false
 
 ![KAG framework](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig01-framework.webp)
 
-## 1. 为什么向量 RAG 搞不定专业领域问答？系统全景与架构权衡
+## 为什么向量 RAG 搞不定专业领域问答？系统全景与架构权衡
 
-### 1.1 专业知识服务的三大矛盾：准确性、完整性与逻辑严密性
+### 专业知识服务的三大矛盾：准确性、完整性与逻辑严密性
 
 在专业领域构建问答系统，架构师必须同时应付三项彼此拉扯的目标：
 
@@ -43,7 +43,7 @@ draft: false
 
 这三项目标之间存在天然的工程张力：追求极致的准确性需要重度专家 Schema，这会拖慢构建速度并牺牲覆盖率；追求完整性需要放开文本召回，又会放进噪声；增加多步逻辑规划与反思轮次，则会显著推高在线调用延迟。
 
-### 1.2 KAG 三大子系统协同与 OpenSPG 底座分工
+### KAG 三大子系统协同与 OpenSPG 底座分工
 
 为了平衡上述张力，KAG 将全链路拆分为离线构建（**KAG-Builder**）、在线求解（**KAG-Solver**）与底座模型能力（**KAG-Model**）三大子系统：
 
@@ -66,11 +66,9 @@ metadata   graph      objects
 
 固定到 [`OpenSPG v0.8`](https://github.com/OpenSPG/openspg/tree/ceeb3ef549df79ca4c4878e7ff452c73584991f3) 与 [`KAG v0.8.0`](https://github.com/OpenSPG/KAG/tree/de777280584fec0c3d888804eaafa86f169f13db) 源码来看，OpenSPG 是底层的可编程知识图谱底座（包含 `server`、`builder`、`reasoner`、`cloudext` 等模块，单机环境下由 `:8887` 服务端、存储元数据的 MySQL、承载图数据的 Neo4j 以及存储对象的 MinIO 组成）；而 KAG 则通过 [`SPGServerBridge`](https://github.com/OpenSPG/KAG/blob/de777280584fec0c3d888804eaafa86f169f13db/kag/bridge/spg_server_bridge.py) 和 `knext` 客户端调用 OpenSPG，在底座之上实现了互索引构建器、六类可配置索引管理器（`KAGIndexManager`）以及静态/迭代逻辑求解管线。
 
----
+## LLMFriSPG 与三层知识-文本互索引
 
-## 2. LLMFriSPG 与三层知识-文本互索引
-
-### 2.1 为什么刚性 Schema 与纯开放抽取都走不通？
+### 为什么刚性 Schema 与纯开放抽取都走不通？
 
 在构建领域知识图谱时，工程界长期分裂为两个极端：一派坚持**专家预定义 Schema**（Schema-Constrained），每个实体类型有哪些属性、允许连什么边都由领域专家严格限定，优点是结构干净、适合跑确定性规则，代价是建模周期极长，文档里90% 没被预先建模的长尾信息直接被丢弃；另一派转向大模型驱动的**无约束开放抽取**（Schema-Free / OpenIE），让 LLM 自由从文本里抽三元组，虽然自动化程度高，但抽出的关系名五花八门、概念层级混乱，很难写出稳定的图查询。
 
@@ -86,7 +84,7 @@ $$
 
 观察上图的层次结构，LLMFriSPG 的巧妙之处在于“**顶层共享类型与概念词表，底层按约束强度分级实例化**”。专家预先定义的核心业务字段和开放抽取出的临时动态关系，都挂载在同一套类型声明 $T$ 与概念树 $C$ 之下，并且统一指向底层的原文证据分块。
 
-### 2.2 静态属性、动态属性与系统内建属性的协同契约
+### 静态属性、动态属性与系统内建属性的协同契约
 
 为了让大图模型和大语言模型都能无障碍读懂图中的节点，对于任意类型 $t \in T$，LLMFriSPG 将其属性与关系集合 $p_t$ 拆解为三个互补子集：
 
@@ -102,7 +100,7 @@ $$
    - `summary`：实例或关系在所属文档段落中的核心事实摘要；
    - `belongTo`：将具体文档里的实例节点归纳连接到概念图中的标准概念节点（例如将具体文本中出现的议会实体 `Chamber` 连接到标准概念 `Legislative Body`）。
 
-### 2.3 KG_cs、KG_fr 与 RC 的三层互索引拓扑
+### KG_cs、KG_fr 与 RC 的三层互索引拓扑
 
 ![Three-layer knowledge representation](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig03-knowledge-layering.webp)
 
@@ -126,13 +124,11 @@ $$
 
 如果只有单向的 `Entity -> Chunk`，当用户的提问措辞高度口语化、未能直接命中图实体时，系统就无法先靠向量召回文本块再顺藤摸瓜进入图谱做多跳推理；反过来，如果只有 `Chunk -> Entity`，当图谱推理出某条多跳路径后，又无法顺着 `supporting_chunks` 拉出原始段落来核验前置条件是否成立。双向互索引加上跨版本稳定的 `chunk_id`，让“精确图推理”与“完整文本证据”真正连成了闭环。
 
----
-
-## 3. KAG-Builder：从非结构化文档到双向互索引图谱
+## KAG-Builder：从非结构化文档到双向互索引图谱
 
 ![KAG Builder pipeline](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig04-builder-pipeline.webp)
 
-### 3.1 组件化构建流水线与语义切分契约
+### 组件化构建流水线与语义切分契约
 
 离线阶段如何把杂乱的 PDF、Word 或 Markdown 文档变成上面那套三层互索引结构？
 
@@ -154,7 +150,7 @@ pipeline.invoke(input_data)
 
 在非结构化主链的第一棒，**Semantic Chunking**（语义切分）直接决定了后续抽取与溯源的成败。如果按固定字符数一刀切，很容易把一张表格的表头和表体劈成两半，或者把“除非存在以下情形：”和后面的列举项切进两个不同的 Chunk，导致抽取器抽出完全反向的结论。为此，`kag/builder/component/splitter` 提供了 `outline`（按文档标题大纲层级切分）、`semantic`（利用大模型或语义边界保持段落内聚）、`pattern`（按正则标记切分）与 `length` 组合策略。每一个生成的 Chunk 都会绑定包含文档 ID、章节路径（`title_path`）与确定性哈希的 `chunk_id`，确保文档局部修订时不会导致全量图节点的 `supporting_chunks` 引用悬空。
 
-### 3.2 实体-事件-关系级联抽取与领域知识注入
+### 实体-事件-关系级联抽取与领域知识注入
 
 拿到语义完整的 Chunk 后，如果直接让大模型一步抽完所有三元组，模型往往只盯着显眼的名词，漏掉隐含的动作条件、时间地点和因果修饰。KAG 因此采用了**“实体 $\rightarrow$ 事件 $\rightarrow$ 关系”的三阶段级联抽取协议**：
 
@@ -166,11 +162,9 @@ pipeline.invoke(input_data)
 
 看上图从美国政治历史文档中抽取出的实例网络：具体文本中的人物、政党、议会机构与历史事件被抽取为底层实例节点，同时通过 `belongTo` 向上挂载到 `Political Party`、`Legislative Body`、`Government Agency` 等概念节点，向下则通过 `supporting_chunks` 连回原始文本段落。在 `v0.8.0` 的 `kag/builder/component/extractor` 目录下，抽取器进一步细化为 `schema_constraint_extractor.py`、`schema_free_extractor.py`、`atomic_query_extractor.py`、`knowledge_unit_extractor.py`、`table_extractor.py` 与 `outline_extractor.py`，支持针对不同文档形态产出定制化的索引单元。
 
----
+## 基于概念图的离线与在线知识对齐
 
-## 4. 基于概念图的离线与在线知识对齐
-
-### 4.1 开放图谱的三大错位与六类有向语义关系
+### 开放图谱的三大错位与六类有向语义关系
 
 为什么很多团队用大模型抽完三元组塞进 Neo4j 后，发现多跳检索的命中率依然惨不忍睹？因为未经对齐的开放图谱普遍存在三种致命的**结构错位**（Misalignment）：
 
@@ -188,7 +182,7 @@ pipeline.invoke(input_data)
 - **`belongTo`**（`<var1, belongTo, var2>`）：专门用于从具体文档实例向抽象概念节点的归纳映射（Instance-to-Concept）；
 - **`causes`**（`<var1, causes, var2>`）：从原因事件指向结果状态，为故障诊断、政策触发条件与医学病理提供有向因果链。
 
-### 4.2 离线消歧融合与在线查询概念桥接
+### 离线消歧融合与在线查询概念桥接
 
 有了这六类语义关系，KAG 在**离线索引构建**与**在线查询路由**两个阶段打出一套组合拳：
 
@@ -201,13 +195,11 @@ pipeline.invoke(input_data)
 
 如果只做精确实体匹配，图中根本没有“白内障患者”直接连向该政策的边；如果放开做无约束的查询改写，又容易引入噪声。KAG 的在线对齐流程则是：先识别出查询中的核心概念 `Cataract Patient`，当精确匹配未命中目标关系时，顺着概念图中的有向边推导（`Cataract -> causes -> Visual Impairment`，或沿 `isA` / `belongTo` 向上回溯到 `Visually Impaired`），通过这条**可解释、带方向的受控概念路径**精准降落到对应的实例子图与原文 Chunk。
 
----
-
-## 5. 逻辑形式引导的混合推理与多轮反思
+## 逻辑形式引导的混合推理与多轮反思
 
 ![Logical form execution](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig06-logical-form-execution.webp)
 
-### 5.1 把多跳问答变成带变量绑定的状态机
+### 把多跳问答变成带变量绑定的状态机
 
 为什么 IRCoT 等经典的“边想边搜（Interleaved Retrieval with Chain-of-Thought）”方法在复杂专业问题上还是容易出错？因为纯自然语言的思考过程没有严格的**变量作用域**和**算子契约**——模型在第二跳生成的自然语言查询很容易把第一跳设下的年份、地点或排除条件忘掉，或者在拿到一堆数字后直接在文本里心算出错。
 
@@ -225,7 +217,7 @@ pipeline.invoke(input_data)
 7. 调用 `Judge(query, memory)` 审视当前全局记忆中的已知事实是否已经足够且无歧义地回答原始问题；
 8. 若 `is_solved == False`，则调用 `SupplyQuery(query, memory)` 针对缺失的证据环生成下一轮补充查询，继续循环；若已解决或达到轮次上限，则交由 `Generator(query, memory)` 基于完整证据链生成最终回答。
 
-### 5.2 五类符号算子与多跳数值依赖拆解
+### 五类符号算子与多跳数值依赖拆解
 
 ![Logical form functions](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table01-logical-form-functions.webp)
 
@@ -258,25 +250,23 @@ Step 4: Output(math1)
 - 在 `Step 2` 中，主语直接引用上一步绑定的变量 `s2:SportsTeam[o1]`，去查其成立年份属性 `foundedAt` 并绑定到变量 `o2`（即 `1902`）；
 - 在 `Step 3` 中，`Math` 算子直接对常量 `2011` 与变量 `o2` 做确定性减法 `2011 - 1902 = 109`，彻底杜绝了算术幻觉。
 
-### 5.3 图检索优先、混合检索回退与 Global Memory 反思闭环
+### 图检索优先、混合检索回退与 Global Memory 反思闭环
 
 ![Logical Form Reasoner algorithm](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-algorithm02-logical-form-reasoner.webp)
 
 当单步 `Reasoner` 拿到子问题 $lf_{subquery}$ 和逻辑函数 $lf_{func}$ 时，它内部是怎样在“图”和“文本”之间做取舍的？上方 Algorithm 2 揭示了 KAG 的“**图检索优先，混合检索回退**”策略：
 
-1. **优先尝试精确/模糊图检索**（`GraphRetrieval`）：系统首先解析 $lf_{func}$ 中的实体、类型与关系约束，在 $KG_{cs}$ 与 $KG_{fr}$ 上匹配结构化路径或一跳 SPO。如果精确模板未命中，还会借助前文第 4 节的在线概念对齐做受控语义扩展。
+1. **优先尝试精确/模糊图检索**（`GraphRetrieval`）：系统首先解析 $lf_{func}$ 中的实体、类型与关系约束，在 $KG_{cs}$ 与 $KG_{fr}$ 上匹配结构化路径或一跳 SPO。如果精确模板未命中，还会借助前文介绍的在线概念对齐做受控语义扩展。
 2. **充分性门限判定**（`score > threshold`）：如果图谱直接返回了满足约束的高置信度结构化事实（例如直接从图中查到了 `foundedAt = 1902`），系统当场采纳该结果并跳过文本块召回，从而保持极致的上下文纯净度。
 3. **互索引混合检索回退**（`HybridRetrieval`）：一旦图谱覆盖不足（结果为空或置信分低于阈值），系统立刻触发回退路径——把已经定位到的局部图节点作为锚点，顺着 `supporting_chunks` 边拉出关联原文，同时结合子问题的稠密向量与 BM25 检索召回补充文档 Chunk，合并图与文本证据后交由局部 Generator 提炼子答案。
 
 而在多轮反思层面，如果只是把每轮召回的所有长段落无脑拼接到 `history` 里，两三轮下来上下文窗口就会被撑爆。因此，Global Memory 的核心职责是对跨轮次信息做**结构化蒸馏**：将已证实的实体与数值锁定在 `facts` 槽位（附带证据 Chunk ID），将首轮证据模糊的原因记录在 `hypotheses` 槽位，将尚待查明的缺口提炼为 `unresolved` 约束，并维护 `visited_queries` 集合以防止下一轮 `SupplyQuery` 陷入原地踏步的死循环。
 
----
-
-## 6. KAG-Model 底座能力增强与单任务验证
+## KAG-Model 底座能力增强与单任务验证
 
 ![KAG model capabilities](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig07-kag-model-capabilities.webp)
 
-### 6.1 NLU、NLI、NLG 的共享能力矩阵与指令重构
+### NLU、NLI、NLG 的共享能力矩阵与指令重构
 
 在早期的 NLP 流水线中，命名实体识别、实体链接、关系抽取、问题解析和答案生成往往由五六个不同的小模型分头承担，不仅维护繁琐，而且上游小模型一旦抽错，下游毫无自愈能力。
 
@@ -290,7 +280,7 @@ KAG 的第四条设计哲学是：**把离线 Builder 和在线 Solver 依赖的
 
 为了提升基座模型的 NLU 底盘，论文采用**指令重构**（Instruction Reconstruction）方法，将多样化的理解与抽取任务改写为多指令格式的监督微调数据。看上表 Table 3 在 C3、WSC、XSum、Lambda、L-CSTS、RACE 六个基准上的对比：经过 KAG 指令重构微调后，`KAG-Qwen2` 的六任务平均分从原生 Qwen2 的 `56.86` 跃升至 **`61.21`**（其中 XSum 与 L-CSTS 提升尤为显著），`KAG-Llama2` 从 `48.47` 提升至 **`53.59`**，展现出对复杂指令与长文本结构提炼的明显增益。
 
-### 6.2 语义推断与医疗概念上位词发现
+### 语义推断与医疗概念上位词发现
 
 ![NLI results](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table04-nli-results.webp)
 
@@ -300,7 +290,7 @@ KAG 的第四条设计哲学是：**把离线 Builder 和在线 Solver 依赖的
 - 在通用自然语言推断基准（CMNLI、OCNLI、SIQA）上，`KAG-Llama3` 分别拿到 `49.52`、`44.31` 与 `65.81`，相比原生 Llama3（`35.14`、`32.1`、`44.27`）实现了跨越式提升；
 - 更关键的是 Table 5 的 **SemEval2018-Task9 上位概念发现**（Hypernym Discovery）评测：在通用英语（1A English）和音乐（2B Music）子集上，`KAG-Llama3` 的 MRR 达到 `38.26` 和 `30.16`，全面超越 ChatGPT-3.5 与原生 Llama3-8B；而在高度依赖专业术语层级的**医疗子集**（2A Medical）上，`KAG-Llama3` 的 MRR 直接从原生模型的 `24.26` 飙升至 **`55.14`**（翻了一倍有余）。这组数据直接印证了：只要通过领域概念关系数据对基座模型做针对性强化，大模型完全有能力为离线与在线概念对齐提供高精度的 `isA` / `belongTo` 语义桥接。
 
-### 6.3 知识反馈对齐生成与单次前向联合探索
+### 知识反馈对齐生成与单次前向联合探索
 
 在生成端（NLG），专业问答最忌讳模型无视检索回来的知识证据、顺着预训练参数记忆自由发挥。为此，论文提出了 **K-LoRA** 与 **AKGF**（Aligning with Knowledge Graph Feedback），将知识图谱的一致性校验引入偏好对齐阶段。从奖励建模视角看，生成结果 $y$ 在给定问题 $x$ 与知识子图 $KG$ 下的综合反馈信号由三部分耦合而成：
 
@@ -319,13 +309,11 @@ $$
 
 如 Table 6 所示，在 CMedQA 与 BioASQ 两大医疗问答数据集上，经过知识反馈微调的 `KAG-Llama2` 在 Rouge-L / BLEU 指标上分别达到 `15.44 / 3.46` 与 `24.21 / 7.79`，显著优于 ChatGPT-3.5（0-shot/2-shot）及原生 Llama2。同时，论文在 Table 7 中还展示了团队同期的探索工作 **OneGen**：通过在自回归生成序列中穿插特殊的检索 Token，让单个模型在一次前向传播（One-pass）中同时完成自检索（Self-Retriever）与答案生成，在 2WikiMultiHopQA 上将 Llama3.1-7B 的表现推高至 `75.88 EM / 79.60 F1`。
 
----
-
-## 7. KAG v0.8.0 源码深挖：可配置索引、双模管线与优先级调度
+## KAG v0.8.0 源码深挖：可配置索引、双模管线与优先级调度
 
 论文发表时对应的是 KAG `0.5` 原型，而在后续发布的稳定版 [`KAG v0.8.0`](https://github.com/OpenSPG/KAG/tree/de777280584fec0c3d888804eaafa86f169f13db) 中，工程团队对代码架构做了一次彻底的模块化重构——将原本耦合在一起的索引与求解逻辑，拆解为可按业务场景自由拼装的平台级组件（后续更进一步支持接入独立演进的复杂推理模型 [KAG-Thinker](https://arxiv.org/abs/2506.17728)）。
 
-### 7.1 KAGIndexManager：按查询形态按需装配六类索引
+### KAGIndexManager：按查询形态按需装配六类索引
 
 打开 [`kag/indexer/kag_index_manager.py`](https://github.com/OpenSPG/KAG/blob/de777280584fec0c3d888804eaafa86f169f13db/kag/indexer/kag_index_manager.py)，可以看到一个极具工程美感的设计：**把“离线用什么 Extractor 建索引”和“在线用什么 Retriever 查索引”封装在同一个 `KAGIndexManager` 派生类里成对生成**。这样应用层只需在 YAML 配置里指定一个索引管理器名称，离线 Builder 和在线 Solver 就会自动对齐数据契约，从源头杜绝“离线建了 A 索引、在线配错了 B 检索器”的错配问题。
 
@@ -342,7 +330,7 @@ $$
 
 这种分级设计给工程落地带来了极大的灵活性：如果你的业务只是一套结构规整的内部规章手册，先开启 `OutlineIndexManager + TableIndexManager` 就能以极低的构建成本解决大半问题；只有当业务确实存在复杂的跨文档实体关系链时，才需要开启重型的 `KAGHybridIndexManager`。
 
-### 7.2 KAGStaticPipeline 与 KAGIterativePipeline 的延迟-精度权衡
+### KAGStaticPipeline 与 KAGIterativePipeline 的延迟-精度权衡
 
 在求解端入口 [`SolverMain`](https://github.com/OpenSPG/KAG/blob/de777280584fec0c3d888804eaafa86f169f13db/kag/solver/main_solver.py) 下，`v0.8.0` 提供了两条适应不同延迟预算的求解管线：
 
@@ -358,7 +346,7 @@ $$
 - **[`KAGStaticPipeline`](https://github.com/OpenSPG/KAG/blob/de777280584fec0c3d888804eaafa86f169f13db/kag/solver/pipeline/kag_static_pipeline.py)**：Planner 在首轮一次性吐出完整的逻辑形式有向无环图（DAG），执行引擎识别出没有前后置变量依赖的平行分支后，直接并发调度 Executor 执行。它的最大优势是**延迟可预测、并发度高、LLM 调用次数有硬性上界**，非常适合问题套路相对固定、对响应延迟（SLA）敏感的在线服务；缺点是一旦初始 DAG 把实体或路径猜偏，中途无法改写计划。
 - **[`KAGIterativePipeline`](https://github.com/OpenSPG/KAG/blob/de777280584fec0c3d888804eaafa86f169f13db/kag/solver/pipeline/kag_iterative_pipeline.py)**：每轮只规划并执行当前最紧迫的一步，拿到真实检索回来的实体和事实后更新上下文，再决定下一步往哪个方向追问（内置 `MaxIterationsReachedError` 熔断保护）。它能够应对前序实体未知、需要“摸着石头过河”的深度探索问题，但串行多轮调用会显著拉长尾延迟。
 
-### 7.3 KAGHybridRetrievalExecutor：优先级组串行与同级并发短路
+### KAGHybridRetrievalExecutor：优先级组串行与同级并发短路
 
 在混合检索执行器 [`KAGHybridRetrievalExecutor`](https://github.com/OpenSPG/KAG/blob/de777280584fec0c3d888804eaafa86f169f13db/kag/solver/executor/retriever/kag_hybrid_retrieval_executor.py) 中，`v0.8.0` 将论文 Algorithm 2 的“图优先、文本回退”推广为一套通用的**优先级分组调度机制**：
 
@@ -378,11 +366,9 @@ return merged_output
 
 此外，整个求解过程通过 Task-scoped `Context` 与 `Reporter` 实现全链路留痕，并在 [`kag_mcp_server.py`](https://github.com/OpenSPG/KAG/blob/de777280584fec0c3d888804eaafa86f169f13db/kag/mcp/server/kag_mcp_server.py) 中封装了标准 MCP（Model Context Protocol）服务端，使外部 Agent 可以把 KAG 当作即插即用的专业知识求解工具。
 
----
+## 多跳问答实验复盘、消融拆解与垂直行业落地
 
-## 8. 多跳问答实验复盘、消融拆解与垂直行业落地
-
-### 8.1 多跳问答主实验与“低块召回、高答案精度”之谜
+### 多跳问答主实验与“低块召回、高答案精度”之谜
 
 论文在 HotpotQA、2WikiMultiHopQA 和 MuSiQue 三个公认的多跳问答基准验证集中各抽取 1000 道题，以端到端精确匹配率（EM）和词级 F1 衡量生成质量：
 
@@ -413,7 +399,7 @@ $$
 1. **结构化图推理直接短路了原文召回**：2WikiMultiHopQA 中有大量高度规整的实体属性对比与两跳关系问题（例如比较两位导演的出生年份或父母国籍）。KAG 的 `GraphRetrieval` 直接在 $KG_{cs}/KG_{fr}$ 上命中 SPO 三元组并算出了精确子答案，触发了前文 Algorithm 2 的充分性短路机制，**根本不需要再去把原始长文 Chunk 捞出来**。由于 Recall@K 指标只死板统计“是否捞出了标注的原文段落 ID”，KAG 靠图谱直接做对的题在 Recall@K 上反而被记为“未召回段落”。
 2. **逻辑形式消除了多文档噪声干扰**：`IRCoT + HippoRAG` 虽然把 93.9% 的相关段落塞进了上下文，但同时也带入了大量同名干扰段落，且靠自然语言 CoT 做年份比较和逻辑交并极易算错；KAG 则用精炼的三元组事实与确定性 `Math`/`Deduce` 算子把证据利用效率推到了极致。
 
-### 8.2 模块消融、系统耗时成本与图连通性演化
+### 模块消融、系统耗时成本与图连通性演化
 
 ![Generation ablation](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table10-generation-ablation.webp)
 
@@ -428,10 +414,10 @@ $$
 ![Knowledge-alignment connectivity](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig09-knowledge-alignment-connectivity.webp)
 
 与此同时，Fig. 8 与 Fig. 9 诚实地展示了高准确率背后的**系统代价与拓扑变化**：
-- **耗时翻倍的真实开销**（Fig. 8）：在 20 并发任务下跑完 1000 道题，从基础 ReSP 切换到 `LFS` 再到包含模糊概念检索的 `LFS_fuzzy`，HotpotQA 总耗时从 70 余分钟增长到 160～180 分钟，MuSiQue 从约 95 分钟增长到 165～195 分钟。多步规划、概念扩展与多轮反思带来了成倍的 LLM 调用开销，这也印证了前文第 7 节为什么 `v0.8.0` 必须引入 `KAGStaticPipeline` 与检索优先级短路来控制线上延迟。
+- **耗时翻倍的真实开销**（Fig. 8）：在 20 并发任务下跑完 1000 道题，从基础 ReSP 切换到 `LFS` 再到包含模糊概念检索的 `LFS_fuzzy`，HotpotQA 总耗时从 70 余分钟增长到 160～180 分钟，MuSiQue 从约 95 分钟增长到 165～195 分钟。多步规划、概念扩展与多轮反思带来了成倍的 LLM 调用开销，这也印证了前文剖析源码架构时，为什么 `v0.8.0` 必须引入 `KAGStaticPipeline` 与检索优先级短路来控制线上延迟。
 - **图连通度向高阶移动**（Fig. 9）：对比加入知识对齐前（蓝点 `M_Indexing`）与对齐后（橙点 `K_Alignment`）的一至三跳节点度数-频次分布，橙色曲线整体向右上方平移（例如 MuSiQue 两跳峰值对应对数度数从 `1.18` 升至 `1.34`，三跳从 `1.30` 升至 `1.72`）。这从图论角度证明了概念挂载与实体融合有效消除了孤立连通分量；但在工程实践中，也必须监控顶层泛化概念是否演变成了连接数万节点的“超级 Hub”，防止多跳扩展时发生召回爆炸。
 
-### 8.3 典型案例追踪与政务、医疗场景的工程边界
+### 典型案例追踪与政务、医疗场景的工程边界
 
 ![Reflection example](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table13-reflection-example.webp)
 
@@ -449,9 +435,7 @@ $$
 
 在将这类系统推向医疗、金融等高风险生产环境时，必须守住两条工程红线：一是**政策与指南的时效性治理**（政策有生效期与废止期，不能让过期条款污染当前推理）；二是**临床与合规的 Fail-Closed 边界**（高风险问题必须严格锚定权威指南与 DSL 规则，一旦检索证据不足必须明确拒答或转交人工，严禁通用 Generator 凭参数记忆自由补全）。
 
----
-
-## 9. 横向技术坐标与总结：KAG 在知识增强生态中的位置
+## 横向技术坐标与总结：KAG 在知识增强生态中的位置
 
 如果把 KAG 放到整个 RAG、Agent 记忆与图数据库的技术版图中，它与其他主流方案的生态位分工一目了然：
 

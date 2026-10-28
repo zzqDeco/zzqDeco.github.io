@@ -31,8 +31,7 @@ Stability AI 与伊利诺伊大学厄巴纳-香槟分校（UIUC）团队在 **[S
 3. **用受限球面高斯“吸走”环境阴影，用 Beta 分布众数治愈材质回归的“均值坍缩”**：从单张图片同时猜反照率、光照和材质是经典的病态逆问题。作者一边用固定轴向与锐度的球面高斯（Spherical Gaussians）配合白模解调损失把低频明暗阴影单独剥离出来；另一边放弃直接用 MSE 回归粗糙度/金属度标量，改让网络预测 Beta 概率分布的两个形状参数 $(\alpha, \beta)$ 并取其众数（Mode）输出——彻底解决了网络遇到材质歧义时偷懒输出折中废解（0.5）的顽疾。
 4. **放弃秒级全局 UV 优化，用 C++/CUDA 箱体投影与光栅化烘焙死守 0.5 秒红线**：通用几何库 `xatlas` 展开一个网格动辄耗时数秒，足足比神经网络推理慢十倍。SF3D 编写了专用的 C++ 箱体六面投影与重叠分流 UV 展开器，配合 CUDA/Metal 原生光栅化纹理烘焙核函数，在几十毫秒内完成了从三维三平面场到二维 PBR 贴图的转换。
 
-
-## 1. 为什么传统快速单图重建难以入库？四大工程痛点诊断
+## 为什么传统快速单图重建难以入库？四大工程痛点诊断
 
 在 2023–2024 年的单图重建赛道上，LRM、OpenLRM、TripoSR、InstantMesh 与 CRM 等方法证明了从单张图像前馈预测三维场的可行性。然而，这些模型之所以停留在“看视频 Demo 很炫、进引擎管线很难”，是因为它们普遍回避了四个关乎资产可用性的核心痛点：
 
@@ -47,11 +46,9 @@ Stability AI 与伊利诺伊大学厄巴纳-香槟分校（UIUC）团队在 **[S
 | **3. 等值面阶梯伪影**（Marching Cubes） | 在低分三平面上预测密度场，推理时用 Marching Cubes 硬抽等值面 | 曲面上布满一圈圈锯齿状台阶与网格走样波纹（第三行左），打光后惨不忍睹 | 升级 $384\times 384$ 高分三平面 + DMTet 可微四面体提取 + 顶点位移与拉普拉斯平滑 |
 | **4. 缺失物理材质**（No PBR Material） | 只输出单一 RGB 颜色，默认所有物体均为纯漫反射 | 金属、陶瓷、光滑塑料在动态光照下毫无高光质感差异（第四行左） | 引入 Material Net 预测 Beta 分布参数，输出粗糙度、金属度因子与切线空间法线贴图 |
 
----
+## 双流解耦 + PixelShuffle 突破 384×384 三平面瓶颈
 
-## 2. 双流解耦 + PixelShuffle 突破 384×384 三平面瓶颈
-
-### 2.1 五阶段端到端系统全貌
+### 五阶段端到端系统全貌
 
 ![SF3D method overview](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig03-method-overview.webp)
 
@@ -62,7 +59,7 @@ Fig. 3 展示了 SF3D 的五阶段主干链路：
 4. **球面高斯光照与 Beta 材质估计**：并行由 Light Net 估计 24 个球面高斯波瓣照明，由 Material Net 估计全局金属度与粗糙度，支撑训练期的可微延迟 PBR 渲染（Deferred Shading）。
 5. **极速箱体 UV 展开与贴图烘焙导出**：在几十毫秒内完成 UV 展开、三平面属性反查、切线空间法线转换与 GLB 打包。
 
-### 2.2 为什么三平面必须升到 384×384？双流瓶颈如何规避算力爆炸？
+### 为什么三平面必须升到 384×384？双流瓶颈如何规避算力爆炸？
 
 回忆一下三平面（Triplane）表示的工作原理：为了避免三维稠密体素网格 $\mathcal{O}(N^3)$ 的立方级显存爆炸，我们只维护三个正交的二维特征平面 $F_{xy}, F_{xz}, F_{yz}$。对于空间中的任意三维点 $\mathbf{x}=(x,y,z)$，只需把它分别正交投影到三个平面上做双线性插值，再把采样出的三个特征向量拼起来：
 
@@ -88,11 +85,9 @@ SF3D 的解法（对照源码 `sf3d/models/transformers/backbone.py` 与后文 F
 - 在每一层中，先通过 `FuseBlock`（交叉注意力）把视觉条件与三平面信息汇入紧凑潜变量流，再由 `ComputeBlock` 在紧凑潜变量流上执行高维自注意力与前馈计算，随后将更新写回 $96\times 96$ 三平面；
 - 出了 Transformer 主干后，在 `sf3d/models/network.py` 的 `PixelShuffleUpsampleNetwork` 中，先用卷积把通道维扩展为 `out_channels * 16`，再调用 `nn.PixelShuffle(4)` 将每个像素的 16 组通道直接重排展开为 $4\times 4$ 的空间子像素块，零注意力开销地将 $96\times 96$ 瞬间推高至 **$384\times 384$**。
 
----
+## DMTet 显式网格闭环、Beta 材质分布与球面高斯去光照
 
-## 3. DMTet 显式网格闭环、Beta 材质分布与球面高斯去光照
-
-### 3.1 为什么用 DMTet + 顶点偏移替代 Marching Cubes？
+### 为什么用 DMTet + 顶点偏移替代 Marching Cubes？
 
 在传统 NeRF/Triplane 模型里，训练时只管用体渲染（Volumetric Ray Marching）算图像颜色损失，模型根本不知道自己最后会被 Marching Cubes 抽成什么样子的网格。结果就是密度场在表面附近软绵绵地过渡，一抽等值面就全是台阶。
 
@@ -111,7 +106,7 @@ mesh = self.isosurface_helper(sdf.view(-1, 1), deform.view(-1, 3))
 2. 解码器不仅预测标量密度 `density`（减去阈值 `isosurface_threshold` 后转化为符号距离 `sdf`），还同时为每个网格顶点预测了一个三维微调位移向量 **`vertex_offset`**（`deform`）；
 3. 即使四面体网格本身的格点位置是固定的，有了可学习的 `vertex_offset`，网格顶点就可以顺着物体表面曲率主动挪动位置去贴合真实边缘；同时模型还额外预测法线补偿贴图，从几何顶点与表面法线双管齐下抹平了离散网格的阶梯感。
 
-### 3.2 为什么预测粗糙度/金属度不能用 MSE，而要预测 Beta 分布取众数？
+### 为什么预测粗糙度/金属度不能用 MSE，而要预测 Beta 分布取众数？
 
 为了让导出的 GLB 模型在引擎里拥有金属光泽或哑光质感，**Material Net**（基于 CLIP 图像编码特征）需要从单张输入图像预测物体的粗糙度 $r\in[0,1]$ 与金属度 $m\in[0,1]$。
 
@@ -131,7 +126,7 @@ $$
 
 这样一来，哪怕训练数据里存在歧义，Beta 分布也可以通过调节 $\alpha,\beta$ 表达出偏态峰值，推理时取众数就能干脆利落地给出鲜明的金属或粗糙质感，并直接写入导出 GLB 的 `PBRMaterial(roughnessFactor=roughness, metallicFactor=metallic)` 中。
 
-### 3.3 球面高斯（SG）环境光与白模解调损失：如何把假阴影从贴图里剥出去？
+### 球面高斯（SG）环境光与白模解调损失：如何把假阴影从贴图里剥出去？
 
 再看最头疼的**光照烘焙污染**（Light Bake-in）。一张输入照片上的像素颜色 $C$，物理上是物体固有反照率（Albedo $A$）与环境光照着色（Shading $S$）的乘积：$C \approx A \odot S$。如果不给环境光寻找一个合法的出口，三平面解码出的反照率 $A$ 就会被迫把阴影 $S$ 一起吞进去。
 
@@ -154,11 +149,9 @@ $$
 
 有了这三道约束，原图里柔和的明暗阴影被稳稳地引流到了球面高斯光照分支里，而留在三平面反照率通道里的，就是剥离了环境阴影的干净贴图。
 
----
+## 箱体投影 UV 展开与 CUDA/Metal 光栅化烘焙
 
-## 4. 箱体投影 UV 展开与 CUDA/Metal 光栅化烘焙
-
-### 4.1 为什么不用 `xatlas`？几十毫秒跑完的箱体投影 UV 算法
+### 为什么不用 `xatlas`？几十毫秒跑完的箱体投影 UV 算法
 
 ![SF3D export pipeline](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig05-export-overview.webp)
 
@@ -186,7 +179,7 @@ $$
 
 看看 Fig. 6 右下角展开后的 UV 图集：六个主方向的大块表面整整齐齐地排在上方 $3\times 2$ 网格里，被遮挡的内侧面片则井然有序地收容在下方区域。因为每个三角形投影方向的计算完全独立并行，没有任何迭代优化，整套 UV 展开在几十毫秒内就能瞬间跑完。
 
-### 4.2 光栅化反查烘焙与三合一训练总损失
+### 光栅化反查烘焙与三合一训练总损失
 
 有了 UV 坐标后，`texture_baker` 模块（内含 CUDA 与 Apple Metal 原生核函数）按三步把三平面特征烘焙成二维贴图：
 1. **UV 空间光栅化**（`baker.rasterize` & `baker.interpolate`）：把网格的二维 UV 三角形光栅化到 $1024\times 1024$ 画布上，用重心坐标插值算出画布上每个有效纹素（Texel）对应的**三维世界坐标** `gb_pos` 与插值表面法线；
@@ -212,11 +205,9 @@ $$
 \underbrace{\left(\lambda_{NrmRepl}\mathcal{L}_{NrmRepl} + \lambda_{NrmSmooth}\mathcal{L}_{NrmSmooth} + \lambda_{Demod}\mathcal{L}_{Demod}\right)}_{\mathcal{L}_{shading}\text{（预测法线贴图对齐、法线平滑与白模光照解调）}}.
 $$
 
----
+## 实验验证：重建精度、解渲染重光照与核心消融
 
-## 5. 实验验证：重建精度、解渲染重光照与核心消融
-
-### 5.1 GSO 与 OmniObject3D 定性/定量对比
+### GSO 与 OmniObject3D 定性/定量对比
 
 ![SF3D qualitative comparison](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig07-gso-omni-comparison.webp)
 
@@ -238,7 +229,7 @@ $$
 - **在亚秒级赛道上的精度统治力**：对比同属 0.5 秒级前馈阵营的 `TripoSR`（`0.3s`），SF3D（`0.5s`，且已包含完整 UV 展开与贴图烘焙导出）在 GSO 上的 F-score 从 `0.735` 大幅跃升至 **`0.822`**，Chamfer 距离从 `0.095` 压低至 **`0.068`**；在 OmniObject3D 上的 F-score 同样从 `0.692` 涨至 **`0.785`**。观察 Fig. 7 中的细框眼镜、长筒靴与玩具车，SF3D 彻底消除了 TripoSR 表面坑坑洼洼的阶梯伪影。
 - **对比多视角扩散重建模型的显著速度优势**：像 `InstantMesh`（`21.2s`）和 `CRM`（`9.7s`）需要先跑多步扩散生成 6 张多视角图再重建网格，耗时比 SF3D 慢了 **20～40 倍**，而 SF3D 单次前向直接推理出的几何精度反而全面胜出。
 
-### 5.2 解渲染重光照、速度-质量帕累托图与消融分析
+### 解渲染重光照、速度-质量帕累托图与消融分析
 
 ![SF3D derendering results](/images/blog/sf3d-stable-fast-3d-mesh-reconstruction/sf3d-fig08-derendering-results.webp)
 
@@ -258,9 +249,7 @@ Fig. 8 展示了 SF3D 的解渲染（Derendering）与新环境重光照效果�
 
 附录 Fig. A1 给出了前文剖析过的双流 Enhanced Transformer（Fuse Block + Compute Block + PixelShuffle）完整框图；而附录 Table A1 的新视角渲染图像指标（PSNR / SSIM / LPIPS）进一步印证，更准的 DMTet 几何与更干净的 UV 贴图直接转化为了全方位领先的多视角视觉保真度。
 
----
-
-## 6. 源码深挖：从 `torch.lerp` 背景插值到 `SF3D.run_image()` 全链路
+## 源码深挖：从 `torch.lerp` 背景插值到 `SF3D.run_image()` 全链路
 
 对照官方开源仓库 [`Stability-AI/stable-fast-3d`](https://github.com/Stability-AI/stable-fast-3d)，从命令行入口 `run.py` 到核心系统类 [`sf3d/system.py`](https://github.com/Stability-AI/stable-fast-3d/blob/main/sf3d/system.py) 的数据流设计得非常紧凑：
 
@@ -290,9 +279,7 @@ Fig. 8 展示了 SF3D 的解渲染（Derendering）与新环境重光照效果�
 3. **跨平台自定义算子**（CUDA 与 Apple Metal 双后端）：
    为了让这套光栅化烘焙管线不仅能在 Linux 服务器上跑，还能在开发者的 MacBook 上本地跑通，`texture_baker/csrc/` 目录下除了提供标准的 CUDA 核函数外，还专门用 Objective-C++ 与 Metal Shading Language（`.metal`）手写了一套 Apple Silicon GPU 光栅化与重心插值核函数，通过 `torch.ops.texture_baker_cpp` 统一暴露给 Python 层调用。
 
----
-
-## 7. 工程局限与前馈式单图 3D 重建谱系对比
+## 工程局限与前馈式单图 3D 重建谱系对比
 
 客观审视 SF3D 的技术取舍，它的边界非常清晰：
 - **单次前馈重建 vs. 多步生成式先验的上限差异**：SF3D 本质上是确定性的单图前馈重建模型（而非扩散或流匹配生成模型）。当输入物体存在大面积自遮挡、复杂内部镂空或背面非对称结构时，三平面回归在不可见背面仍容易产生平滑模糊，其复杂拓扑合成上限不及百步采样的 4B 级流匹配大模型。

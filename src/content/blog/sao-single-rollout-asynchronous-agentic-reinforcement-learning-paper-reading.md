@@ -27,10 +27,9 @@ draft: false
 3. **用“双倍速更新 + 冻结注意力”重建单轨迹的价值罗盘**（Two-Timescale & Frozen-Attention Critic）：拿掉 GRPO 的组内均值后，单条轨迹必须依靠学习型价值网络（Value Model）提供状态相关的方差缩减基线。为了防止 Critic 滞后于策略演化或被稀疏奖励冲垮，SAO 让 Critic 以 2:1 的双时间尺度高频追踪 Actor，并在强化学习全程锁死 Critic 的底层 Attention 权重、仅微调 MoE 专家投影层。
 4. **让信用分配跨过环境噪音，只在模型的决策 Token 间架桥**（Skip-Observation Credit Assignment）：在多轮工具交互中，Python 报错栈或测试日志（Observation）属于外部环境状态转移，模型并不为这些 Token 的生成概率负责。SAO 设计了 **Skip-Observation Token-level GAE**，在动作片段末尾直接跳过整段环境观测，将下一轮动作首 Token 的状态价值跨越式接回上一轮末尾动作，实现跨工具调用的细粒度信用回传。
 
+## 长时域 Agent 训练的瓶颈：为什么“组同步”难以为继？
 
-## 1. 长时域 Agent 训练的瓶颈：为什么“组同步”难以为继？
-
-### 1.1 长尾轨迹空泡与异步流水线的天然张力
+### 长尾轨迹空泡与异步流水线的天然张力
 
 ![SAO benchmark results](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-fig01-benchmark-results.webp)
 
@@ -58,7 +57,7 @@ trajectory D ------------->  continue generation
 
 然而，天下没有免费的并行。当慢轨迹 D 终于跑完 300 轮测试进入队列时，Learner 可能已经用 A、B、C 的数据更新了十几次参数。异步化把“硬件干等的同步空泡”转化成了“行为策略滞后（Policy Lag）与离策分布漂移（Off-Policy Drift）”。
 
-### 1.2 PPO 与 GRPO 的两难：省掉 Critic 却背上了组内屏障
+### PPO 与 GRPO 的两难：省掉 Critic 却背上了组内屏障
 
 在进入单轨迹异步设计前，我们先对比一下当前大模型强化学习的两大主流基座：**PPO** 与 **GRPO**。
 
@@ -114,7 +113,7 @@ $$
 
 在短序列同步训练里，GRPO 优雅地省下了一半显存；但在长时域异步智能体场景下，上式分母和分子里的 $\mu_R, \sigma_R$ 却变成了一道绕不过去的数学枷锁：**只要同一个 Prompt 组里的第 $G$ 条慢轨迹还没从容器沙箱里跑出来，前面已经完成的 $G-1$ 条轨迹就根本算不出 $\hat A_{i,t}$。** 此外，在真实的在线交互环境（如真实用户对话或不可回滚的外部系统）中，系统本来就只能对单次请求执行一次动作并收到一次反馈，根本不可能把同一个初始状态复制 8 份去平行试错。
 
-### 1.3 单轨迹流式入队与全局批次聚合语义
+### 单轨迹流式入队与全局批次聚合语义
 
 ![SAO single-rollout overview](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-fig02-single-rollout-overview.webp)
 
@@ -134,11 +133,9 @@ many distinct prompts
 
 把 `16 × 8` 改成 `128 × 1`，不仅消除了同组兄弟样本之间的等待空泡，还在相同的 128 条轨迹计算预算下，让模型在每一个训练步里看到了 **8 倍数量的独立问题（Prompt Diversity）**。当然，代价也是立竿见影的：失去了组内均值 $\mu_R$ 的保护，异步队列里的陈旧轨迹与单样本方差会直接冲击策略梯度。接下来我们就看 SAO 是如何用三大算法模块驯服这头猛兽的。
 
----
+## 双边直接重要性采样（DIS）与离策硬门控
 
-## 2. 双边直接重要性采样（DIS）与离策硬门控
-
-### 2.1 区分三种策略版本：为什么版本号之差测不出真正的离策程度？
+### 区分三种策略版本：为什么版本号之差测不出真正的离策程度？
 
 在异步强化学习的讨论中，如果不把三个策略版本分清楚，很容易在公式推导和代码实现上踩坑：
 
@@ -170,7 +167,7 @@ r_t(\theta)
 \right).
 $$
 
-### 2.2 从软截断到双边硬清零：DIS 目标函数与非对称阈值
+### 从软截断到双边硬清零：DIS 目标函数与非对称阈值
 
 拿到真实的当前/行为策略概率比 $r_t(\theta)$ 后，为什么不能直接套用标准 PPO 的 $\operatorname{clip}(r_t, 1-\epsilon, 1+\epsilon)$？
 
@@ -207,7 +204,7 @@ $$
 
 为什么论文称之为“Strict（严格）”，但允许的上界却放宽到了 $4.0\sim 6.0$？因为这里的“严格”指的是**一旦越界就执行零梯度死刑**，而非把区间缩得很窄；同时，概率比率的上侧（$r_t > 1$，当前策略比旧策略更青睐该动作）与下侧（$r_t < 1$，当前策略已基本放弃该旧动作）在优化动力学上的风险高度不对称：适度容忍当前策略正在强化的新兴动作（允许上界到 $4\sim 6$ 倍），同时严防把早已淘汰的极低概率旧动作硬拉回来，才能在“异步去噪”与“保留学习信号”之间取得平衡。
 
-### 2.3 对数空间数值保护与跨引擎同版本对齐
+### 对数空间数值保护与跨引擎同版本对齐
 
 在把 DIS 写成分布式训练代码时，有两个极易引发隐蔽 Bug 的工程细节：
 
@@ -228,11 +225,9 @@ policy_loss = -(weight.detach() * advantages * current_logprobs)[action_mask & t
 
 第二，**必须保证推理引擎与训练引擎的同版本对数概率语义一致**。异步强化学习通常用 SGLang 或 vLLM 做高速 Rollout，用 Megatron-LM 或 FSDP 做 Learner 训练。如果 Rollout 保存的是未除以采样温度 $T$ 或经过 Top-$p$ 截断后的残缺概率，而 Learner 重算的是全词表原始 Logits 的 Softmax，那么哪怕两边加载的是完全相同的模型权重，算出来的 $r_t(\theta)$ 也会偏离 `1.0`，导致 DIS 门控把实现误差误判为策略滞后。
 
----
+## 双时间尺度与冻结注意力的稳健价值网络
 
-## 3. 双时间尺度与冻结注意力的稳健价值网络
-
-### 3.1 失去组内对照后，为什么全局滑动均值救不了单轨迹方差？
+### 失去组内对照后，为什么全局滑动均值救不了单轨迹方差？
 
 当采样组大小从 $G=8$ 变成 $G=1$ 时，每个 Prompt 只剩孤零零的一个标量奖励 $R$。这时候一个最偷懒的想法是：我还是不想训 Critic，干脆维护一个全局（或按 Prompt 历史）的奖励滑动平均值 $\bar R$，令优势为 $\hat A = R - \bar R$ 行不行？
 
@@ -246,7 +241,7 @@ $$
 
 让 Critic 根据当前题面 $q$ 与已经展开的多轮交互上下文 $s_t$ 动态评估“从当前状态出发预期能拿多少分”，才能在单轨迹下给出准确的信用信号。然而，一旦没有了组内统计兜底，Critic 自身的预测质量就成了决定成败的生命线。SAO 为此对 Critic 做了两项关键改造。
 
-### 3.2 双倍速价值更新：用快时间尺度追赶移动中的策略
+### 双倍速价值更新：用快时间尺度追赶移动中的策略
 
 在 Actor-Critic 训练中，策略 $\pi_\theta$ 每迈出一步，它所访问的轨迹状态分布以及每个状态下的预期回报都在发生改变。如果 Critic 和 Actor 按 1:1 的步调同步更新，Critic 永远在拟合“上一代策略”的价值函数，它给当前 Actor 算出的优势就会带着明显的滞后偏差。
 
@@ -261,7 +256,7 @@ $$
 
 同时，在优化器超参数上，Policy 学习率设为 $1\times10^{-6}$，而 Value Model 学习率设为更高的 $5\times10^{-6}$（配合 10 步线性 Warmup）。每次策略准备更新前，先让 Critic 在当前批次数据上连续迭代 2 次，确保价值基准面牢牢咬住快速演化的策略分布。
 
-### 3.3 冻结 Attention 仅微调 MoE 专家层：给 Critic 加上结构正则化
+### 冻结 Attention 仅微调 MoE 专家层：给 Critic 加上结构正则化
 
 把 Critic 的更新频率翻倍、学习率放大 5 倍之后，新的麻烦来了：大模型做价值回归时，面对的是长达 128K 上下文、且只在序列最末端给出的稀疏二值奖励，剧烈的回归误差反向传播时极易引发 Critic 梯度爆炸。
 
@@ -271,11 +266,9 @@ $$
 
 因此，SAO 采取了果断的**结构正则化**——在强化学习全程**彻底冻结价值网络的全部 Attention 层参数，只更新 MoE 投影层**（MoE Projections）。配合前置的规模化价值预训练冷启动（Scaling Value Pretraining），Critic 既保留了稳固的长文理解底座，又具备了灵活适应当前策略回报分布的可塑性。
 
----
+## 跨环境观测的 Skip-Observation Token-level GAE
 
-## 4. 跨环境观测的 Skip-Observation Token-level GAE
-
-### 4.1 动作与观测的语义鸿沟：同在一个序列，为何不能一视同仁？
+### 动作与观测的语义鸿沟：同在一个序列，为何不能一视同仁？
 
 在多轮智能体交互中，一条完整轨迹 $\mathcal T$ 是模型动作与环境观测交替拼接而成的长序列：
 
@@ -287,7 +280,7 @@ $$
 
 在送进 Transformer 前向传播时，$a_i$ 和 $o_i$ 都被编码成了看似平权的 Token ID；但在强化学习优化中，它们之间横亘着一条不可逾越的语义鸿沟：**$a_i$ 是策略自己选出来的决策动作，而 $o_i$ 是外部环境强加给模型的客观事实**。模型既不能决定测试报错栈里冒出什么单词，也不应该为环境观测 Token 的对数概率或内部状态转移背锅。
 
-### 4.2 跨观测搭桥：Skip-Observation GAE 的递推方程与边界处理
+### 跨观测搭桥：Skip-Observation GAE 的递推方程与边界处理
 
 如果我们直接套用传统的 Token 级 GAE，沿着序列下标 $t, t+1$ 逐个 Token 倒推计算 TD 残差 $\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)$，会发生什么？
 
@@ -316,7 +309,7 @@ $$
 | **环境观测片段** ($o_i$) | 外部工具/沙箱 | `0` | 屏蔽 | 不参与递推（直接跳过） |
 | **终局动作末尾** ($a_{\text{last},N}$) | 策略模型 $\pi_\theta$ | `1` | 是 | 终止哨兵（Terminal，自举价值置 `0`） |
 
-### 4.3 长度自适应衰减与信用分配粒度权衡
+### 长度自适应衰减与信用分配粒度权衡
 
 在长达 128K 上下文的多轮轨迹中，有的样本 2000 个动作 Token 就解出了答案，有的样本写了 40000 个动作 Token 才修好代码。如果所有轨迹都用一个死板的固定常数 $\lambda$（例如 $\lambda=0.95$），那么在长轨迹上 $(\gamma\lambda)^l$ 还没传回序列前半截就已经衰减殆尽了。
 
@@ -338,7 +331,7 @@ $$
 
 两种变体都只按轮次计算一个轮级优势 $\hat A_i$（其中 $\delta_i=R_i+\gamma V(S_{i+1})-V(S_i)$），再把这个标量平均广播给该轮里面的所有数百个 Token。为什么这种看似清爽的轮级聚合在实验里打不过 Token-level？因为在复杂推理中，模型在一轮回复里往往先写了几百字正确的公式推导，最后一行写 Python 调用时不小心手滑写错了一个变量名——如果按整轮广播同一个负优势，前面几百字正确的数学推导也会跟着一起挨板子；而 Token-level GAE 则允许在长动作内部逐 Token 区分局部贡献。
 
-### 4.4 串联全局：SAO 异步训练与门控核心实现参考
+### 串联全局：SAO 异步训练与门控核心实现参考
 
 把前面的单轨迹异步入队、$K=2$ 冻结注意力 Critic 更新、Skip-Observation GAE 与对数空间 DIS 硬门控串起来，整套 SAO 的核心控制流可以用下面这段清晰的 Python 参考代码完整表达：
 
@@ -367,7 +360,6 @@ async def rollout_worker(prompt, rollout_model, environment):
 
     # 单条轨迹一完成即刻入队，彻底移除同 Prompt 组内等待屏障
     await ready_queue.put(finalize(trace, reward=state.reward))
-
 
 def learner_step(batch):
     # 构造 action_mask 以及跨过 observation 的 next_action_index 跳转索引
@@ -404,13 +396,11 @@ def learner_step(batch):
     publish_weights_to_rollout_workers()
 ```
 
----
-
-## 5. 实验深潜：千步不崩的动力学证据与消融拆解
+## 实验深潜：千步不崩的动力学证据与消融拆解
 
 论文在 `Qwen3-30B-A3B-Thinking-2507` 基座上展开了系统评测：数学推理任务先在由 GPT-OSS-120B 合成的工具集成推理（TIR）语料上做 3 个 Epoch 的 SFT，再用该 SFT 模型同时初始化 Policy 与 Critic（最大交互 50 轮，上下文上限 128K，DIS 阈值 $\epsilon_l=0.3, \epsilon_h=5.0$）；SWE-Bench Verified 编码任务则直接从基座模型出发，在 OpenHands 框架下训练（最大交互 300 轮，上下文上限 128K，DIS 阈值 $\epsilon_l=0.8, \epsilon_h=3.0$）。
 
-### 5.1 数学推理与 SWE-Bench 编码主实验拆解
+### 数学推理与 SWE-Bench 编码主实验拆解
 
 ![SAO math reasoning results](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-table01-math-reasoning-results.webp)
 
@@ -424,7 +414,7 @@ def learner_step(batch):
 
 再看上图（Table 2）的真实软件工程修复基准 SWE-Bench Verified：在最高 300 轮仓库探索、文件编辑与测试执行的长尾环境下，SAO 将解决率从基座模型的 `23.0%` 提升至 **`29.8%`**（`+6.8` 个百分点），并且在完全相同的 DIS 稳定机制下比 `GRPO (w/ DIS)`（`27.0%`）高出 `2.8` 个百分点，验证了这套单轨迹 Actor-Critic 方案在超长交互编码智能体上的普适性。
 
-### 5.2 千步训练曲线与价值网络消融：谁管“不崩”，谁管“上限”？
+### 千步训练曲线与价值网络消融：谁管“不崩”，谁管“上限”？
 
 ![SAO training performance](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-fig03-training-performance.webp)
 
@@ -445,7 +435,7 @@ def learner_step(batch):
 - **去掉 DIS 的同步算法直接移植**（`Vanilla VAPO w/o DIS`）：把原本在同步推理上表现优异的 VAPO 直接放到异步单轨迹环境里，大约 **90 步** 就发生训练崩溃，崩溃前最佳成绩仅停留在 `91.3 / 69.0`。
 - **用历史均值代替 Critic**（`Running Mean Baseline`）：用每个 Prompt 最近 8 次奖励的滑动均值充当基线，完全省掉 Critic，结果最终成绩只有惨淡的 `79.8 / 55.3`——再次证明单轨迹异步优化绝不能靠简单的标量历史均值糊弄过关。
 
-### 5.3 内部动力学三联证：解释方差、梯度范数与千分之六的致命离策 Token
+### 内部动力学三联证：解释方差、梯度范数与千分之六的致命离策 Token
 
 ![SAO training dynamics](/images/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning/sao-fig04-training-dynamics.webp)
 
@@ -463,7 +453,7 @@ def learner_step(batch):
 3. **右图 Fig. 4(c)——被 DIS 门控屏蔽的 Token 比例**（Clipped Tokens Ratio）：
    这张图的纵轴刻度非常值得玩味：在整个训练过程中，被 SAO 双边门控判定越界并置零的 Token 比例，最高峰也只有 **`0.006`**（即千分之六，约 0.4%～0.6%）。而没有 DIS 的 VAPO 裁剪率几乎是 `0`，随后在 90 步直接训崩。这揭示了一个深刻的异步优化事实：**毁掉一场大模型异步强化学习的，往往只是万分之几到千分之几的极端离策尾部 Token；把这不到 0.6% 的“害群之马”精准清零，剩下 99.4% 的异步数据就能安全高效地驱动模型进化。**
 
-### 5.4 非平稳在线适应与动作粒度消融
+### 非平稳在线适应与动作粒度消融
 
 为了验证单轨迹 Critic 在真实在线交互（偏好随时间突变）下的适应速度，论文设计了一场可控的文风切换模拟实验：模型需要在学术（Academic）、可爱（Cute）、中二（Chuunibyou）和古风（Classical）四种风格间选择，环境的目标偏好每隔一个阶段发生突变。由 GLM-4.7 充当裁判，联合打分内容质量与风格契合度：
 
@@ -493,11 +483,9 @@ $$
 - 在两种按轮次打包的方案中，取轮末 Token 价值的 `Step-level (Last-Token)`（AIME2025 `87.3` / BeyondAIME `62.8`）优于轮内求平均的 `Step-level (Average)`（`85.8 / 60.5`），因为经过因果注意力汇聚后，一轮末尾的隐状态比整轮大锅饭平均更能代表该步的完整语义结论；
 - 而主线的 **`Token-level`** 方案在 400 步时进一步达到 **`89.8 / 66.8`**，在 Fig. 6 的训练奖励曲线上从第 150 步起就一路绝尘。这证实了在单轮包含大段思维链推导与代码编写的推理智能体中，保持 Token 级细粒度优势递推是不可替代的。
 
----
+## 算法谱系坐标、工程边界与总结
 
-## 6. 算法谱系坐标、工程边界与总结
-
-### 6.1 在异步与长时域强化学习版图中的坐标
+### 在异步与长时域强化学习版图中的坐标
 
 如果把 SAO 放进本站精读过的强化学习算法与系统版图中，它的生态位与取舍脉络非常清晰：
 
@@ -513,7 +501,7 @@ $$
 
 与本站另一篇综述《[长期收益强化学习算法研究进展](/blog/long-horizon-reinforcement-learning-credit-assignment-agentic-rl/)》所探讨的层次化强化学习（Hierarchical RL）、世界模型和逆强化学习相比，SAO 解决的是最贴近大模型后训练基础设施的一层问题：**当长轨迹异步流式到达、中间夹杂大量外部环境反馈、且每个问题只采样一次时，如何让 Actor-Critic 的每一步梯度更新既算得快又不训崩**。而在底层系统承载上，它与 [THUDM/slime](https://github.com/THUDM/slime)、[AReaL](https://github.com/inclusionAI/AReaL) 及 [Alibaba ROLL](https://github.com/alibaba/ROLL) 等负责 Megatron/FSDP 与 SGLang 异步参数同步的分布式框架天然互补。
 
-### 6.2 工程权衡边界与总结
+### 工程权衡边界与总结
 
 当然，任何架构取舍都有其适用边界，在实际工程中引入 SAO 时需要清醒评估以下四点权衡：
 

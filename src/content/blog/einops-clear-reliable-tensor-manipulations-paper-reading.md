@@ -31,9 +31,9 @@ Alex Rogozhnikov 发表在 ICLR 2022（Oral）的代表作 **Einops: Clear and R
 
 本文将沿着**“ICLR 2022 论文设计推导”**与**“`einops v0.8.2` 编译器源码实现”**双线展开，完整剖析 Einstein-like Pattern 语法机制、经典深度学习模型重构案例、两阶段 Recipe 编译器源码、内存视图（View vs Copy）物理条件以及生产级测试规范。
 
-## 1. 为什么位置下标 API 是静默 Bug 的温床？
+## 为什么位置下标 API 是静默 Bug 的温床？
 
-### 1.1 位置编号 API 与裸 `reshape` 的结构盲区
+### 位置编号 API 与裸 `reshape` 的结构盲区
 
 在 NumPy、PyTorch、TensorFlow 等主流张量库中，多维数组的传统操作界面建立在**整数位置下标**（`0, 1, 2, ...`）之上：
 
@@ -66,7 +66,7 @@ x = x.permute(0, 2, 1, 3).contiguous().view(batch, seq, -1)
 
 但注释无法参与运行时校验：如果上游模块重构后传进来的张量变成了 `[batch, seq, heads, dim]`，这行代码依然会静默跑通（甚至当 `heads == seq` 时连形状都不会变），把 `seq` 和 `heads` 彻底搞反。
 
-### 1.2 Einops 的五项语言设计目标与核心术语边界
+### Einops 的五项语言设计目标与核心术语边界
 
 为了把注释里的意图变成可执行的程序契约，Einops 确立了 Pattern Language 的五项核心设计准则：
 
@@ -83,11 +83,9 @@ x = x.permute(0, 2, 1, 3).contiguous().view(batch, seq, -1)
 2. **与爱因斯坦求和约定（Einstein Summation）的渊源**：经典的爱因斯坦求和约定（$C_{ij} = \sum_k A_{ik} B_{kj}$）通过重复下标表达张量缩并；Einops 借鉴了它“**用命名轴符号替代位置下标来描述张量变换关系**”的核心思想，并将其泛化到了任意维度重排、分块池化与广播复制上。
 3. **能力演进脉络**：ICLR 2022 论文奠定了 `rearrange`、`reduce`、`repeat` 三大原语、两阶段 Recipe 编译器与 `EinMix` 层；在此之后，社区版本陆续演进出多字符 `einsum`（`v0.5`）、异构秩打包 `pack / unpack`（`v0.6`）、Python Array API 与 `torch.compile` 适配（`v0.7`）以及 `tinygrad` / Apple `MLX` 后端支持（`v0.8.2`）。
 
----
+## Einstein-like Pattern 语法体系与三原语集合不变量
 
-## 2. Einstein-like Pattern 语法体系与三原语集合不变量
-
-### 2.1 命名轴、复合轴分解与 C-order 线性排列公式
+### 命名轴、复合轴分解与 C-order 线性排列公式
 
 一条标准的 Einops Pattern 由**左侧输入轴表达式**、箭头 `->` 和**右侧输出轴表达式**三部分构成：
 
@@ -120,7 +118,7 @@ grid = rearrange(x, 'b (h w) c -> b h w c', h=14)
 
 一旦传入的 `h=15` 无法整除 `196`（$196 \bmod 15 \neq 0$），或者漏传了 `h` 导致存在两个未知数，Einops 会在执行底层算子前当场抛出 `EinopsError`。
 
-### 2.2 整数匿名轴、单位轴（`1` / `()`）与省略号 `...` 多态
+### 整数匿名轴、单位轴（`1` / `()`）与省略号 `...` 多态
 
 除了命名标识符，Einops 语法还设计了三类特殊语法糖来处理常量拆轴、维度挤压（Squeeze/Unsqueeze）与可变秩多态：
 
@@ -143,7 +141,7 @@ grid = rearrange(x, 'b (h w) c -> b h w c', h=14)
    y = rearrange(x, '... heads dim -> ... (heads dim)')
    ```
 
-### 2.3 三大核心原语的集合不变量与十余种算子大一统
+### 三大核心原语的集合不变量与十余种算子大一统
 
 为什么 Einops 要把接口拆成 `rearrange`、`reduce`、`repeat` 三个函数？
 
@@ -159,11 +157,9 @@ grid = rearrange(x, 'b (h w) c -> b h w c', h=14)
 
 ![Correspondence between mainstream operations and einops](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-mainstream-operations.webp)
 
----
+## 核心原语全景实战与神经网络层集成
 
-## 3. 核心原语全景实战与神经网络层集成
-
-### 3.1 `rearrange`、`reduce` 与 `repeat` 的高阶工程用法
+### `rearrange`、`reduce` 与 `repeat` 的高阶工程用法
 
 在日常编写深度学习模型时，掌握以下三组惯用法（Idioms）能直接砍掉 80% 的胶水代码：
 
@@ -219,7 +215,7 @@ tiled = repeat(x, 'h w -> h (r w)', r=2)
 upsampled = repeat(img, 'b c h w -> b c (h 2) (w 2)')
 ```
 
-### 3.2 `pack / unpack` 与多字符 `einsum`：面向多模态与复杂缩并的扩展
+### `pack / unpack` 与多字符 `einsum`：面向多模态与复杂缩并的扩展
 
 随着多模态大模型（VLM）与复杂注意力机制的普及，`einops` 在后续版本中补齐了两块关键拼图：
 
@@ -259,7 +255,7 @@ projected = einsum(weight, x, 'out_dim in_dim, ... in_dim -> ... out_dim')
 matrix_trace = einsum(square_mat, 'idx idx ->')
 ```
 
-### 3.3 `Rearrange` / `Reduce` 模块封装与 `EinMix` 参数化轴线性层
+### `Rearrange` / `Reduce` 模块封装与 `EinMix` 参数化轴线性层
 
 当你使用 `nn.Sequential` 构建网络，或者希望设计类似 **MLP-Mixer** 那样需要在特定维度（如空间 Token 维或分组通道维）上执行参数化线性投影的模块时，可以直接调用 `einops.layers` 与自带可学习权重的 **`EinMix`** 层：
 
@@ -286,11 +282,9 @@ token_mixer = EinMix(
 
 查看 [`einops/layers/_einmix.py`](https://github.com/arogozhnikov/einops/blob/8e911db71f2e693a0c434b041180388c685ed06f/einops/layers/_einmix.py) 源码可以看到，`EinMix` 在 `__init__` 阶段会自动根据 `weight_shape` 和 `bias_shape` 包含的轴，利用扇入度（Fan-in）完成均匀分布权重初始化，并将前向计算预编译为“前置 `rearrange` 拆轴 → 底层单字母 `einsum` 权重缩并 → 后置 `rearrange` 合轴 + 广播偏置”的三步高效管线。
 
----
+## 经典深度学习架构重构 Case Studies
 
-## 4. 经典深度学习架构重构 Case Studies
-
-### 4.1 视觉特征重排：Vision Permutator 与 ShuffleNet 通道混洗
+### 视觉特征重排：Vision Permutator 与 ShuffleNet 通道混洗
 
 论文正文展示的第一个重构案例是 **Vision Permutator**。该架构的核心思想是分别沿着图像的高度（Height）方向和宽度（Width）方向对分段通道特征做线性混合。在原始作者的开源代码中，为了完成这两个方向的投影，不得不编写两段充满魔术下标 `permute` 与 `reshape` 的冗长代码；而在 Einops 重构版中，高度混合与宽度混合呈现出了完美的数学对称性——**两者的唯一区别仅仅是把 Pattern 中的 `h` 和 `w` 互换位置**：
 
@@ -322,7 +316,7 @@ x_new = rearrange(
 )
 ```
 
-### 4.2 可逆空间变换：Glow Squeeze、PixelShuffle 与 ViT Patchify 的 C-Order 陷阱
+### 可逆空间变换：Glow Squeeze、PixelShuffle 与 ViT Patchify 的 C-Order 陷阱
 
 在生成流模型（如 Glow）、超分辨率上采样（Sub-pixel Convolution / PixelShuffle）以及 Vision Transformer（ViT）中，最核心的结构操作是**空间网格与通道/序列之间的无损可逆映射**。
 
@@ -360,7 +354,7 @@ restored = rearrange(
 
 **工程避坑指南（C-order 权重错位陷阱）**：在加载开源预训练 ViT 或 MAE 权重时，请务必核对最后一个括号里写的是 `(patch_h patch_w c)` 还是 `(c patch_h patch_w)`。两者的乘积都是 $16 \times 16 \times 3 = 768$，但前者对应 `[R0, G0, B0, R1, G1, B1, ...]` 的像素交错排列，后者对应 `[R0, R1, ..., G0, G1, ..., B0, B1, ...]` 的通道平面排列。如果与预训练权重的线性投影层（`nn.Linear(768, dim)`）顺序不一致，模型不报任何错，但提取出的视觉特征会彻底失真。
 
-### 4.3 Multi-Head Attention 全链路重构
+### Multi-Head Attention 全链路重构
 
 论文附录对比了标准多头注意力（Multi-Head Attention）的原生写法与 Einops 重构版：
 
@@ -385,9 +379,7 @@ out = einsum(attn, v, 'b head query key, b head key dim -> b head query dim')
 out = rearrange(out, 'b head query dim -> b query (head dim)')
 ```
 
----
-
-## 5. 编译器源码精读（上）：从 `ParsedExpression` 到 `TransformRecipe`
+## 编译器源码精读（上）：从 `ParsedExpression` 到 `TransformRecipe`
 
 为什么一句简单的字符串 `'b c (h kh) (w kw) -> b h w c'` 能够处理任意维度的拆分、置换、池化与广播？打开 `einops` `v0.8.2` 源码，你会发现它的核心其实是一个不折不扣的**微型张量结构编译器**。
 
@@ -413,7 +405,7 @@ out = rearrange(out, 'b head query dim -> b query (head dim)')
         _apply_recipe(backend, x, ...) ──► 依次调用 backend.reshape / transpose / reduce
 ```
 
-### 5.1 词法解析器 `ParsedExpression` 与 `AnonymousAxis` 身份比较技巧
+### 词法解析器 `ParsedExpression` 与 `AnonymousAxis` 身份比较技巧
 
 管线的第一站是位于 [`einops/parsing.py`](https://github.com/arogozhnikov/einops/blob/8e911db71f2e693a0c434b041180388c685ed06f/einops/parsing.py#L10-L133) 的 `ParsedExpression` 类。它对箭头左、右两侧的字符串分别执行单趟扫描，提取出两个最关键的结构：
 - `identifiers`：当前侧出现的所有基本轴集合；
@@ -434,7 +426,7 @@ left.composition = [
 
 为了解决这个问题，`ParsedExpression` 每遇到一个大于 1 的整数，就会实例化一个独立的 **`AnonymousAxis("2")`** 对象。由于 `AnonymousAxis` 类故意**不重写 `__eq__` 方法**（默认使用 Python 对象内存地址 `id` 做相等判断），因此左侧的两个 `AnonymousAxis("2")` 在集合 `identifiers` 中是两个完全不相等的独立基本轴，各自拥有固定长度 `2`，既避免了命名冲突，又防止了左右两侧碰巧相同的数字被错误配对转置。
 
-### 5.2 `_prepare_transformation_recipe` 与静态 `TransformRecipe` 编译推演
+### `_prepare_transformation_recipe` 与静态 `TransformRecipe` 编译推演
 
 拿到左右两个 `ParsedExpression` 后，[`einops/einops.py`](https://github.com/arogozhnikov/einops/blob/8e911db71f2e693a0c434b041180388c685ed06f/einops/einops.py#L290-L459) 中的 `_prepare_transformation_recipe()` 开始编译静态配方 [`TransformRecipe`](https://github.com/arogozhnikov/einops/blob/8e911db71f2e693a0c434b041180388c685ed06f/einops/einops.py#L114-L152)。
 
@@ -469,7 +461,7 @@ left.composition = [
 | `added_axes` | `repeat` 新增广播轴的目标位置映射 | `{}`（本例非 `repeat`） |
 | `output_composite_axes` | 归约/广播后，各输出物理维度包含的轴下标 | `[[0], [1], [2], [3]]` |
 
-### 5.3 运行时 Shape 方程求解、代数化简与五步标准流水线
+### 运行时 Shape 方程求解、代数化简与五步标准流水线
 
 进入 Stage 2，当一个真实形状为 `x.shape = (8, 64, 32, 32)` 且参数为 `kh=2, kw=2` 的张量到达 [`_reconstruct_from_shape_uncached()`](https://github.com/arogozhnikov/einops/blob/8e911db71f2e693a0c434b041180388c685ed06f/einops/einops.py#L155-L225) 时，求解器对每个输入物理维 $d$（长度为 $L_d$）计算已知轴乘积 $P_{\text{known}} = \prod_{i \in K_d} n_i$：
 - 对于物理维 2（$L_2 = 32$），已知轴 `3 (kh)` 长度为 $P_{\text{known}} = 2$，校验 $32 \bmod 2 == 0$ 通过，解出未知轴 `2 (h)` 的长度 $n_2 = 32 // 2 = 16$；
@@ -499,11 +491,9 @@ def _apply_recipe(backend, tensor, reduction_type, axes_dims):
 - 在刚才的例子里，Step 3 对尾部第 `(4, 5)` 维执行完 `mean` 归约后，张量形状已经直接变成了 `(8, 16, 16, 64)`，恰好等于目标输出形状。因此编译器自动将 `final_shapes` 设为 `None`，直接省去了 Step 5 的多余 `reshape`。
 - 再比如当你调用 `rearrange(x, 'a b c d -> (a b) (c d)')` 时，由于相邻基本轴的相对次序完全没有改变，编译器会自动将相邻同序轴合并，把 `init_shapes` 和 `axes_reordering` 全部化简为 `None`，整条流水线直接坍缩为**单次 `backend.reshape`**。
 
----
+## 编译器源码精读（下）：两级缓存、惰性多后端分发与 `torch.compile` 穿透
 
-## 6. 编译器源码精读（下）：两级缓存、惰性多后端分发与 `torch.compile` 穿透
-
-### 6.1 两级 `@lru_cache` 与解析开销基准实测
+### 两级 `@lru_cache` 与解析开销基准实测
 
 既然 Einops 内部有词法扫描、集合校验与整数方程求解，在训练循环中每秒调用上万次会不会拖慢 GPU？
 
@@ -517,7 +507,7 @@ def _apply_recipe(backend, tensor, reduction_type, axes_dims):
 
 实验表明，在刻意构造 10,000 个互不相同的 Pattern 强行击穿缓存时，10,000 次调用耗时 `663 ms`；而在符合真实训练场景的缓存命中状态下，10,000 次调用仅耗时 **`37.1 ms`**（单次调度开销仅约 `3.7 微秒`，加速近 18 倍）。
 
-### 6.2 零核心依赖的秘密：`sys.modules` 惰性分发与 `AbstractBackend`
+### 零核心依赖的秘密：`sys.modules` 惰性分发与 `AbstractBackend`
 
 为什么 `pip install einops` 可以在不安装任何深度学习框架的情况下秒级完成，却能在运行时无缝操作 PyTorch、JAX、TensorFlow、CuPy、Paddle、tinygrad 和 Apple MLX 的张量？
 
@@ -556,7 +546,7 @@ def get_backend(tensor) -> AbstractBackend:
 
 此外，针对遵循 Python Array API Standard（提供 `__array_namespace__()` 接口）的现代数组库，`einops` 还提供了 [`einops.array_api`](https://github.com/arogozhnikov/einops/blob/8e911db71f2e693a0c434b041180388c685ed06f/einops/array_api.py) 模块，直接通过标准命名空间调用 `xp.reshape`、`xp.permute_dims` 与 `xp.broadcast_to`。
 
-### 6.3 PyTorch 图编译器适配：`torch.compile`、TorchDynamo 与 `SymInt`
+### PyTorch 图编译器适配：`torch.compile`、TorchDynamo 与 `SymInt`
 
 在 PyTorch 2.x 时代，工程师最关心的是：**在模型里写 `rearrange` 会不会导致 `torch.compile` 发生计算图断裂（Graph Break）？**
 
@@ -564,11 +554,9 @@ def get_backend(tensor) -> AbstractBackend:
 1. **针对 `torch.compile`（TorchDynamo）的穿透适配**：在 PyTorch 2.0 ~ 2.7 中，`allow_ops_in_compiled_graph()` 会自动将 `rearrange`、`reduce`、`repeat`、`einsum`、`pack`、`unpack` 注册进 `torch._dynamo.allow_in_graph`；而在 PyTorch 2.8+ 中，由于 Dynamo 字节码追踪器已经原生支持追踪 `@lru_cache` 与内部字典操作，Dynamo 可以直接穿透整条 `_apply_recipe` 管线，将最终生成的 `tensor.reshape` 与 `tensor.permute` 捕获进 FX Graph，交由后端的 **TorchInductor** 自动与前后的矩阵乘或激活函数做算子融合（Kernel Fusion）。
 2. **针对动态形状 `torch.SymInt` 的算术兼容**：当开启 `torch.compile(dynamic=True)` 时，`tensor.shape` 中的动态批次或序列维度会由普通 Python `int` 变为符号整数 `SymInt`。在 `_reconstruct_from_shape_uncached()` 中，源码通过 `isinstance(length, int)` 区分静态常数与符号维度：对符号维度跳过仅限常数的取模断言，直接构造符号整除表达式 `length // known_product`，确保动态 Shape 计算图完整不断裂。
 
----
+## 物理内存布局（View vs Copy）、能力边界与生态横向对比
 
-## 7. 物理内存布局（View vs Copy）、能力边界与生态横向对比
-
-### 7.1 什么时候返回零拷贝 View？什么时候触发物理 Copy？
+### 什么时候返回零拷贝 View？什么时候触发物理 Copy？
 
 高频算子调优中常有人问：“`rearrange` 究竟是零拷贝视图（View）还是会发生物理内存复制（Copy）？”
 
@@ -593,7 +581,7 @@ $$
 
 可以看到，在正常训练批次规模下，由于两级缓存消除了 Python 解析开销，且底层生成的 `reshape` / `permute` 序列与手写代码完全一致，Einops 重构版与原生手写代码处于同一性能水平。
 
-### 7.2 运行时检查的真实边界：能拦截什么，不能拦截什么？
+### 运行时检查的真实边界：能拦截什么，不能拦截什么？
 
 把 Einops 用出生产级可靠性，关键在于清楚它的运行时契约**能拦住什么**，以及**绝对拦不住什么**：
 
@@ -606,7 +594,7 @@ $$
 | **调用点把上游张量的轴语义写反** | **不能拦截** | 上游传过来的是 `NHWC`，调用者却在左侧声明为 `'b c h w -> ...'`，只要数值碰巧能整除就会按错误语义执行 |
 | **跨函数边界的轴标签漂移** | **不能拦截** | 函数 A 返回 `(b, tokens, c)`，函数 B 入口误以为是 `(b, heads, c)`，Einops 不在 Tensor 对象上持久化存储轴名 |
 
-### 7.3 与 `jaxtyping`、`xarray` 及 `einx` 的生态互补关系
+### 与 `jaxtyping`、`xarray` 及 `einx` 的生态互补关系
 
 针对上面提到的“跨函数边界缺乏静态检查（Stringly Typed）”问题，如果将 Einops 放回整个 Python 张量编程生态坐标系中，就能看清它与其他工具的黄金搭档关系：
 
@@ -617,9 +605,7 @@ $$
 | **`xarray` / NamedTensor** | 数据对象生命周期 | 将轴名作为元数据持久化绑定在数组对象上 | 适合地球科学、金融表格分析；在深度学习密集算子链中维护对象元数据侵入性过高 |
 | **`einx` (ICLR 2026)** | 算子内部 | 将 Einstein 语法进一步泛化到逐元素加减广播、Gather 索引与 `vmap` | 表达力更激进，而 Einops 刻意保持极小、正交的原语集以换取零心智负担与高稳定性 |
 
----
-
-## 8. 生产级测试规范：用“互质非对称形状 + `arange`”揪出潜伏 Bug
+## 生产级测试规范：用“互质非对称形状 + `arange`”揪出潜伏 Bug
 
 既然当 $H = W = 14$ 或 $\text{Batch} = \text{Heads} = 8$ 时，写反两个等长维度不会触发任何形状异常，那我们在做模型重构和编写单元测试时，该如何 100% 揪出所有维度错位 Bug？
 
@@ -666,9 +652,7 @@ def test_einops_structural_invariants_and_roundtrip():
         rearrange(np.zeros((2, 197, 8)), 'b (h w) c -> b h w c', h=14)
 ```
 
----
-
-## 9. 总结
+## 总结
 
 回看 Einops 从一篇讨论“如何写好 `reshape`”的 ICLR 2022 Oral 论文，成长为全行业深度学习基础设施的历程，它最深刻的启示在于**对软件工程抽象边界的极致克制**：
 

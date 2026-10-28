@@ -31,10 +31,9 @@ draft: false
 3. **把异步系统的“策略陈旧性”变废为宝，用滞后引擎构造步骤级跨策略探索**（Turn Stale Engines into Step-Level Cross-Policy Explorers）：常规异步 RL 视旧版本策略为需要压制的噪声，AgentRL 却反其道而行之——从推理 GPU 池中专门切出 25% 算力作为每隔 25 步才更新一次权重的 **Stale Rollout Engine**，在单条多轮轨迹的每一个环境步骤（Step）按概率随机切换最新策略与陈旧策略，以零异构模型部署成本实现了跨策略采样（Cross-Policy Sampling），打破单一策略的局部动作死循环。
 4. **在 GRPO 组内比较之上叠加“任务级 Token 标准化”，平抑跨任务梯度干扰**（Two-Level Advantage Normalization）：GRPO 的组内归一化只回答了“同一个问题下哪条轨迹更好”，却解决不了不同任务之间的方差与 Token 数量失衡。AgentRL 在每个训练批次内按任务类别（`data_source`）收集所有有效动作 Token 的优势值做二次标准化，让稀疏难任务与高频短任务在共享梯度中拥有对等的话语权。
 
+## 从单轮 RLVR 到多轮多任务智能体：问题空间与架构全景
 
-## 1. 从单轮 RLVR 到多轮多任务智能体：问题空间与架构全景
-
-### 1.1 多轮交互与异构环境带来的五重质变
+### 多轮交互与异构环境带来的五重质变
 
 ![AgentRL 与其他强化学习框架和方法的能力对比](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table01-framework-comparison.webp)
 
@@ -59,7 +58,7 @@ prompt / initial observation
 - **在多轮维度**（Multi-Turn）：基础设施侧面临长短轨迹混杂导致的同步等待浪费，以及成千上万个并发有状态沙箱的调度难题；算法侧则面临指数级膨胀的多步状态空间——随着训练推进，模型策略熵快速下降，极易在多轮交互中退化出机械重复的局部死循环。
 - **在多任务维度**（Multi-Task）：基础设施侧必须把千差万别的环境（SQL 数据库、Linux 容器、网页商城、知识图谱接口）收束到同一套训练协议下；算法侧则必须解决不同任务在联合优化时的梯度尺度打架与灾难性遗忘。
 
-### 1.2 四条数据流交织的系统全景
+### 四条数据流交织的系统全景
 
 ![AgentRL 在五个环境上的增益和训练过程](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig01-overall-performance.webp)
 
@@ -74,11 +73,9 @@ prompt / initial observation
 3. **双层优势训练流**（Training Stream）：完成的轨迹写入 `Buffer`；一旦某个问题的 8 条轨迹凑齐即进入可消费队列，由 Learner 拉取批次，依次执行 **GRPO 组内相对优势计算** $\rightarrow$ **Task Advantage Normalization 任务级 Token 标准化** $\rightarrow$ **Reference Model 前向与 Actor PPO/KL 梯度更新**。
 4. **双速参数同步流**（Parameter Stream）：Actor 每完成一步优化，立即通过 NCCL 将最新权重推送给 Current Rollout Engine；而 Stale Rollout Engine 则每隔固定的 `stale_step`（如 25 步）才接收一次权重同步，刻意保持受控的策略代差。
 
----
+## 双层粒度 MDP 与感知采样组的异步流水线
 
-## 2. 双层粒度 MDP 与感知采样组的异步流水线
-
-### 2.1 环境按轮交互、策略按 Token 优化：组合状态 MDP 与 GRPO 基座
+### 环境按轮交互、策略按 Token 优化：组合状态 MDP 与 GRPO 基座
 
 在写代码之前，必须先把多轮多任务智能体的数学账算明白：外部环境是按“一轮完整的函数调用”推进状态的，而底层的 Transformer 策略模型却是按“一个个 Token”自回归生成的。怎样把这两个不同粒度对齐到同一个强化学习目标里？
 
@@ -126,7 +123,7 @@ r_t(\theta)=\frac{\pi_\theta(a_t\mid s_t)}
 {\pi_{\theta_{\mathrm{old}}}(a_t\mid s_t)}.
 $$
 
-### 2.2 拆掉全局同步墙：Rollout 与 Learner 双池解耦及吞吐实测
+### 拆掉全局同步墙：Rollout 与 Learner 双池解耦及吞吐实测
 
 ![同步与全异步训练架构对比](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig03-sync-vs-async.webp)
 
@@ -149,7 +146,7 @@ NCCL weight stream:                        broadcast latest weights ---->
 
 从 16 卡扩展到 64 卡，AgentRL 始终稳定保持着接近同步方案 **两倍** 的有效吞吐率。
 
-### 2.3 源码深挖：Buffer 里的真实异步边界与 NCCL 直连权重广播
+### 源码深挖：Buffer 里的真实异步边界与 NCCL 直连权重广播
 
 很多读者看到论文里的“Fully-Asynchronous（全异步）”字眼，会下意识以为“每一条轨迹一跑完就会立刻被 Learner 拿去算梯度”。但如果我们打开官方仓库的 [`trainer/src/agentrl/trainer/components/buffer.py`](https://github.com/THUDM/AgentRL/blob/6a73409d31ba695d383b978a8ad3ef400d90c054/trainer/src/agentrl/trainer/components/buffer.py)，就能看清它在工程上的真实同步边界：
 
@@ -179,11 +176,9 @@ class Buffer:
 
 而在参数同步链路上，[`agentrl_trainer.py`](https://github.com/THUDM/AgentRL/blob/6a73409d31ba695d383b978a8ad3ef400d90c054/examples/training/agentrl_trainer.py) 完全绕开了缓慢的磁盘 Checkpoint 读写：Actor 的 rank 0 进程在初始化时直接创建 `NCCLTensorSender`，与所有 SGLang Rollout Worker 上的 `NCCLTensorReceiver` 组建跨进程通信组，每完成一步优化就通过 GPU 显存直连把最新权重刷进推理引擎。
 
----
+## 统一环境控制面与多轮掩码契约
 
-## 3. 统一环境控制面与多轮掩码契约
-
-### 3.1 算力层与沙箱层解耦：中央 Controller 与容器化 TaskWorker
+### 算力层与沙箱层解耦：中央 Controller 与容器化 TaskWorker
 
 ![AgentRL 训练框架与环境部署框架](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig05-environment-deployment-framework.webp)
 
@@ -195,7 +190,7 @@ class Buffer:
 
 通过引入用 Go 语言编写的高并发中央 **Controller**（设计支持高达 `10,000` 个并发会话路由与心跳管理）以及挂载在各台物理机上的 Python/FastAPI **TaskWorker**，训练框架彻底摆脱了对具体环境细节的依赖：不管底层新增的是移动端 GUI 模拟器还是 Kubernetes 沙箱，左边的大模型训练代码一行都不用改。
 
-### 3.2 统一 OpenAI Function-Call 原语与模板差分 Token 掩码
+### 统一 OpenAI Function-Call 原语与模板差分 Token 掩码
 
 为了把五花八门的异构环境装进同一个训练循环，AgentRL 将 AgentBench 的所有任务全部重构成标准的 **OpenAI Function Call** 协议。每个环境的 TaskWorker 只需要向 Controller 注册三个生命周期接口：
 
@@ -238,11 +233,9 @@ log_probs += [0] * len(observation_ids)
 
 环境观测 Token 的 `loss_mask` 和占位对数概率全部被设为 `0`。这样一来，在拼接而成的完整上下文序列中，模型后续的每一轮动作都能通过自注意力看到前面的所有环境反馈，而在反向传播算 PPO 损失和任务优势归一化时，只有 `loss_mask == 1` 的模型动作 Token 会参与计算。此外，如果交互达到最大轮数（`max_turns = 20`）或最大长度（`max_total_len = 8192`）时会话状态仍未达到正常结束（`completed`），循环会自动给该轨迹打上 `incomplete_punishment = -0.2` 的超时惩罚，逼迫智能体学会在有限步数内干净利落地收尾。
 
----
+## 化陈旧为探索——跨策略采样（Cross-Policy Sampling）
 
-## 4. 化陈旧为探索——跨策略采样（Cross-Policy Sampling）
-
-### 4.1 为什么多轮自采样会陷入“探索坍缩”？支持集严格扩张的直觉
+### 为什么多轮自采样会陷入“探索坍缩”？支持集严格扩张的直觉
 
 在单轮强化学习里，如果觉得模型探索不够，把采样温度（Temperature）调高一点通常就够用了。但在多轮智能体交互中，**“探索坍缩”**（Exploration Collapse）**是一个结构性难题**。
 
@@ -279,7 +272,7 @@ $$
 
 直观而言：让模型 A 走前两步，第 3 步切换成模型 B 触发工具调用，就能拼出一条**无论是模型 A 还是模型 B 单独跑都极难采到的全新成功路径**。一旦这条成功轨迹进了训练池，当前策略就能把这条突破局部瓶颈的路径内化成自己的能力。
 
-### 4.2 轨迹级混合（Mix）与步骤级切换（Cross）的本质差异
+### 轨迹级混合（Mix）与步骤级切换（Cross）的本质差异
 
 ![Single、Mix 与 Cross-Policy 三种采样策略](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig06-rollout-strategies.webp)
 
@@ -288,7 +281,7 @@ $$
 - **Mix**（轨迹级混合）：50% 的完整轨迹由模型 1 从头跑到尾，另外 50% 的完整轨迹由模型 2 从头跑到尾。注意，Mix 的可达成功路径最多只能等于两个模型各自成功集合的简单并集 $\bigcup_{m\in\{1,2\}}(\operatorname{supp}(\tau^m)\cap\mathcal L_{\mathcal G})$——如果一道题必须靠模型 1 的前半程规划加模型 2 的后半程工具调用才能解开，Mix 采一万条也凑不出一条成功样本；
 - **Cross**（步骤级跨策略采样）：在同一条轨迹内部的 Step 1 用 $M_1$、Step 2 切到 $M_2$、Step 3 再切回 $M_1$，真正实现了**单条 Episode 内部的跨策略行为嫁接**。
 
-### 4.3 源码落地：用滞后 25 步的 Stale Rollout Engine 近似策略池
+### 源码落地：用滞后 25 步的 Stale Rollout Engine 近似策略池
 
 理论很丰满，但到了在线强化学习训练时，怎么低成本地构造这个策略池 $\mathcal{M}$？总不能在训练 `Qwen2.5-14B` 的时候，还在旁边额外常驻一个 `Llama` 和一个 `GLM` 陪跑吧？而且异构模型之间的 Tokenizer 和特殊 Token 格式还不兼容。
 
@@ -322,11 +315,9 @@ def cross_sampler(item, **kwargs):
 
 无论这一步抽中的是实时引擎还是陈旧引擎，生成动作时都会把该引擎真实的 Token 对数概率写进 `rollout_log_prob`。这样既在单条多轮轨迹内部实现了新旧策略的交替探索，又为后续 PPO 损失计算提供了真实的行为策略分母，配合 `clip_ratio = 0.2` 与 `kl_loss_coef = 1e-4` 将离策偏移控制在安全范围内。
 
----
+## 双层优势归一化与多任务联合训练主链
 
-## 5. 双层优势归一化与多任务联合训练主链
-
-### 5.1 为什么有了 GRPO 组内归一化，多任务还是会互相打架？
+### 为什么有了 GRPO 组内归一化，多任务还是会互相打架？
 
 既然我们已经对每个 Prompt 的 8 条轨迹做了 GRPO 组内归一化 $\hat A_{i,j,g} = (\hat R_{i,j,g} - \mu_{i,j})/\sigma_{i,j}$，按理说每个采样组内部的均值都已经变成 0、标准差变成 1 了，为什么把 5 个任务混在一起训练时，不同任务之间还是会发生严重的梯度干扰？
 
@@ -363,7 +354,7 @@ $$
 
 在源码 `adv_norm(items)` 中，程序按每个样本的 `data_source` 字段将批次切分为 5 个任务桶，分别用 `loss_mask` 掩码提取有效位置拼成一维向量求出 `mean` 和 `std`（分母加 `1e-6` 防除零），再原地标准化。这两层归一化的分工极其明确：**第一层 GRPO 负责在“同一个问题内部”分出高下；第二层 Task Advantage Normalization 负责在“五个异构任务之间”拉平梯度量纲**。
 
-### 5.2 从配置解析到单步更新：14B 五任务训练主链走读
+### 从配置解析到单步更新：14B 五任务训练主链走读
 
 把异步 Buffer、跨策略采样器、多任务交错加载器与双层优势归一化组装在一起，[`agentrl_trainer.py`](https://github.com/THUDM/AgentRL/blob/6a73409d31ba695d383b978a8ad3ef400d90c054/examples/training/agentrl_trainer.py) 中的完整训练循环可以分为清晰的十个步骤：
 
@@ -378,13 +369,11 @@ $$
 9. **前反向传播与梯度更新**：Reference 模型前向算出 `ref_log_prob`，Actor 模型按动态打包的微批次前反向计算 PPO 裁剪损失与 KL 正则损失，执行 `optimizer.step()`。
 10. **双速广播与周期评测**：每步结束立即向 `rollout` 池广播最新权重；每满 `stale_step = 25` 步向 `rollout_stale` 池广播一次权重；每隔固定步数在验证集上用 `rollout` 池（重复评估 `val.n = 4` 次）检验各任务成功率并保存 Checkpoint。
 
----
-
-## 6. 实验验证、跨策略案例剖析与消融拆解
+## 实验验证、跨策略案例剖析与消融拆解
 
 论文在改装为统一函数调用协议的 **AgentBench-FC** 五大交互环境——**ALFWorld**（AF，家居具身规划）、**Database**（DB，SQL 探查与查询）、**Knowledge Graph**（KG，图谱多跳检索）、**Operating System**（OS，Bash 终端交互）与 **WebShop**（WS，电商搜索购买）——上进行了全面实验，覆盖 `Qwen2.5-3B/7B/14B/32B-Instruct` 四个规模档位以及异构家族的 `GLM-4-9B`。
 
-### 6.1 五类异构环境主实验与通才 vs. 专才对决
+### 五类异构环境主实验与通才 vs. 专才对决
 
 ![AgentRL 五任务主实验结果](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table03-main-results.webp)
 
@@ -404,7 +393,7 @@ $$
 
 那在五个固定环境上训完 RL，会不会把模型在陌生工具上的通用函数调用能力训坏？看上图（Table 5）在分布外基准 **BFCL-v3** 上的测试结果：`AgentRL-Qwen2.5-32B` 在 Single-Turn Non-Live 上保持稳定（`85.8%` vs. `86.0%`），而在需要真实交互的 Single-Turn Live（`77.4% -> 79.3%`）与 Multi-Turn（`16.2% -> 19.2%`）上均取得了正向迁移，总分从 `59.9%` 提升至 **`61.4%`**。
 
-### 6.2 算法组件消融与跨策略协同破局实证
+### 算法组件消融与跨策略协同破局实证
 
 ![Cross-Policy Sampling 与 Task Advantage Normalization 消融表](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table06-ablation.webp)
 
@@ -429,11 +418,9 @@ Cross-Policy Sampling 与 Task Advantage Normalization 到底各自贡献了多�
 
 最后看上图（Table 7）对训练前后轨迹终止状态的统计：原始基座模型在 ALFWorld 中有高达 **`68.0%`** 的轨迹是因为在屋里乱转直到耗尽 20 轮上限（`Task Limit Reached`）而被迫中止的，在 OS 中也有 **`44.4%`** 的轨迹死于轮数耗尽。经过 AgentRL 训练并配合 `-0.2` 的未完成惩罚后，ALFWorld 的超时率暴降至 **`7.4%`**（主动完成提交率从 `7.0%` 升至 `92.6%`），WebShop 的超时率更是压到了 **`2.0%`**。
 
----
+## 异步 Agentic RL 生态坐标与总结
 
-## 7. 异步 Agentic RL 生态坐标与总结
-
-### 7.1 双雄对照：AgentRL 与 SAO 的异步哲学分野
+### 双雄对照：AgentRL 与 SAO 的异步哲学分野
 
 把这篇 **AgentRL** 与我们同时精读的姊妹篇 [**SAO**（单轨迹异步优化）](/blog/sao-single-rollout-asynchronous-agentic-reinforcement-learning-paper-reading/)放在一起对比，你会发现同一个研究团队在面对“多轮智能体异步强化学习”时，针对不同的任务形态演化出了两套截然不同却又高度互补的架构哲学：
 
@@ -453,7 +440,7 @@ Cross-Policy Sampling 与 Task Advantage Normalization 到底各自贡献了多�
 
 如果再结合本站的《[长期收益强化学习算法研究进展](/blog/long-horizon-reinforcement-learning-credit-assignment-agentic-rl/)》以及 [VeRL](https://arxiv.org/abs/2409.19256)、[AReaL](https://arxiv.org/abs/2505.24298)、[THUDM/slime](https://github.com/THUDM/slime)、[Alibaba ROLL](https://github.com/alibaba/ROLL) 等开源系统来看，整个大模型 Agentic RL 基础设施已经形成了清晰的分层：最底层由 FSDP/Megatron 与 SGLang/vLLM 解决张量并行和高速生成，中间层由 AgentRL Controller 这类控制面解决成千上万个有状态容器的会话路由与故障隔离，最上层则由跨策略采样、任务级优势归一化、DIS 门控与跨观测 GAE 解决多步探索与信用分配。
 
-### 7.2 开源仓库架构演进与核心代码地图
+### 开源仓库架构演进与核心代码地图
 
 对于希望直接上手阅读或二次开发 [THUDM/AgentRL](https://github.com/THUDM/AgentRL) 源码的读者，建议沿着下面这张核心模块地图按图索骥（仓库在论文发布后还持续演进出了 gRPC 反向注册传输、Web Dashboard、Kubernetes 沙箱控制器以及包含 REINFORCE++/RLOO/GAE 的通用 `async_trainer.py`）：
 

@@ -31,10 +31,9 @@ draft: false
 3. **用激进的宽孔洞训练分布，堵死模型“靠局部插值抄近道”的退路**（Aggressive Large-Mask Curriculum）：如果训练时只喂细碎的随机涂鸦掩码，每个缺失像素离可见背景只有三五个像素，哪怕给网络装上 FFC，优化器也会偷懒走局部插值的捷径。LaMa 以 50:50 的概率混合最大笔宽达 100 像素的粗折线与大矩形框，大幅拉高缺失像素到可见边界的平均欧氏距离（Mask Width），让模型唯有调用远距离频域通道才能把训练损失降下来。
 4. **利用全图 FFT 的相对视野恒定性，实现从 $256^2$ 到高清大图的跨分辨率泛化**（Scale-Robust Generalization）：当测试图像从训练时的 $256\times 256$ 放大 3 倍到 $768$ 或 $1536$ 时，固定大小的空间卷积核相对于整张图的视野比例缩水成了原来的 $1/3$，再次退化为“管中窥豹”；而 FFC 的全局分支在任何尺寸下都对整张特征图做 2D FFT，视野覆盖率永远是 100%，加上自然图像低频结构与频域 $1\times 1$ 卷积权重的尺度共享特性，使模型无需切片拼接即可直接修复高分辨率大图。
 
+## 为什么大孔洞会击穿普通卷积？问题建模与感受野困局
 
-## 1. 为什么大孔洞会击穿普通卷积？问题建模与感受野困局
-
-### 1.1 四通道输入与“已知区域无损贴回”契约
+### 四通道输入与“已知区域无损贴回”契约
 
 在数学形式与代码实现上，设完整 RGB 图像为 $\mathbf{x}\in[0,1]^{H\times W\times3}$，二值缺失掩码为 $\mathbf{m}\in\{0,1\}^{H\times W}$。遵循官方仓库 [`advimman/lama`](https://github.com/advimman/lama/tree/786f5936b27fb3dacd2b1ad799e4de968ea697e7) 的极性约定，令 **$m_{ij}=1$ 代表需要抹除重绘的孔洞区域**，$m_{ij}=0$ 代表需要保留的已知背景。
 
@@ -46,7 +45,7 @@ $$
 
 不要小看最后一步合成公式 $\mathbf{x}_{out}=\mathbf{x}\odot(1-\mathbf m)+\hat{\mathbf x}\odot\mathbf m$：不仅在产品交付上它保证了未被涂抹的背景像素 100% 零失真，在训练时它也与后文的掩码对齐判别器紧密配合，免去了生成器在已知区域浪费容量去背诵原图的负担。
 
-### 1.2 理论感受野的假象与大孔洞的五重挑战
+### 理论感受野的假象与大孔洞的五重挑战
 
 为什么小划痕修复很容易，而把孔洞扩大到占画面 30%～50% 时，堆叠了十几层 $3\times 3$ 卷积的深层网络就会迅速崩溃？
 
@@ -59,11 +58,9 @@ $$
 
 怎么在完全不增加空间卷积核尺寸、也不构造 $O((HW)^2)$ 昂贵全局注意力矩阵的前提下，让网络从第一个残差块起就拥有 100% 的全图视野？答案是**借道傅里叶频域**。
 
----
+## 快速傅里叶卷积（FFC）如何打破空间局部性？
 
-## 2. 快速傅里叶卷积（FFC）如何打破空间局部性？
-
-### 2.1 Fourier Unit：为什么频域里的 1×1 卷积等价于空间全图感受野？
+### Fourier Unit：为什么频域里的 1×1 卷积等价于空间全图感受野？
 
 根据基础信号处理原理，空间域中的一张二维特征图 $\mathbf x\in\mathbb R^{H\times W}$，经过二维离散傅里叶变换（2D DFT）后得到的频谱图 $\mathbf X\in\mathbb C^{H\times W}$ 中，**每一个频率点 $(u,v)$ 的复数值，都是空间域整张图所有像素 $(h,w)$ 与对应正余弦基函数的全局加权和**。
 
@@ -86,7 +83,7 @@ $$
 
 4. **二维逆 FFT 还原空间域**：将 $2C$ 通道重新拆回实部与虚部组装为复数张量 $\tilde{\mathbf X}$，调用 `torch.fft.irfftn` 精确还原回原始空间尺寸 $\mathbf{y}=\operatorname{irFFT2}(\tilde{\mathbf X})\in\mathbb R^{B\times C\times H\times W}$。
 
-### 2.2 Local / Global 四路双分支残差块与 `enable_lfu: false` 的真相
+### Local / Global 四路双分支残差块与 `enable_lfu: false` 的真相
 
 ![LaMa generator、FFC 与 Spectral Transform](/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig02-architecture-ffc.webp)
 
@@ -116,7 +113,7 @@ resnet_conv_kwargs:
 
 **LaMa 官方所有主力模型全部显式关闭了 LFU（`enable_lfu: false`）。** 因为 25% 的 $3\times 3$ 空间局部分支配合 75% 的全图 `FourierUnit` 已经完全够用，省掉 LFU 不仅减少了额外的切块 FFT 开销，架构也更加纯粹。整个标准 **LaMa-Fourier** 生成器由 3 次下采样、9 个 FFC 残差块和 3 次上采样组成，总参数量仅 **27M**。
 
-### 2.3 为什么 FFC 修窗户和铁丝网这么神？
+### 为什么 FFC 修窗户和铁丝网这么神？
 
 ![周期结构修复对比](/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig04-periodic-structure-comparison.webp)
 
@@ -124,11 +121,9 @@ resnet_conv_kwargs:
 
 用信号处理的眼光看，这再自然不过了：空间域里重复出现的百叶窗或铁丝网，本质上就是二维空间余弦波 $\cos(2\pi(u_0 h + v_0 w) + \phi)$。在空间域里，孔洞把波形拦腰截断，局部卷积核根本看不出周期步长；而一旦经 `rFFT2` 变换到频域，整面墙所有可见窗格的能量都会瞬间聚焦到特征频谱图上的同一个峰值坐标 $(u_0, v_0)$ 及其谐波点上。频域里的 $1\times 1$ 卷积只需保住这个频率峰的能量与复数相位角 $\phi$，逆变换 `irFFT2` 回空间域时，对应的周期网格就会自动铺满整个孔洞区域。
 
----
+## 高感受野感知损失（HRFPL）与掩码对齐对抗训练
 
-## 3. 高感受野感知损失（HRFPL）与掩码对齐对抗训练
-
-### 3.1 为什么放弃逐像素 L1 损失，改用分割预训练的扩张 ResNet50？
+### 为什么放弃逐像素 L1 损失，改用分割预训练的扩张 ResNet50？
 
 如果生成器已经靠 FFC 看清了全图，但训练时的裁判（损失函数）是个“近视眼”，会发生什么？
 
@@ -152,7 +147,7 @@ $$
 
 看上面补充材料 Table 5（各主干最优损失权重标定，由于不同网络特征激活的绝对数值尺度不同，HRFPL 最优权重标定为 `30`，分类 ResNet 为 `1`，VGG19 为 `0.1`）与主文 Table 3 的消融对比：在固定完全相同的生成器与大掩码训练条件下，从普通 VGG19（FID `6.29`）换成普通分类 ResNet50（`6.00`），加上扩张卷积后 FID 进一步改善至 `5.87`，最后把预训练任务换成密集语义分割（即完整 HRFPL），FID 达到全场最佳的 **`5.69`**（LPIPS `0.059`）。这清晰地证明了：**只有当生成器（FFC）和监督器（HRFPL）同时具备大范围感受野时，全局结构才能真正对齐**。
 
-### 3.2 掩码对齐的 PatchGAN 判别器与四项联合损失
+### 掩码对齐的 PatchGAN 判别器与四项联合损失
 
 感知损失管住了大尺度的结构连贯性，但要让修补区域的草地、皮肤、砖面拥有以假乱真的高频微纹理，还得靠生成对抗网络（GAN）。LaMa 采用了一个 5 层卷积构成的 PatchGAN 判别器 $D_\xi$（输出一张二维空间真假评分网格，每个网格点对应原图的一块局部感受野）：
 
@@ -176,11 +171,9 @@ $$
 \mathcal L_{final} =\kappa\mathcal L_{Adv} +\alpha\mathcal L_{\mathrm{HRFPL}} +\beta\mathcal L_{\mathrm{DiscPL}} +\gamma R_1, \qquad (\kappa=10,\ \alpha=30,\ \beta=100,\ \gamma=0.001).
 $$
 
----
+## 用激进的大掩码分布逼出远距离推理能力
 
-## 4. 用激进的大掩码分布逼出远距离推理能力
-
-### 4.1 为什么用“几何宽度（Mask Width）”衡量掩码难度？
+### 为什么用“几何宽度（Mask Width）”衡量掩码难度？
 
 ![LaMa mask policies](/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig03-mask-policies.webp)
 
@@ -194,7 +187,7 @@ $$
 d(p)=\min_{q\in\Omega_{known}}\|p-q\|_2,\qquad w(\mathbf m)=\frac{1}{|\Omega_{mask}|} \sum_{p\in\Omega_{mask}} d(p).
 $$
 
-### 4.2 50:50 混合激进掩码生成器与测试集难度分层
+### 50:50 混合激进掩码生成器与测试集难度分层
 
 为了让模型在训练期天天经受大跨度孔洞的考验，源码 [`saicinpainting/training/data/masks.py`](https://github.com/advimman/lama/blob/786f5936b27fb3dacd2b1ad799e4de968ea697e7/saicinpainting/training/data/masks.py) 中的 `MixedMaskGenerator` 以 **50% : 50%** 的概率随机交替生成两类极具侵略性的宽掩码（具体参数见下方补充材料 Table 4）：
 - **50% 概率生成超宽随机折线**（`RandomIrregularMaskGenerator`）：在 $256\times 256$ 训练图上，单笔最大宽度直接拉到 **100 像素**，单段最大长度 **200 像素**，最多叠加 5 段折线；
@@ -212,11 +205,9 @@ $$
 
 为了在测试时公平检验各模型在不同难度下的真实表现，作者不仅按几何宽度构造了 **Narrow**（窄）、**Medium**（中）、**Wide**（宽）三档随机测试集（Places 上每档各 30,000 对图像-掩码），还专门用 Detectron2 抠出真实场景中的人物、车辆、家具轮廓，构建了约 4,000 对 **Segmentation Masks** 测试集（如补充材料 Fig. 3 所示），直接模拟真实产品中“点选物体、一键消除”的工况。
 
----
+## 实验验证、三大核心消融与跨分辨率泛化机理
 
-## 5. 实验验证、三大核心消融与跨分辨率泛化机理
-
-### 5.1 Places 与 CelebA-HQ 主实验及盲测用户研究
+### Places 与 CelebA-HQ 主实验及盲测用户研究
 
 标准 LaMa-Fourier（9 个 FFC 残差块，27M 参数）与扩展版 Big LaMa（18 个 FFC 残差块，51M 参数，在 450 万张 Places-Challenge 全集上以 `batch_size=120` 用 8 张 V100 训练约 240 小时）均**只在从约 $512\times 512$ 图像上随机裁剪出的 $256\times 256$ 图块上训练**（生成器学习率 $10^{-3}$，判别器学习率 $10^{-4}$，跑满 100 万步）。
 
@@ -238,7 +229,7 @@ $$
 2. **理性看待 Places Wide 上与 CoModGAN 的细微差异**：在 Places Wide 极宽掩码上，109M 参数的 CoModGAN 拿到了略低的 FID（`1.82` vs LaMa `2.21`），但在衡量与原图上下文结构对齐度的 LPIPS 上，LaMa（`0.135`）依然显著优于 CoModGAN（`0.147`）。这是因为 CoModGAN 引入了类似 StyleGAN 的随机潜码调制，擅长在超大孔洞里“自由发挥”编造逼真的随机纹理（因而集合分布距离 FID 占优），而确定性的 LaMa 则严格忠于孔洞周围的几何延伸（因而成对感知距离 LPIPS 占优）。
 3. **人类肉眼近半数无法识破大孔洞修补位置**：在补充材料 Table 1 的“盲找掩码”（Spot-the-mask Acc，越低代表越难被肉眼看穿）测试中，面对 Narrow 掩码修复图，人类受试者只有 **`34%`** 的概率能点中修补区域；即便面对遮挡严酷的 Wide 掩码，人类也只有 **`54%`** 的概率能找准位置，显著优于除 CoModGAN 外的所有对比模型。
 
-### 5.2 架构与掩码双消融：到底是谁立了大功？
+### 架构与掩码双消融：到底是谁立了大功？
 
 ![LaMa 架构消融](/images/blog/lama-resolution-robust-large-mask-inpainting/lama-table02-architecture-ablation.webp)
 
@@ -253,7 +244,7 @@ $$
 - **Table 4 揭示了“宽掩码训练”跨模型迁移的普适性与前提**：
   把 LaMa 的宽掩码训练策略移植给 LaMa-Regular、RegionWise、DeepFillv2 和 EdgeConnect 四个模型后，**四个模型在 Wide 测试集上的 FID 全部获得大幅改善**（例如 LaMa-Regular 从 `5.41` 大幅降至 `3.51`）。但仔细看 Narrow 一列：单阶段大容量的 LaMa-Regular 和 RegionWise 在改用宽掩码训练后，连带窄洞指标也变好了（因为戒掉了局部插值懒惰习性）；而两阶段的 EdgeConnect（先预测边缘图再填色）在被宽掩码轰炸后，第一阶段边缘预测器吃不消崩溃了，导致窄洞 FID 反而从 `1.33` 恶化到了 `2.78`。这说明激进的数据课程必须配得上能够消化远距离信息的模型骨架。
 
-### 5.3 跨分辨率泛化机理：为什么 256×256 训练能直接外推至 1920×1536？
+### 跨分辨率泛化机理：为什么 256×256 训练能直接外推至 1920×1536？
 
 ![LaMa 跨分辨率修复](/images/blog/lama-resolution-robust-large-mask-inpainting/lama-fig05-high-resolution-transfer.webp)
 
@@ -268,11 +259,9 @@ $$
 2. **低频结构能量的尺度不变性**：把一张自然图像放大 2 倍后，虽然增加了高频像素格点，但决定房间墙面、窗户排布、桌面轮廓的基频与低频谐波分量在频谱图上的相对能量结构高度稳定，使频域学到的全局协调能力得以跨尺寸复用。
 3. **频域 $1\times 1$ 卷积的逐频率参数共享**：注意 `FourierUnit` 在频域里用的是 **$1\times 1$ 卷积**，它的权重矩阵 $W_{1\times 1}\in\mathbb R^{2C\times 2C}$ 只在通道维操作，与频谱图的空间尺寸 $(H, \lfloor W/2\rfloor+1)$ 完全解耦。这意味着无论输入分辨率怎么变，同一套 $1\times 1$ 卷积核都能无缝作用在每一个频率格点上。
 
----
+## Big LaMa 能力边界、无 FFT 替代架构与源码精读
 
-## 6. Big LaMa 能力边界、无 FFT 替代架构与源码精读
-
-### 6.1 从 Big LaMa 的正反例看清频域修复的真实局限
+### 从 Big LaMa 的正反例看清频域修复的真实局限
 
 ![Big LaMa 正例](/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig06-big-lama-positive.webp)
 
@@ -293,7 +282,7 @@ $$
 
 此外，补充材料 Fig. 8 与 Fig. 9 还展示了将自然场景训练的 Big LaMa 直接零样本拿去修补声谱图、组织病理切片、遥感航拍、油画、游戏画面、图像外扩（Outpainting）以及脑部 MRI 图像的有趣尝试。虽然低层纹理和频率连续性让输出画面看起来十分平滑，但在临床医学影像（MRI/病理）或司法物证等场景中，这种“看起来像真的”脑补恰恰是最危险的——它可能凭空抹掉病灶或伪造组织结构，绝不能用于定量医学诊断。
 
-### 6.2 如果端侧芯片不支持 FFT 怎么办？LaMa-Dilated 替代方案与耗时拆解
+### 如果端侧芯片不支持 FFT 怎么办？LaMa-Dilated 替代方案与耗时拆解
 
 ![LaMa-Dilated 架构](/images/blog/lama-resolution-robust-large-mask-inpainting/lama-supp-fig10-dilated-architecture.webp)
 
@@ -306,7 +295,7 @@ $$
 再看补充材料 Fig. 11 的实测吞吐耗时曲线（GTX 1080Ti，`batch_size=100`）：这里打破了一个常见误区——**“参数量少就一定跑得快吗？”**
 标准 LaMa-Fourier 的参数量（27M）虽然比普通卷积 LaMa-Regular（46M）少了整整 40%，但在实际 GPU 运行时，因为每次过 `FourierUnit` 都要做频域变换、实虚部内存重排与逆变换，**LaMa-Fourier 的平均推理时间反而比 LaMa-Regular 慢了约 20%**。不过，相比需要多阶段预测或几十步迭代去噪的扩散模型，单次前向的 LaMa 依然处在百毫秒级的极快梯队。
 
-### 6.3 开源代码架构与工程落地铁律
+### 开源代码架构与工程落地铁律
 
 对照官方仓库 [`advimman/lama@786f5936`](https://github.com/advimman/lama/tree/786f5936b27fb3dacd2b1ad799e4de968ea697e7)，核心代码模块与生产落地的关键注意事项可浓缩如下：
 
@@ -317,9 +306,7 @@ $$
 | **高分辨率策略** | [`configs/training/big-lama.yaml`](https://github.com/advimman/lama/blob/786f5936b27fb3dacd2b1ad799e4de968ea697e7/configs/training/big-lama.yaml) | **严禁无脑网格切块**（Tiling）：切小块分别跑 FFC 会破坏全图频谱相位一致性并留下拼接缝；超大图像应采用“围绕掩码外扩充足上下文窗口（Context Crop）推理后再贴回”的策略 |
 | **可选多尺度精化** | [`saicinpainting/evaluation/refinement.py`](https://github.com/advimman/lama/blob/786f5936b27fb3dacd2b1ad799e4de968ea697e7/saicinpainting/evaluation/refinement.py)（`refine_predict`） | 仓库额外提供的 `refinement.py` 是在测试时构建图像金字塔、用梯度下降多步迭代优化潜特征的可选后处理，耗时与显存是标准单次前向的十倍以上，仅适合离线精修导出，不应混入实时交互链路 |
 
----
-
-## 7. 总结：从 LaMa 看视觉网络设计的本质
+## 总结：从 LaMa 看视觉网络设计的本质
 
 今天，当 Stable Diffusion Inpainting、Flux Fill 等百亿参数的扩散模型能够凭一句提示词在画布上凭空变出新物体时，为什么 2022 年提出的 **LaMa**（仅 27M / 51M 参数）依然在无数开源工具（如 IOPaint）、手机相册消除笔和工业视觉流水线中充当着不可替代的头号主力？
 
