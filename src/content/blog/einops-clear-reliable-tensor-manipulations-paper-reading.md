@@ -49,7 +49,7 @@ y1 = x.transpose(2, 0, 3, 1).reshape(h, b * w, c)
 y2 = x.transpose(2, 3, 0, 1).reshape(h, b * w, c)
 ```
 
-这两行代码在运行时都能顺利通过，输出的 `shape` 完全相同，但其中一行已经把图像的空间结构彻底撕碎了！论文用一组极其直观的视觉实验（对标注了 `"einops"` 字样的图像张量执行不同的 `reshape` 与转置序列）展示了这种静默损坏的后果：
+这两行代码在运行时都能顺利通过，输出的 `shape` 完全相同，但其中一行已经把图像的空间结构彻底撕碎了。论文用一组极其直观的视觉实验（对标注了 `"einops"` 字样的图像张量执行不同的 `reshape` 与转置序列）展示了这种静默损坏的后果：
 
 ![Breaking tensor structure with reshape](/images/blog/einops-clear-reliable-tensor-manipulations/einops-paper-figure1-broken-tensor-structure.webp)
 
@@ -66,7 +66,7 @@ $$
 x = x.permute(0, 2, 1, 3).contiguous().view(batch, seq, -1)
 ```
 
-但注释无法参与运行时校验：如果上游模块重构后传进来的张量变成了 `[batch, seq, heads, dim]`，这行代码依然会静默跑通（甚至当 `heads == seq` 时连形状都不会变），把 `seq` 和 `heads` 彻底搞反！
+但注释无法参与运行时校验：如果上游模块重构后传进来的张量变成了 `[batch, seq, heads, dim]`，这行代码依然会静默跑通（甚至当 `heads == seq` 时连形状都不会变），把 `seq` 和 `heads` 彻底搞反。
 
 ### 1.2 Einops 的五项语言设计目标与核心术语边界
 
@@ -112,7 +112,7 @@ i = ((i_1 \cdot n_2) + i_2) \cdot n_3 + i_3
 $$
 
 这个公式揭示了两个极其关键的工程事实：
-- **括号内的轴顺序直接决定内存交错布局**：在 `rearrange(images, 'b c h w -> b (h w) c')` 中，`(h w)` 表示 `w` 在内层变化最快（即按图像行从左到右扫描）；如果写成 `(w h)`，虽然输出形状依然是 `(b, h*w, c)`，但底层变成了按列从上到下扫描！
+- **括号内的轴顺序直接决定内存交错布局**：在 `rearrange(images, 'b c h w -> b (h w) c')` 中，`(h w)` 表示 `w` 在内层变化最快（即按图像行从左到右扫描）；如果写成 `(w h)`，虽然输出形状依然是 `(b, h*w, c)`，但底层变成了按列从上到下扫描。
 - **拆轴（Axis Decomposition）必须满足唯一可解性与整除性**：当圆括号出现在箭头左侧（如 `'b (h w) c -> b h w c'`）时，意味着要把长度为 $L = 196$ 的单一序列维拆成两个基本轴 `h` 和 `w`。由于一个方程 $h \cdot w = 196$ 有无穷多组因子解（$14 \times 14$、$7 \times 28$、$4 \times 49$），Einops 强制要求每个输入复合轴中**最多只能有 1 个未知长度的基本轴**，其余基本轴必须通过关键字参数显式给定：
 
 ```python
@@ -170,7 +170,7 @@ grid = rearrange(x, 'b (h w) c -> b h w c', h=14)
 在日常编写深度学习模型时，掌握以下三组惯用法（Idioms）能直接砍掉 80% 的胶水代码：
 
 **第一组：`rearrange` 接收张量列表，单步完成 `stack / concat + permute`**。
-当函数的第一个参数传入 `list[Tensor]` 时，`rearrange` 会自动把列表本身视作左侧的**第 0 个逻辑基本轴**！这意味着你不再需要先判断调 `torch.stack` 还是 `torch.cat`，只需看这个列表轴在右侧是独立成轴（对应 `stack`）还是并入其他括号（对应 `concat`）：
+当函数的第一个参数传入 `list[Tensor]` 时，`rearrange` 会自动把列表本身视作左侧的**第 0 个逻辑基本轴**。这意味着你不再需要先判断调 `torch.stack` 还是 `torch.cat`，只需看这个列表轴在右侧是独立成轴（对应 `stack`）还是并入其他括号（对应 `concat`）：
 
 ```python
 # 1) 列表轴 views 独立保留 -> 等价于 stack 后再交换维度: 4 个 (b, c, h, w) -> (b, 4, c, h, w)
@@ -205,7 +205,7 @@ group_mean = reduce(
 )
 ```
 
-**第三组：`repeat` 用圆括号内的左右次序彻底终结 `repeat_interleave` 与 `tile` 的混淆**。
+**第三组：`repeat` 用圆括号内的左右次序从源头消除 `repeat_interleave` 与 `tile` 的混淆**。
 在原生 PyTorch/NumPy 中，要把序列 `[a, b, c]` 变成 `[a, a, b, b, c, c]`（元素级原地重复）还是 `[a, b, c, a, b, c]`（整体序列循环平铺），需要分别查文档找 `repeat_interleave` 和 `tile`。而在 Einops 中，这完全由新增轴 `r` 在圆括号 `(w r)` 还是 `(r w)` 中的 C-order 位置决定：
 
 ```python
@@ -360,7 +360,7 @@ restored = rearrange(
 )
 ```
 
-**工程避坑指南（C-order 权重错位陷阱）**：在加载开源预训练 ViT 或 MAE 权重时，请务必核对最后一个括号里写的是 `(patch_h patch_w c)` 还是 `(c patch_h patch_w)`！两者的乘积都是 $16 \times 16 \times 3 = 768$，但前者对应 `[R0, G0, B0, R1, G1, B1, ...]` 的像素交错排列，后者对应 `[R0, R1, ..., G0, G1, ..., B0, B1, ...]` 的通道平面排列。如果与预训练权重的线性投影层（`nn.Linear(768, dim)`）顺序不一致，模型不报任何错，但提取出的视觉特征会彻底失真。
+**工程避坑指南（C-order 权重错位陷阱）**：在加载开源预训练 ViT 或 MAE 权重时，请务必核对最后一个括号里写的是 `(patch_h patch_w c)` 还是 `(c patch_h patch_w)`。两者的乘积都是 $16 \times 16 \times 3 = 768$，但前者对应 `[R0, G0, B0, R1, G1, B1, ...]` 的像素交错排列，后者对应 `[R0, R1, ..., G0, G1, ..., B0, B1, ...]` 的通道平面排列。如果与预训练权重的线性投影层（`nn.Linear(768, dim)`）顺序不一致，模型不报任何错，但提取出的视觉特征会彻底失真。
 
 ### 4.3 Multi-Head Attention 全链路重构
 
@@ -432,9 +432,9 @@ left.composition = [
 ]
 ```
 
-在这里，[`parsing.py`](https://github.com/arogozhnikov/einops/blob/8e911db71f2e693a0c434b041180388c685ed06f/einops/parsing.py#L10-L24) 藏着一个非常精巧的面向对象技巧：当用户在 Pattern 中写下大于 1 的匿名数字（例如 `reduce(x, 'b (h 2) (w 2) -> b h w', 'max')` 中的两个 `2`）时，如果直接用整数 `2` 或字符串 `'2'` 存入 `composition`，解析器就会误以为左边的两个 `2` 是同一个轴名（从而触发“单侧不允许重复轴名”报错）！
+在这里，[`parsing.py`](https://github.com/arogozhnikov/einops/blob/8e911db71f2e693a0c434b041180388c685ed06f/einops/parsing.py#L10-L24) 藏着一个非常精巧的面向对象技巧：当用户在 Pattern 中写下大于 1 的匿名数字（例如 `reduce(x, 'b (h 2) (w 2) -> b h w', 'max')` 中的两个 `2`）时，如果直接用整数 `2` 或字符串 `'2'` 存入 `composition`，解析器就会误以为左边的两个 `2` 是同一个轴名（从而触发“单侧不允许重复轴名”报错）。
 
-为了解决这个问题，`ParsedExpression` 每遇到一个大于 1 的整数，就会实例化一个独立的 **`AnonymousAxis("2")`** 对象。由于 `AnonymousAxis` 类故意**不重写 `__eq__` 方法**（默认使用 Python 对象内存地址 `id` 做相等判断），因此左侧的两个 `AnonymousAxis("2")` 在集合 `identifiers` 中是两个完全不相等的独立基本轴，各自拥有固定长度 `2`，既避免了命名冲突，又防止了左右两侧碰巧相同的数字被错误配对转置！
+为了解决这个问题，`ParsedExpression` 每遇到一个大于 1 的整数，就会实例化一个独立的 **`AnonymousAxis("2")`** 对象。由于 `AnonymousAxis` 类故意**不重写 `__eq__` 方法**（默认使用 Python 对象内存地址 `id` 做相等判断），因此左侧的两个 `AnonymousAxis("2")` 在集合 `identifiers` 中是两个完全不相等的独立基本轴，各自拥有固定长度 `2`，既避免了命名冲突，又防止了左右两侧碰巧相同的数字被错误配对转置。
 
 ### 5.2 `_prepare_transformation_recipe` 与静态 `TransformRecipe` 编译推演
 
@@ -449,13 +449,13 @@ left.composition = [
    因为调用方传入了关键字参数 `axes_names=('kh', 'kw')`，所以在静态编译期，轴 `3 (kh)` 和轴 `5 (kw)` 是已知轴，其余 `0 (b)`, `1 (c)`, `2 (h)`, `4 (w)` 是待从输入 `x.shape` 中推导的未知轴。编译器据此生成 `input_composition_known_unknown`：
    - 物理维 0 (`b`): `known=[], unknown=[0]`
    - 物理维 1 (`c`): `known=[], unknown=[1]`
-   - 物理维 2 (`(h kh)`): `known=[3], unknown=[2]`（仅 1 个未知数 `2`，合法！）
-   - 物理维 3 (`(w kw)`): `known=[5], unknown=[4]`（仅 1 个未知数 `4`，合法！）
+   - 物理维 2 (`(h kh)`): `known=[3], unknown=[2]`（仅 1 个未知数 `2`，合法。）
+   - 物理维 3 (`(w kw)`): `known=[5], unknown=[4]`（仅 1 个未知数 `4`，合法。）
 3. **计算基本轴置换数组 `axes_permutation` 与归约分界点 `first_reduced_axis`**：
    编译器观察右侧表达式 `'b h w c'`，发现需要保留的基本轴按输出顺序是 `[0 (b), 2 (h), 4 (w), 1 (c)]`；而被消去（需要做 `mean` 归约）的基本轴是 `[3 (kh), 5 (kw)]`。
    编译器将“保留轴”排在前面，“待归约轴”统一排到尾部，得到：
    - `axes_permutation = [0, 2, 4, 1, 3, 5]`
-   - `first_reduced_axis = 4`（意味着置换后的第 4、5 号维度将被一次性 `reduce` 消掉！）
+   - `first_reduced_axis = 4`（意味着置换后的第 4、5 号维度将被一次性 `reduce` 消掉。）
 4. **记录最终输出合并规则 `output_composite_axes`**：
    归约消掉尾部两个轴后，剩下的 4 个轴刚好一一对应右侧的 `'b h w c'`，故 `output_composite_axes = [[0], [1], [2], [3]]`。
 
@@ -498,8 +498,8 @@ def _apply_recipe(backend, tensor, reduction_type, axes_dims):
 ```
 
 不仅如此，编译器在产出这五步参数时还内置了**代数化简优化**：
-- 在刚才的例子里，Step 3 对尾部第 `(4, 5)` 维执行完 `mean` 归约后，张量形状已经直接变成了 `(8, 16, 16, 64)`，恰好等于目标输出形状！因此编译器自动将 `final_shapes` 设为 `None`，直接省去了 Step 5 的多余 `reshape`！
-- 再比如当你调用 `rearrange(x, 'a b c d -> (a b) (c d)')` 时，由于相邻基本轴的相对次序完全没有改变，编译器会自动将相邻同序轴合并，把 `init_shapes` 和 `axes_reordering` 全部化简为 `None`，整条流水线直接坍缩为**单次 `backend.reshape`**！
+- 在刚才的例子里，Step 3 对尾部第 `(4, 5)` 维执行完 `mean` 归约后，张量形状已经直接变成了 `(8, 16, 16, 64)`，恰好等于目标输出形状。因此编译器自动将 `final_shapes` 设为 `None`，直接省去了 Step 5 的多余 `reshape`。
+- 再比如当你调用 `rearrange(x, 'a b c d -> (a b) (c d)')` 时，由于相邻基本轴的相对次序完全没有改变，编译器会自动将相邻同序轴合并，把 `init_shapes` 和 `axes_reordering` 全部化简为 `None`，整条流水线直接坍缩为**单次 `backend.reshape`**。
 
 ---
 
@@ -511,7 +511,7 @@ def _apply_recipe(backend, tensor, reduction_type, axes_dims):
 
 答案藏在 [`einops/einops.py`](https://github.com/arogozhnikov/einops/blob/8e911db71f2e693a0c434b041180388c685ed06f/einops/einops.py) 的**两级 `@functools.lru_cache`** 设计中：
 1. **一级 Recipe 缓存（`@functools.lru_cache(256)`，修饰 `_prepare_transformation_recipe`）**：缓存键为 `(pattern, operation, axes_names_tuple, ndim)`。同一个 Pattern 字符串在整个训练生命周期中**只会被解析和编译一次**。
-2. **二级 Shape 计划缓存（`@functools.lru_cache(1024)`，修饰 `_reconstruct_from_shape`）**：缓存键为 `(recipe, shape_tuple, axes_dims_tuple)`。在固定输入形状的训练 Step 中，连基本的整除校验和五元组构造都会直接查表跳过，瞬间直达底层的 `backend.reshape / transpose`！
+2. **二级 Shape 计划缓存（`@functools.lru_cache(1024)`，修饰 `_reconstruct_from_shape`）**：缓存键为 `(recipe, shape_tuple, axes_dims_tuple)`。在固定输入形状的训练 Step 中，连基本的整除校验和五元组构造都会直接查表跳过，瞬间直达底层的 `backend.reshape / transpose`。
 
 论文附录专门在极小的 NumPy 数组上测试了缓存机制的加速比，并统计了对流行视觉模型库的代码行数压缩效果：
 
@@ -563,7 +563,7 @@ def get_backend(tensor) -> AbstractBackend:
 在 PyTorch 2.x 时代，工程师最关心的是：**在模型里写 `rearrange` 会不会导致 `torch.compile` 发生计算图断裂（Graph Break）？**
 
 答案是**不会**。打开 [`einops/_torch_specific.py`](https://github.com/arogozhnikov/einops/blob/8e911db71f2e693a0c434b041180388c685ed06f/einops/_torch_specific.py)，可以看到 Einops 针对 PyTorch 的两代编译器做了专门适配：
-1. **针对 `torch.compile`（TorchDynamo）的穿透适配**：在 PyTorch 2.0 ~ 2.7 中，`allow_ops_in_compiled_graph()` 会自动将 `rearrange`、`reduce`、`repeat`、`einsum`、`pack`、`unpack` 注册进 `torch._dynamo.allow_in_graph`；而在 PyTorch 2.8+ 中，由于 Dynamo 字节码追踪器已经原生支持追踪 `@lru_cache` 与内部字典操作，Dynamo 可以直接穿透整条 `_apply_recipe` 管线，将最终生成的 `tensor.reshape` 与 `tensor.permute` 捕获进 FX Graph，交由后端的 **TorchInductor** 自动与前后的矩阵乘或激活函数做算子融合（Kernel Fusion）！
+1. **针对 `torch.compile`（TorchDynamo）的穿透适配**：在 PyTorch 2.0 ~ 2.7 中，`allow_ops_in_compiled_graph()` 会自动将 `rearrange`、`reduce`、`repeat`、`einsum`、`pack`、`unpack` 注册进 `torch._dynamo.allow_in_graph`；而在 PyTorch 2.8+ 中，由于 Dynamo 字节码追踪器已经原生支持追踪 `@lru_cache` 与内部字典操作，Dynamo 可以直接穿透整条 `_apply_recipe` 管线，将最终生成的 `tensor.reshape` 与 `tensor.permute` 捕获进 FX Graph，交由后端的 **TorchInductor** 自动与前后的矩阵乘或激活函数做算子融合（Kernel Fusion）。
 2. **针对动态形状 `torch.SymInt` 的算术兼容**：当开启 `torch.compile(dynamic=True)` 时，`tensor.shape` 中的动态批次或序列维度会由普通 Python `int` 变为符号整数 `SymInt`。在 `_reconstruct_from_shape_uncached()` 中，源码通过 `isinstance(length, int)` 区分静态常数与符号维度：对符号维度跳过仅限常数的取模断言，直接构造符号整除表达式 `length // known_product`，确保动态 Shape 计算图完整不断裂。
 
 ---
@@ -586,7 +586,7 @@ $$
 | --- | --- | --- | --- |
 | `rearrange(x, 'b c h w -> b h w c')` | `x.permute(0, 2, 3, 1)` | `(60, 5, 1, 20)` | **零拷贝（View）**：仅交换元数据中的 shape 与 stride 下标 |
 | `rearrange(x, 'b c h w -> b c (h w)')` | `x.reshape(2, 3, 20)` | `(60, 20, 1)` | **零拷贝（View）**：因 $s_2 = 5 = d_3 \cdot s_3 = 5 \times 1$，相邻维直接合并 |
-| `rearrange(x, 'b c h w -> b (h w) c')` | `x.permute(0, 2, 3, 1).reshape(2, 20, 3)` | `(60, 1, 20)` | **零拷贝（View）**：转置后 `h` 与 `w` 的步长为 `5` 和 `1`，依然满足 $5 = 5 \times 1$！ |
+| `rearrange(x, 'b c h w -> b (h w) c')` | `x.permute(0, 2, 3, 1).reshape(2, 20, 3)` | `(60, 1, 20)` | **零拷贝（View）**：转置后 `h` 与 `w` 的步长为 `5` 和 `1`，依然满足 $5 = 5 \times 1$。 |
 | `rearrange(x, 'b c h w -> b h (w c)')` | `x.permute(0, 2, 3, 1).reshape(2, 4, 15)` | `(60, 15, 1)` | **触发物理 Copy**：转置后 `w` 与 `c` 的步长为 `1` 和 `20`，不满足连续条件，`reshape` 自动分配新内存 |
 
 论文在 Multi-Head Attention、Vision Permutator 与 Glow Unsqueeze 三个模块上对比了手写原生 PyTorch 代码与 Einops 重构版在 CPU / GPU 及 JIT 编译下的实测吞吐：
@@ -625,7 +625,7 @@ $$
 
 既然当 $H = W = 14$ 或 $\text{Batch} = \text{Heads} = 8$ 时，写反两个等长维度不会触发任何形状异常，那我们在做模型重构和编写单元测试时，该如何 100% 揪出所有维度错位 Bug？
 
-最有效的工程铁律是：**在单元测试中，永远使用两两互不相同的素数（如 `2, 3, 5, 7, 11`）作为各基本轴的长度，并填充严格递增序列 `np.arange` 验证元素级排列等价性与正逆 Round-Trip 可逆性**！
+最有效的工程铁律是：**在单元测试中，永远使用两两互不相同的素数（如 `2, 3, 5, 7, 11`）作为各基本轴的长度，并填充严格递增序列 `np.arange` 验证元素级排列等价性与正逆 Round-Trip 可逆性**。
 
 下面是一套可直接复制到项目 `pytest` 测试套件中的完整验证矩阵：
 

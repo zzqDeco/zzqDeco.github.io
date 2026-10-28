@@ -72,7 +72,7 @@ draft: false
 └───────────────────────────────────────────────────────────────────────────┘
 ```
 
-这三层解耦带来的最大工程红利在于：**当文件夹移动位置或团队增减成员时，业务系统只需要修改那一条代表拓扑指针的 Tuple（$O(1)$ 写入）**；至于其下属的十万篇子文档权限如何变化，完全由查询引擎在读取时顺着 `Authorization Model` 定义的有向边动态推导得出，彻底终结了传统 ACL 方案中的写时展开灾难。
+这三层解耦带来的最大工程红利在于：**当文件夹移动位置或团队增减成员时，业务系统只需要修改那一条代表拓扑指针的 Tuple（$O(1)$ 写入）**；至于其下属的十万篇子文档权限如何变化，完全由查询引擎在读取时顺着 `Authorization Model` 定义的有向边动态推导得出，从源头消除了传统 ACL 方案中的写时展开灾难。
 
 ### 1.2 Zanzibar 论文系统与 OpenFGA 开源引擎的架构映射
 
@@ -103,7 +103,7 @@ $$
 \end{aligned}
 $$
 
-仔细看第三行产生式：元组的 `@` 符号右侧既可以是一个具体的自然人 ID（`<user_id>`），也可以是另一个形如 `<object>#<relation>` 的**用户集合**（Userset）！这处看似简单的递归定义，正是关系授权模型能够统一表达“直接授权”、“群组嵌套”与“树状资源继承”的灵魂所在：
+仔细看第三行产生式：元组的 `@` 符号右侧既可以是一个具体的自然人 ID（`<user_id>`），也可以是另一个形如 `<object>#<relation>` 的**用户集合**（Userset）。这处看似简单的递归定义，正是关系授权模型能够统一表达“直接授权”、“群组嵌套”与“树状资源继承”的灵魂所在：
 
 ![Example relation tuples](/images/blog/openfga-zanzibar-fine-grained-authorization/zanzibar-table01-relation-tuples.webp)
 
@@ -132,7 +132,7 @@ doc:readme#parent@folder:A              # 4. 资源拓扑指针：folder:A 是 d
 2. **`computed_userset`（同对象关系映射）**：在不改变当前 `<object>` 的前提下，将待查关系重写为同一对象上的另一个关系。例如在 `editor` 的定义中声明 `computed_userset { relation: "owner" }`，意味着求值 `doc:readme#editor` 时，引擎会自动去求值 `doc:readme#owner`，无需物理存储第二份元组。
 3. **`tuple_to_userset`（跨对象两跳指针展开）**：这是实现树状目录与多租户继承的核心原语。它包含两个子字段：`tupleset { relation: "parent" }` 与 `computed_userset { relation: "viewer" }`。其求值过程严格分为两跳：
    - **第一跳（查指针元组）**：在数据库中查找当前对象 `doc:readme` 的 `parent` 关系指向了哪些目标对象（假设查出 `doc:readme#parent@folder:A` 指向的对象为 `folder:A`）；
-   - **第二跳（跨对象映射）**：将第一跳拿到的目标对象 `folder:A` 与 `computed_userset` 指定的 `"viewer"` 拼接成新的用户集节点 `folder:A#viewer`，递归继续求值！
+   - **第二跳（跨对象映射）**：将第一跳拿到的目标对象 `folder:A` 与 `computed_userset` 指定的 `"viewer"` 拼接成新的用户集节点 `folder:A#viewer`，递归继续求值。
 
 OpenFGA 的建模语言（`schema 1.1`）正是将上面那段略显繁琐的 Protobuf 重写树，提炼成了人类一眼可读的声明式 DSL：
 
@@ -277,13 +277,13 @@ fga query check \
   user:anne can_view document:roadmap
 ```
 
-在工程接入时，强烈建议在模型中采用“**角色关系（Role Relation）与动作关系（Action Relation）分层命名法**”：只允许向 `owner`、`editor`、`viewer` 写入物理元组，同时用 `define can_view: viewer or editor`、`define can_delete: owner` 暴露动作关系；所有微服务代码一律只针对 `can_*` 发起 `Check`。这样未来产品经理要求“让 `editor` 也能删除文档”时，只需发布一个修改了 `define can_delete: owner or editor` 的新 `model_id`，全公司几十个微服务一行代码都不用改！
+在工程接入时，强烈建议在模型中采用“**角色关系（Role Relation）与动作关系（Action Relation）分层命名法**”：只允许向 `owner`、`editor`、`viewer` 写入物理元组，同时用 `define can_view: viewer or editor`、`define can_delete: owner` 暴露动作关系；所有微服务代码一律只针对 `can_*` 发起 `Check`。这样未来产品经理要求“让 `editor` 也能删除文档”时，只需发布一个修改了 `define can_delete: owner or editor` 的新 `model_id`，全公司几十个微服务一行代码都不用改。
 
 ### 4.2 企业级搜索与 RAG 知识库中的权限过滤模式
 
 在构建企业级搜索引擎或 RAG 知识库问答系统时，一个经典架构难题是：**“数据库里有 1,000 万个文档 Chunk，如何只检索出当前用户 `user:anne` 有权查看的 Top-10 相关 Chunk？”**
 
-切忌把 OpenFGA 当成全文或向量搜索引擎直接全量拉取！针对不同的授权基数分布，工程界有一套标准的双模协同模式：
+切忌把 OpenFGA 当成全文或向量搜索引擎直接全量拉取。针对不同的授权基数分布，工程界有一套标准的双模协同模式：
 
 ```text
 【模式 A：Search + BatchCheck 后置过滤（适合高选择性检索 / 用户有权访问海量公共与部门文档）】
@@ -349,7 +349,7 @@ condition non_expired_grant_and_valid_ip(current_time: timestamp, grant_expires_
 }
 ```
 
-而在在线调用 `Check` 时，网关只需传入当前请求时刻的动态环境变量 `{"current_time": "2026-07-08T10:30:00Z", "client_ip": "10.24.1.88"}`。OpenFGA 的 `internal/condition` 引擎会在图遍历命中该元组时，瞬间合并持久化参数与请求上下文并执行 CEL 表达式求值！一旦时间过了 `2026-12-31`，即便后台定时清理任务还没删掉这条元组，在线 `Check` 也会毫秒级精准返回 `allowed: false`。
+而在在线调用 `Check` 时，网关只需传入当前请求时刻的动态环境变量 `{"current_time": "2026-07-08T10:30:00Z", "client_ip": "10.24.1.88"}`。OpenFGA 的 `internal/condition` 引擎会在图遍历命中该元组时，瞬间合并持久化参数与请求上下文并执行 CEL 表达式求值。一旦时间过了 `2026-12-31`，即便后台定时清理任务还没删掉这条元组，在线 `Check` 也会毫秒级精准返回 `allowed: false`。
 
 为了保持架构清晰，请严格按以下边界划分四类数据的归属：
 
@@ -391,8 +391,8 @@ Zanzibar 为此设计了精妙的 **Zookie 协议**：
 1. 在 $t_1$ 时刻 Alice 移除 Bob 权限、或 $t_2$ 时刻写入机密内容前，文档服务向 Zanzibar 申请一个编码了当前 Spanner 全局精确时间戳的不透明令牌 **`zookie`**（记其内部时间戳为 $T_{\text{zookie}} \ge t_1$），并将该 `zookie` 与新文档内容作为原子元数据绑定存储；
 2. 在 $t_3$ 时刻 Bob 请求读取文档时，文档服务先把文档的最新 `zookie` 读出来，连同 `Check(doc:plan, viewer, Bob, zookie)` 一起发给 Zanzibar；
 3. Zanzibar 收到请求后，检查本地缓存快照的时间戳 $T_{\text{local}}$ 是否满足 $T_{\text{local}} \ge T_{\text{zookie}}$：
-   - **绝大多数情况（`Check Safe`，占生产流量 > 98%）**：文档很久没改过权限，$T_{\text{zookie}}$ 已经是几分钟前甚至几天前的时间戳，本地已经协商好的安全快照完全满足 $T_{\text{local}} \ge T_{\text{zookie}}$，直接免跨区通信在本地内存中极速返回！
-   - **刚发生变更的敏感窗口（`Check Recent`，占流量 < 2%）**：像上面 Alice 刚踢完人就写机密的场景，$T_{\text{zookie}}$ 极其新鲜，Zanzibar 识别到后会强制向 Spanner 发起最新时间戳同步读，确保 Bob 的请求在 $t_3$ 时刻必然看到 $t_1$ 的吊销结果，返回 `allowed: false`！
+   - **绝大多数情况（`Check Safe`，占生产流量 > 98%）**：文档很久没改过权限，$T_{\text{zookie}}$ 已经是几分钟前甚至几天前的时间戳，本地已经协商好的安全快照完全满足 $T_{\text{local}} \ge T_{\text{zookie}}$，直接免跨区通信在本地内存中极速返回。
+   - **刚发生变更的敏感窗口（`Check Recent`，占流量 < 2%）**：像上面 Alice 刚踢完人就写机密的场景，$T_{\text{zookie}}$ 极其新鲜，Zanzibar 识别到后会强制向 Spanner 发起最新时间戳同步读，确保 Bob 的请求在 $t_3$ 时刻必然看到 $t_1$ 的吊销结果，返回 `allowed: false`。
 
 在开源的 OpenFGA 中，由于底层对接的是标准 PostgreSQL 或 MySQL（没有 TrueTime 原子钟硬件），OpenFGA 采用了工程上极其实用的**双档位 `consistency` API 参数 + 版本化缓存键**方案：
 
@@ -419,7 +419,7 @@ Zanzibar 为此设计了精妙的 **Zookie 协议**：
 
 在这张架构图中，除了底层的 Spanner 元组数据库与 Changelog 变更订阅外，有两个极具工程智慧的核心设计值得深挖：
 
-第一是 **`aclserver` 的一致性哈希路由与尾延迟抑制**。当一篇热门全员文档在早上 9 点被 10,000 名员工同时打开时，如果随机负载均衡，所有 `aclserver` 节点都会重复去数据库查这篇文档的父文件夹和群组关系。Zanzibar 采用按 `(namespace, object_id)` 的一致性哈希将同一文档或同一群组的子查询路由到固定的 `aclserver` 节点，并在节点内部实现了 **In-Flight Request Deduplication（在途请求合并）**——10,000 个并发请求中只有第 1 个会真正向下游发起读取，其余 9,999 个直接挂在同一块内存 Promise 上共享计算结果！同时，一旦某个子查询耗时超过 P95 阈值，`aclserver` 会自动向备用节点发送对冲请求（**Request Hedging**），取最先返回的结果以削平长尾毛刺。
+第一是 **`aclserver` 的一致性哈希路由与尾延迟抑制**。当一篇热门全员文档在早上 9 点被 10,000 名员工同时打开时，如果随机负载均衡，所有 `aclserver` 节点都会重复去数据库查这篇文档的父文件夹和群组关系。Zanzibar 采用按 `(namespace, object_id)` 的一致性哈希将同一文档或同一群组的子查询路由到固定的 `aclserver` 节点，并在节点内部实现了 **In-Flight Request Deduplication（在途请求合并）**——10,000 个并发请求中只有第 1 个会真正向下游发起读取，其余 9,999 个直接挂在同一块内存 Promise 上共享计算结果。同时，一旦某个子查询耗时超过 P95 阈值，`aclserver` 会自动向备用节点发送对冲请求（**Request Hedging**），取最先返回的结果以削平长尾毛刺。
 
 第二是 **Leopard 专用群组索引系统**。思考一个极端情况：大企业里的员工群组往往存在深达 10 层以上的嵌套（例如 `user:11 -> group:backend -> group:eng-cn -> group:eng-apac -> group:eng-global -> group:all-hands`）。如果在每次 `Check` 时都顺着数据库一行行递归查 10 层父群组，延迟根本无法接受。
 
@@ -433,7 +433,7 @@ $$
 \text{MEMBER2GROUP}(u) \;\cap\; \text{GROUP2GROUP}(G) \neq \emptyset
 $$
 
-借助跳表指针的跳跃比较（Skip-List Seek），哪怕集合里有几十万个群组 ID，单次求交也能在微秒级内完成！
+借助跳表指针的跳跃比较（Skip-List Seek），哪怕集合里有几十万个群组 ID，单次求交也能在微秒级内完成。
 
 ### 5.3 OpenFGA 源码级执行链路剖析（`internal/graph` 与 `internal/modelgraph`）
 
@@ -454,7 +454,7 @@ $$
 1. **责任链模式的 `CheckResolver` 与防环路死锁**：
    在 `cmd/run/run.go` 中，OpenFGA 将 `CheckResolver` 组装成一条责任链：`CachedCheckResolver`（查询 LRU/TTL 缓存，缓存键包含 `store_id + model_id + tuple_key + contextual_tuples_hash + context_hash`） → `DispatchThrottlingCheckResolver`（控制单请求并发度，默认 `resolveNodeBreadthLimit = 100`） → `LocalChecker`（执行图节点展开）。为了防止两个文件夹互设对方为 `parent`（如 `folder:A#parent@folder:B` 且 `folder:B#parent@folder:A`）导致无限递归死循环，`Check` 在上下文中维护了一个线程安全的 `visited` 哈希表，遇到已访问过的 `object#relation` 节点立即剪枝返回 `false`；同时设置硬性的递归深度上限 `resolveNodeLimit = 25`，超限即抛出 `ErrResolutionDepthExceeded`。
 2. **`union` / `intersection` 的 Goroutine 短路风暴控制**：
-   当 `LocalChecker` 评估 `define viewer: a or b or c` 时，它会为 `a`、`b`、`c` 派生受信号量约束的并发 Goroutine，并共享一个 `ctx, cancel := context.WithCancel(parentCtx)`。一旦 `a` 在 0.5 毫秒内命中了直接元组返回 `allowed: true`，主协程立即调用 `cancel()`，正在查数据库跑 `b` 和 `c` 的慢协程会瞬间收到 Context 取消信号并释放数据库连接！
+   当 `LocalChecker` 评估 `define viewer: a or b or c` 时，它会为 `a`、`b`、`c` 派生受信号量约束的并发 Goroutine，并共享一个 `ctx, cancel := context.WithCancel(parentCtx)`。一旦 `a` 在 0.5 毫秒内命中了直接元组返回 `allowed: true`，主协程立即调用 `cancel()`，正在查数据库跑 `b` 和 `c` 的慢协程会瞬间收到 Context 取消信号并释放数据库连接。
 3. **`ListObjects` 为什么不傻瓜式遍历全库对象？反向图展开揭秘**：
    假设数据库里有 100 万篇 `document`，如果 `ListObjects(user:anne, can_view, "document")` 对 100 万篇文档挨个调一遍 `Check`，数据库当场就会被打挂。OpenFGA 在 `internal/modelgraph` 中预先把授权模型的有向边**全部反转**，构建了一张反向可达图：
    - 查询开始时，引擎以 `user:anne` 为起点，调用存储层的 `ReadStartingWithUser` 接口，先查出直接关联 `user:anne` 的那几个团队（如 `team:pm#member`）和文件夹（如 `folder:product`）；

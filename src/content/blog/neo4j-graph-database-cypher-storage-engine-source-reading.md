@@ -78,12 +78,12 @@ $$
   T_{\mathrm{RDBMS}}(d) = O\left(\sum_{i=1}^{d} b^{i-1} \cdot \log_B M\right).
   $$
   一旦全库历史边数 $M$ 从百万涨到百亿，$\log_B M$ 的惩罚会放大到每一跳的每一个中间节点上，且相邻关系的记录在磁盘上分散在不同 B+Tree 叶子页中，引发严重的随机 I/O。
-- **在 Neo4j 免索引邻接中**：一旦定位到锚点，从当前节点顺着物理记录指针跳向邻居节点，单步寻址开销是与全库规模 $M$ 完全无关的常数 $O(1)$！设第 $i$ 跳经过关系类型与方向过滤后的有效分支因子（Branching Factor）为 $b_i$，则 $d$ 跳遍历访问的候选状态总数为：
+- **在 Neo4j 免索引邻接中**：一旦定位到锚点，从当前节点顺着物理记录指针跳向邻居节点，单步寻址开销是与全库规模 $M$ 完全无关的常数 $O(1)$。设第 $i$ 跳经过关系类型与方向过滤后的有效分支因子（Branching Factor）为 $b_i$，则 $d$ 跳遍历访问的候选状态总数为：
   $$
   |C_d| \approx \prod_{i=1}^{d} b_i, \qquad T_{\mathrm{Neo4j}}(d) = O\left(\prod_{i=1}^{d} b_i\right).
   $$
 
-这个公式揭示了图数据库工程中最重要的一条辩证法则：**免索引邻接消灭了每一跳上的 $\log_B M$ 全局规模因子，让局部遍历速度不受全图总数据量膨胀的拖累；但它并不能消灭 $\prod_{i=1}^{d} b_i$ 的多跳组合扇出**！如果查询在半途一头撞进一个拥有百万条边的“超级节点”（Supernode，例如代表“中国”的国家节点或热门大 V 节点），或者写出了不设跳数上界的 `[:KNOWS*]`，候选状态集依然会指数级爆炸。理解“单步 $O(1)$ 指针跳转”与“多跳 $\prod b_i$ 组合基数”的边界，是后续理解 Cypher 优化器与物理存储设计的钥匙。
+这个公式揭示了图数据库工程中最重要的一条辩证法则：**免索引邻接消灭了每一跳上的 $\log_B M$ 全局规模因子，让局部遍历速度不受全图总数据量膨胀的拖累；但它并不能消灭 $\prod_{i=1}^{d} b_i$ 的多跳组合扇出**。如果查询在半途一头撞进一个拥有百万条边的“超级节点”（Supernode，例如代表“中国”的国家节点或热门大 V 节点），或者写出了不设跳数上界的 `[:KNOWS*]`，候选状态集依然会指数级爆炸。理解“单步 $O(1)$ 指针跳转”与“多跳 $\prod b_i$ 组合基数”的边界，是后续理解 Cypher 优化器与物理存储设计的钥匙。
 
 ### 1.3 开源社区版与商业企业版的内核能力边界
 
@@ -99,7 +99,7 @@ $$
 
 ---
 
-## 2. 核心设计哲学一：声明式图模式与关系代数多集语义的统一
+## 2. 声明式图模式与关系代数多集语义的统一
 
 为什么 SQL 写图查询那么痛苦，而 Cypher 却能让开发者一眼看懂？因为 SQL 逼着人类在脑子里把“图拓扑”翻译成“外键等值连接表”；而 Cypher 允许直接用 ASCII-Art 字符画出图的形状：`(r:Researcher)-[:SUPERVISES]->(s:Student)`。
 
@@ -123,10 +123,10 @@ RETURN r.name, studentsSupervised,
 
 ![Cypher variable bindings](/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig02-variable-bindings.webp)
 
-论文一针见血地指出：Cypher 查询的每一步输出，本质上都是一张由**变量绑定记录**（Record）组成的**多集表**（Bag / Multiset of Records）！
+论文一针见血地指出：Cypher 查询的每一步输出，本质上都是一张由**变量绑定记录**（Record）组成的**多集表**（Bag / Multiset of Records）。
 - **什么是绑定记录 $u$？** 每当图上的一条子路径成功匹配了模式中的变量（如 `r` 和 `s`），就会产出一条从变量名到图元素 ID（节点、关系、路径或标量值）的映射字典，例如 $u = \{r \mapsto n_6, s \mapsto n_7\}$。
 - **为什么必须是多集而非集合**（Bag vs. Set，允许重复行）？因为在执行聚合（如 `sum(x.price)` 或 `count(*)`）之前，不同的匹配路径完全可能投影出相同的剩余变量组合。如果默认去重，不仅每次子句转换都要付出高昂的哈希去重代价，还会把原本来自不同分支的有效计数吞掉。
-- **为什么中间必须插入 `WITH r, count(s) AS studentsSupervised`？** 这是新手写 Cypher 最容易踩的“扇出笛卡尔积”大坑！假设某位研究员指导了 **3 名学生**，同时发表了 **4 篇论文**。如果省掉中间那行 `WITH` 聚合，直接连写两行 `MATCH (r)-[:SUPERVISES]->(s)` 和 `MATCH (r)-[:AUTHORS]->(p1)`，那么第一阶段产出的 3 行绑定记录会在第二阶段各自扩展出 4 篇论文，中间表瞬间膨胀为 $3 \times 4 = 12$ 行！此时再去 `count(s)`，统计出的学生数就会从 3 变成错误的 12。`WITH` 子句在 Cypher 中充当了**显式的关系代数阶段边界与作用域屏障**——只有被 `WITH` 点名导出的变量才能存活到下一阶段，从而在进入下一段一对多扩展前把基数重新拍扁为每个研究员一行。
+- **为什么中间必须插入 `WITH r, count(s) AS studentsSupervised`？** 这是新手写 Cypher 最容易踩的“扇出笛卡尔积”大坑。假设某位研究员指导了 **3 名学生**，同时发表了 **4 篇论文**。如果省掉中间那行 `WITH` 聚合，直接连写两行 `MATCH (r)-[:SUPERVISES]->(s)` 和 `MATCH (r)-[:AUTHORS]->(p1)`，那么第一阶段产出的 3 行绑定记录会在第二阶段各自扩展出 4 篇论文，中间表瞬间膨胀为 $3 \times 4 = 12$ 行。此时再去 `count(s)`，统计出的学生数就会从 3 变成错误的 12。`WITH` 子句在 Cypher 中充当了**显式的关系代数阶段边界与作用域屏障**——只有被 `WITH` 点名导出的变量才能存活到下一阶段，从而在进入下一段一对多扩展前把基数重新拍扁为每个研究员一行。
 
 ### 2.2 形式化模式语法、刚性展开与“边同态（Edge Isomorphism）”法则
 
@@ -154,11 +154,11 @@ $$
 
 ![Students and teachers property graph](/images/blog/neo4j-graph-database-cypher-storage-engine/cypher-paper-fig04-students-teachers-graph.webp)
 
-看上方 Fig. 4 的师生互相认识小图：图中存在大量双向认识关系甚至三角形环路。当我们写下一条多跳查询 `MATCH (a)-[:KNOWS]->(b)-[:KNOWS]->(c)` 或可变长查询 `MATCH (a)-[:KNOWS*1..4]->(c)` 时，如果不加任何限制（纯同态 Homomorphism），遍历器从 `a` 沿着某条边走到 `b` 后，下一步完全可以顺着同一条反向关系或无向匹配原路退回 `a`，在一条边或一个小环上来回震荡，产生成千上万条毫无业务意义的冗余路径！
+看上方 Fig. 4 的师生互相认识小图：图中存在大量双向认识关系甚至三角形环路。当我们写下一条多跳查询 `MATCH (a)-[:KNOWS]->(b)-[:KNOWS]->(c)` 或可变长查询 `MATCH (a)-[:KNOWS*1..4]->(c)` 时，如果不加任何限制（纯同态 Homomorphism），遍历器从 `a` 沿着某条边走到 `b` 后，下一步完全可以顺着同一条反向关系或无向匹配原路退回 `a`，在一条边或一个小环上来回震荡，产生成千上万条毫无业务意义的冗余路径。
 
 但如果在另一个极端强制要求“节点同构（Node Isomorphism，即路径上所有节点互不相同，对应图论中的 Simple Path）”，又会导致用户无法用 `(a)-[:KNOWS]->(b)-[:KNOWS]->(c)-[:KNOWS]->(a)` 这种闭环模式去检测图里的三角形欺诈环路。
 
-Cypher 的权衡堪称精妙——它选择了居中的**边唯一性约束**（Edge Isomorphism）：**在单次 `MATCH` 模式匹配的同一条实例路径 $p = n_1 r_1 n_2 \cdots r_{m-1} n_m$ 中，允许同一个节点出现多次（从而支持环路检测），但绝不允许同一条物理关系 $r_i$ 在该模式中被重复经过两次（即要求 $i \neq j \implies r_i \neq r_j$）**！这既赋予了查询语言直接表达环路模式的能力，又保证即使在有限图上执行无界可变长匹配 `[:KNOWS*]`，由于图中的物理边总数 $|R|$ 有限，合法的匹配路径集合在数学上也必定是有限的。
+Cypher 的权衡堪称精妙——它选择了居中的**边唯一性约束**（Edge Isomorphism）：**在单次 `MATCH` 模式匹配的同一条实例路径 $p = n_1 r_1 n_2 \cdots r_{m-1} n_m$ 中，允许同一个节点出现多次（从而支持环路检测），但绝不允许同一条物理关系 $r_i$ 在该模式中被重复经过两次（即要求 $i \neq j \implies r_i \neq r_j$）**。这既赋予了查询语言直接表达环路模式的能力，又保证即使在有限图上执行无界可变长匹配 `[:KNOWS*]`，由于图中的物理边总数 $|R|$ 有限，合法的匹配路径集合在数学上也必定是有限的。
 
 ### 2.3 表到表（Table-to-Table）函数复合、`OPTIONAL MATCH` 与三值逻辑陷阱
 
@@ -202,14 +202,14 @@ $$
      WHERE p.category = 'Book'
      RETURN u.id, count(p)
      ```
-     此时 `WHERE p.category = 'Book'` 是左外连接**连接条件的一部分**！如果某位用户从来没买过书（只买过衣服，或者什么都没买），`OPTIONAL MATCH` 匹配失败，但用户 `u` 依然会被保留下来，`p` 被置为 `null`，最终 `count(p)` 正确返回 `0`。
-   - **写法 B**（把过滤条件拆到后续阶段）：如果在 `OPTIONAL MATCH` 之后先 `WITH u, p`，再单独写一句过滤 `WHERE p.category = 'Book'`，那么对于没买过商品的用户，由于 `p` 为 `null`，`p.category = 'Book'` 求值为 `null`（非 `true`），这行好不容易靠 `OPTIONAL MATCH` 保留下来的用户记录就会被当场淘汰，使外连接瞬间退化为内连接！
+     此时 `WHERE p.category = 'Book'` 是左外连接**连接条件的一部分**。如果某位用户从来没买过书（只买过衣服，或者什么都没买），`OPTIONAL MATCH` 匹配失败，但用户 `u` 依然会被保留下来，`p` 被置为 `null`，最终 `count(p)` 正确返回 `0`。
+   - **写法 B**（把过滤条件拆到后续阶段）：如果在 `OPTIONAL MATCH` 之后先 `WITH u, p`，再单独写一句过滤 `WHERE p.category = 'Book'`，那么对于没买过商品的用户，由于 `p` 为 `null`，`p.category = 'Book'` 求值为 `null`（非 `true`），这行好不容易靠 `OPTIONAL MATCH` 保留下来的用户记录就会被当场淘汰，使外连接瞬间退化为内连接。
 
 从论文所刻画的 Cypher 9 演进到 **Neo4j 2026.06 默认搭载的 Cypher 25**（以及对齐 ISO GQL 标准的现代化语法），这套以“多集绑定表 + 函数复合”为底座的执行模型始终未变，并在其上生长出了极其强大的 **量化路径模式**（Quantified Path Patterns, QPP，如 `((a)-[:TRANSFERRED]->(b WHERE b.riskScore > 0.8)){1,5}`，允许在可变长跳数的每一跳内部直接嵌入节点与边的局部谓词过滤，无需等整条路径展开后再过滤）、`EXISTS / COUNT / COLLECT` 标量子查询以及声明式向量检索子句 `SEARCH`。
 
 ---
 
-## 3. 核心设计哲学二：从 Bolt 二进制流控到 IDP 成本优化器与物理运行时
+## 3. 从 Bolt 二进制流控到 IDP 成本优化器与物理运行时
 
 当客户端驱动发出一行 Cypher 字符串时，Neo4j 是如何把一段 ASCII 字符变成底层内存页上的指针跳转的？让我们顺着 `2026.06.0` 源码调用链，拆解这条从网络协议一直贯穿到物理算子的完整流水线：
 
@@ -255,12 +255,12 @@ StorageEngine SPI -> 合并内存 TransactionState 与底层 RecordStorageEngine
 MATCH (u:User {country: 'CN'})-[:PURCHASED]->(p:Product {sku: 'SKU-9981'})
 RETURN u.id
 ```
-声明式 Cypher 只说了“我要找满足这个关系的 `u` 和 `p`”，却没说先找谁！在物理执行时，至少有三种截然不同的走法：
+声明式 Cypher 只说了“我要找满足这个关系的 `u` 和 `p`”，却没说先找谁。在物理执行时，至少有三种截然不同的走法：
 1. **从左往右走**：先扫出所有 `country = 'CN'` 的用户（假设有 **500 万**人），再顺着每人的 `:PURCHASED` 边向外扩展（`Expand(All)`），最后检查商品是不是 `'SKU-9981'`；
 2. **从右往左走**：先用商品唯一索引一击定位 `sku = 'SKU-9981'` 的那 **1 个**商品节点（`NodeUniqueIndexSeek`），再顺着 `:PURCHASED` 入边反向扩展出买过它的几十个用户，最后检查 `u.country = 'CN'`；
 3. **两头同时找再汇合**：左边用索引找出用户，右边用索引找出商品，中间用 `NodeHashJoin` 或 `Expand(Into)` 碰撞连接。
 
-显而易见，走法 2 只需几十次记录读取，而走法 1 要遍历上千万条边！为了自动挑出走法 2，`CypherPlanner` 在内部将 AST 转化为**查询图**（Query Graph, QG），并利用三类核心机制完成基于成本的规划（Cost-Based Optimization）：
+显而易见，走法 2 只需几十次记录读取，而走法 1 要遍历上千万条边。为了自动挑出走法 2，`CypherPlanner` 在内部将 AST 转化为**查询图**（Query Graph, QG），并利用三类核心机制完成基于成本的规划（Cost-Based Optimization）：
 
 1. **O(1) 内核计数存储**（Counts Store）与**选择率估计**：
    Neo4j 在存储引擎内部专门维护了一个极轻量的 **Counts Store**，实时精确记录每个标签的节点总数（如 `count(:User)`）、每种关系类型的边总数（如 `count(()-[:PURCHASED]->())`）以及带单端标签的关系数（如 `count((:User)-[:PURCHASED]->())`）。配合索引采样的属性唯一值分布，优化器为每个谓词计算选择率因子 $s \in [0, 1]$，并按乘法估算算子输出基数：
@@ -272,7 +272,7 @@ RETURN u.id
 3. **三大核心图扩展算子的精妙分工**：
    在生成的逻辑计划树中，最常出现也最体现图数据库特色的三个算子是：
    - **`Expand(All)`**：已知一端节点 $a$，顺着关系链表找出另一端尚未绑定的所有邻居节点 $b$（代价正比于 $a$ 的局部度数）；
-   - **`Expand(Into)`**：当一条关系的两端节点 $a$ 和 $b$ **都已经**在前面的步骤中被绑定好了（例如形成三角形闭环，或者两头都通过高选择率索引定位好了），引擎省去了全量扫出 $a$ 和 $b$ 所有邻居再做笛卡尔积的笨办法，直接调用 `Expand(Into)`——自动挑选 $a$ 和 $b$ 中**度数较小**（尤其是把非密集节点优先于密集节点）的那一端，顺着它的关系链快速探测是否存在直接连向另一端的边！
+   - **`Expand(Into)`**：当一条关系的两端节点 $a$ 和 $b$ **都已经**在前面的步骤中被绑定好了（例如形成三角形闭环，或者两头都通过高选择率索引定位好了），引擎省去了全量扫出 $a$ 和 $b$ 所有邻居再做笛卡尔积的笨办法，直接调用 `Expand(Into)`——自动挑选 $a$ 和 $b$ 中**度数较小**（尤其是把非密集节点优先于密集节点）的那一端，顺着它的关系链快速探测是否存在直接连向另一端的边。
    - **`NodeHashJoin`**：当左右两套独立子模式各自都很庞大、但通过某个公共连接节点汇合时，先为左子树构建内存哈希表，再流式探测右子树，用空间换时间打破深层嵌套循环。
 
 ### 3.3 `Slotted Runtime` 内存槽位布局与 `PROFILE` 慢查询解剖刀
@@ -281,7 +281,7 @@ RETURN u.id
 
 为此，社区版默认搭载的 **[`Slotted Runtime`](https://github.com/neo4j/neo4j/tree/eccd584a64d468af3daeab421478fe78567c518f/community/cypher/slotted-runtime)** 做了一次极其硬核的内存布局优化：
 - 在编译期，规划器遍历整棵逻辑计划树，统计出现过的所有变量，并为它们在一条紧凑的**双数组槽位行**（Slotted Row）中分配静态数组下标：
-  - **`long[] longSlots`**：直接用原生 64 位 `long` 存放所有节点 ID、关系 ID 及布尔标记，**彻底做到零装箱**（Zero Boxing）！
+  - **`long[] longSlots`**：直接用原生 64 位 `long` 存放所有节点 ID、关系 ID 及布尔标记，**彻底做到零装箱**（Zero Boxing）。
   - **`AnyValue[] refSlots`**：存放读取上来的字符串、数组、路径或复合属性对象引用。
 - 在运行期，算子之间直接传递固定大小的 `longSlots` 偏移游标，只有当算子真正需要读取某个节点的属性值（如 `u.name`）时，才拿着 `longSlots[offset]` 里的节点 ID 去调用内核存储游标按需延迟加载（Lazy Property Loading）。而在企业版的 **Pipelined Runtime** 中，更进一步把相邻算子融合进同一个循环管线，按固定大小的 **Morsel 数据块**（如一批 1024 行槽位数组）在 CPU L1/L2 Cache 内批量流转，并支持只读查询的多核并行分片执行（Parallel Runtime）。
 
@@ -297,7 +297,7 @@ RETURN u.id
 
 ---
 
-## 4. 核心设计哲学三：定长记录算术寻址、双向关系链表与堆外页缓存
+## 4. 定长记录算术寻址、双向关系链表与堆外页缓存
 
 现在我们潜入 Neo4j 最让人着迷的深水区：打开 [`community/record-storage-engine`](https://github.com/neo4j/neo4j/tree/eccd584a64d468af3daeab421478fe78567c518f/community/record-storage-engine)，看看免索引邻接在磁盘字节层面到底是怎么长出来的。
 
@@ -307,7 +307,7 @@ RETURN u.id
 
 一个极具启发性的设计问题是：**一个节点可能挂着 0 个属性，也可能挂着 50 个属性、甚至一段 10KB 的长文本，怎样才能让节点和关系的查找达到 $O(1)$ 数组级的速度？**
 
-Neo4j 的答案是：**彻底实行“拓扑骨架与变长属性分离”，把拓扑骨架强制塞进严格定长的二进制记录槽位里**！
+Neo4j 的答案是：**彻底实行“拓扑骨架与变长属性分离”，把拓扑骨架强制塞进严格定长的二进制记录槽位里**。
 
 ```text
 neostore.nodestore.db (定长 15 Bytes/条, aligned 格式按页对齐)
@@ -340,31 +340,31 @@ neostore.nodestore.db (定长 15 Bytes/条, aligned 格式按页对齐)
    $$
    \operatorname{offset}(id)=\operatorname{headerSize}+id\cdot\operatorname{recordSize}.
    $$
-   这意味着，只要拿到了 ID `10086`，CPU 算一次乘法加一次加法，就知道它躺在文件的第几个 Page 的第几个字节上！
+   这意味着，只要拿到了 ID `10086`，CPU 算一次乘法加一次加法，就知道它躺在文件的第几个 Page 的第几个字节上。
 2. **节点记录**（Node Record）怎么设计的？
    每个节点记录极其苗条：只存 1 个 `inUse` 标志位、指向该节点**第一条关联关系**的指针 `nextRelId`、指向该节点**第一个属性记录**的指针 `nextPropId`，以及 5 字节的 `labels` 字段（如果一个节点的标签少于等于 4 个，标签 Token ID 直接内联编码在这 5 个字节里，连外部表都不用查；只有标签极多时才指向 Dynamic Label Store）。
 3. **关系记录**（Relationship Record）为什么存了两条双向链表？
-   这是 `RecordStorageEngine` 最核心的工程设计！一条有向关系 $r$ 连接源节点 `firstNode`（设 ID 为 $u$）和目标节点 `secondNode`（设 ID 为 $v$）。因为这条关系 $r$ 既是节点 $u$ 的出边，又是节点 $v$ 的入边，为了做到“存一份关系记录，同时支持从 $u$ 出发遍历和从 $v$ 出发遍历”，每条关系记录内部同时内嵌了**两套独立的双向链表指针**：
+   这是 `RecordStorageEngine` 最核心的工程设计。一条有向关系 $r$ 连接源节点 `firstNode`（设 ID 为 $u$）和目标节点 `secondNode`（设 ID 为 $v$）。因为这条关系 $r$ 既是节点 $u$ 的出边，又是节点 $v$ 的入边，为了做到“存一份关系记录，同时支持从 $u$ 出发遍历和从 $v$ 出发遍历”，每条关系记录内部同时内嵌了**两套独立的双向链表指针**：
    - `firstPrevRelId` 与 `firstNextRelId`：将所有以 $u$ 为端点的关系串成属于 $u$ 的双向链表；
-   - `secondPrevRelId` 与 `secondNextRelId`：将所有以 $v$ 为端点的关系串成属于 $v$ 的双向链表！
-   因此，当你从节点 $u$ 出发寻找它的所有邻居时，先读 $u$ 的 `nextRelId` 拿到第一条关系 $r_1$，然后判断 $u$ 在 $r_1$ 里是 `firstNode` 还是 `secondNode`——如果是 `firstNode`，下一跳就顺着 `firstNextRelId` 走；如果是 `secondNode`，下一跳就顺着 `secondNextRelId` 走！相比单向链表，双向链表的核心优势在于：当你要删除中间某条关系 $r_k$ 时，可以在 $O(1)$ 时间内直接修改前后邻居 $r_{k-1}$ 和 $r_{k+1}$ 的指针完成摘除，无需从头遍历整条关系链。
+   - `secondPrevRelId` 与 `secondNextRelId`：将所有以 $v$ 为端点的关系串成属于 $v$ 的双向链表。
+   因此，当你从节点 $u$ 出发寻找它的所有邻居时，先读 $u$ 的 `nextRelId` 拿到第一条关系 $r_1$，然后判断 $u$ 在 $r_1$ 里是 `firstNode` 还是 `secondNode`——如果是 `firstNode`，下一跳就顺着 `firstNextRelId` 走；如果是 `secondNode`，下一跳就顺着 `secondNextRelId` 走。相比单向链表，双向链表的核心优势在于：当你要删除中间某条关系 $r_k$ 时，可以在 $O(1)$ 时间内直接修改前后邻居 $r_{k-1}$ 和 $r_{k+1}$ 的指针完成摘除，无需从头遍历整条关系链。
 4. **属性记录**（Property Record）与**内联短值优化**：
    当查询真正需要读取属性时，才顺着节点或关系的 `nextPropId` 跳进 `PropertyStore`。每条属性记录（41 字节）内部包含 4 个 8 字节的 `PropertyBlock`。如果是布尔值、整数、浮点数、日期时间，甚至是较短的 UTF-8 字符串或短小数组，引擎会通过紧凑位编码**直接内联存放在这 4 个 8 字节块中**，一次页读取就能拿出多达 4 个属性；只有超长文本或大数组才会将指针指向外部的 `DynamicStringStore` 或 `DynamicArrayStore`。
 
 ### 4.2 密集节点（Dense Node）与 `RelationshipGroupStore`：如何拆解超级节点的长链？
 
 顺着上面的链表设计往深处想，你一定会发现一个致命的极端情况（Edge Case）：
-假设节点 $u$ 是一个拥有 **100,000 条 `:FOLLOWS` 粉丝边**、但只有 **2 条 `:WORKED_AT` 雇主边**的大 V 用户。如果这 100,002 条边全都混在上面那条单一的双向链表里，当查询问出 `MATCH (u)-[:WORKED_AT]->(company)` 时，存储游标岂不是要在链表上苦苦遍历十万条毫不相干的 `:FOLLOWS` 边，才能找到那 2 条 `:WORKED_AT` 边？！
+假设节点 $u$ 是一个拥有 **100,000 条 `:FOLLOWS` 粉丝边**、但只有 **2 条 `:WORKED_AT` 雇主边**的大 V 用户。如果这 100,002 条边全都混在上面那条单一的双向链表里，当查询问出 `MATCH (u)-[:WORKED_AT]->(company)` 时，存储游标岂不是要在链表上苦苦遍历十万条毫不相干的 `:FOLLOWS` 边，才能找到那 2 条 `:WORKED_AT` 边？。
 
 为了解决这个痛点，`RecordStorageEngine` 引入了**密集节点自动分桶机制**（Dense Node）：
 - 当一个节点关联的边数量少于阈值（默认配置 `db.relationship_grouping_threshold = 50`）时，它是普通稀疏节点，`nextRelId` 直接指向单条合并的关系双向链表，节省空间；
-- 一旦该节点的度数突破 50 条边，内核会自动将节点的 `dense` 标志位置为 `1`，此时节点的 `nextRelId` 转为指向 **`RelationshipGroupStore`**（关系组存储文件）中的第一个分组记录！
+- 一旦该节点的度数突破 50 条边，内核会自动将节点的 `dense` 标志位置为 `1`，此时节点的 `nextRelId` 转为指向 **`RelationshipGroupStore`**（关系组存储文件）中的第一个分组记录。
 - 在 `RelationshipGroupStore` 中，内核将该节点的所有关联边按照**关系类型**（`type`）进行分组，并在每个分组记录内部进一步拆出三个独立的链表头指针：
   - `firstOut`（该类型下的所有出边链表头）
   - `firstIn`（该类型下的所有入边链表头）
   - `firstLoop`（该类型下自环边链表头）
 
-这样一来，哪怕大 V 节点挂了十万条 `:FOLLOWS` 入边，当我们查询他的 `:WORKED_AT` 出边时，游标只需在寥寥几个 `RelationshipGroupRecord` 中找到 `type = WORKED_AT` 的分组头，顺着 `firstOut` 指针一跳就能直接拿到那 2 条目标边，把十万次无效遍历瞬间降为 2 次！
+这样一来，哪怕大 V 节点挂了十万条 `:FOLLOWS` 入边，当我们查询他的 `:WORKED_AT` 出边时，游标只需在寥寥几个 `RelationshipGroupRecord` 中找到 `type = WORKED_AT` 的分组头，顺着 `firstOut` 指针一跳就能直接拿到那 2 条目标边，把十万次无效遍历瞬间降为 2 次。
 
 ### 4.3 `MuninnPageCache`：为什么不用 OS `mmap`，而要手写堆外乐观锁页缓存？
 
@@ -382,19 +382,19 @@ neostore.nodestore.db (定长 15 Bytes/条, aligned 格式按页对齐)
        readRecord(cursor, record);
    } while (cursor.shouldRetry());
    ```
-   当写线程修改页面时，会递增页面头部的奇偶版本号；读线程在读取那 15 或 34 字节的前后完全不加阻塞锁，只通过 `cursor.shouldRetry()` 检查读取期间该页面版本号是否发生了并发写入变化或页面驱逐——如果没有变化（99.99% 的情况），直接零锁开销拿走数据；如果恰好撞上并发写导致读到了撕裂字节（Torn Read），只需在原地立刻重读一次该记录即可！配合 Clock-Sweep 页面替换算法，若记页缓存命中次数为 $H$、缺页中断（Page Fault）次数为 $M$，系统的有效访问速度直接取决于页缓存命中率：
+   当写线程修改页面时，会递增页面头部的奇偶版本号；读线程在读取那 15 或 34 字节的前后完全不加阻塞锁，只通过 `cursor.shouldRetry()` 检查读取期间该页面版本号是否发生了并发写入变化或页面驱逐——如果没有变化（99.99% 的情况），直接零锁开销拿走数据；如果恰好撞上并发写导致读到了撕裂字节（Torn Read），只需在原地立刻重读一次该记录即可。配合 Clock-Sweep 页面替换算法，若记页缓存命中次数为 $H$、缺页中断（Page Fault）次数为 $M$，系统的有效访问速度直接取决于页缓存命中率：
    $$
    \operatorname{hitRatio}=\frac{H}{H+M}.
    $$
 
 ---
 
-## 5. 核心设计哲学四：事务叠加视图、WAL 预写日志、GB+Tree 与混合索引
+## 5. 事务叠加视图、WAL 预写日志、GB+Tree 与混合索引
 
 ### 5.1 `KernelTransactionImplementation`：一条边的增删如何保证 ACID 与死锁自愈？
 
 在图数据库里，写事务的并发控制比关系型数据库微妙得多。思考一个最简单的写操作：`CREATE (a)-[:KNOWS]->(b)`。
-在物理存储上，它绝不单单是在 `RelationshipStore` 末尾追加一条新记录——它还必须修改节点 `a` 的 `nextRelId`（或将新关系插入 `a` 的关系组链表头部并修改原头关系的 `prevRelId`），同时修改节点 `b` 的关系链表指针！
+在物理存储上，它绝不单单是在 `RelationshipStore` 末尾追加一条新记录——它还必须修改节点 `a` 的 `nextRelId`（或将新关系插入 `a` 的关系组链表头部并修改原头关系的 `prevRelId`），同时修改节点 `b` 的关系链表指针。
 
 在 [`KernelTransactionImplementation.java`](https://github.com/neo4j/neo4j/blob/eccd584a64d468af3daeab421478fe78567c518f/community/kernel/src/main/java/org/neo4j/kernel/impl/api/KernelTransactionImplementation.java) 中，一次读写事务是如何安全走完一生的？
 
@@ -411,7 +411,7 @@ neostore.nodestore.db (定长 15 Bytes/条, aligned 格式按页对齐)
 
 这里有三个必须吃透的内核细节：
 1. **为什么未提交的修改要先存在堆内存 `TransactionState` 里，等 `COMMIT` 时才写进 `MuninnPageCache`？**
-   这叫**延迟物化**（Deferred Materialization / Steal-No-Force 的变体）。如果在事务刚写到一半时就直接去改共享的 `MuninnPageCache` 内存页，一旦事务中途报错执行 `ROLLBACK`，还得在并发环境下把双向链表指针一个个逆向恢复回去；而把未提交增量隔离在事务私有的 `TransactionState` 中，不仅让其他并发读事务天然只能看到已提交状态（Read Committed 隔离级别），而且万一事务回滚，只需直接丢弃内存中的 `TransactionState` 对象并释放锁，回滚开销几乎为零！
+   这叫**延迟物化**（Deferred Materialization / Steal-No-Force 的变体）。如果在事务刚写到一半时就直接去改共享的 `MuninnPageCache` 内存页，一旦事务中途报错执行 `ROLLBACK`，还得在并发环境下把双向链表指针一个个逆向恢复回去；而把未提交增量隔离在事务私有的 `TransactionState` 中，不仅让其他并发读事务天然只能看到已提交状态（Read Committed 隔离级别），而且万一事务回滚，只需直接丢弃内存中的 `TransactionState` 对象并释放锁，回滚开销几乎为零。
 2. **并发给同一个节点加边为什么会锁竞争甚至死锁？**
    因为给节点 `a` 和 `b` 之间增删一条关系，必须修改 `a` 和 `b` 的关系链表头指针，所以内核必须对端点 `a` 和 `b` 加排他锁（针对密集节点的并发加边，内核做了锁粒度细化优化，但在普通节点或属性更新时仍需锁住端点）。如果事务 $T_1$ 先锁住了节点 `a`、再去请求节点 `b` 的锁，而同一时刻事务 $T_2$ 先锁住了节点 `b`、再去请求节点 `a` 的锁，就会形成等待环路（Deadlock）。此时 Neo4j 内置的锁管理器（Forseti Lock Manager）会立即检测到环路，主动挑选其中一个事务抛出瞬态死锁异常（`DeadlockDetectedException`，标记为 `TransientError`），由官方客户端驱动捕获后通过事务函数（`session.executeWrite(...)`）自动带指数退避重试。
 
@@ -419,7 +419,7 @@ neostore.nodestore.db (定长 15 Bytes/条, aligned 格式按页对齐)
 
 为什么事务提交时不直接把修改后的 `NodeStore`、`RelationshipStore` 8 KiB 内存页刷回磁盘，而要先调 [`TransactionLogWriter.java`](https://github.com/neo4j/neo4j/blob/eccd584a64d468af3daeab421478fe78567c518f/community/kernel/src/main/java/org/neo4j/kernel/impl/transaction/log/TransactionLogWriter.java) 写事务日志？
 
-因为一次写事务可能改动了散落在几十个不同文件位置的节点、关系和属性页，随机刷写几十个 8 KiB 数据页需要几十次随机磁盘 I/O；而把本次事务生成的物理存储命令（`StorageCommand`，内部同时记录了修改前的 `before` 镜像与修改后的 `after` 镜像）打包成一条连续字节流，顺序追加到事务日志文件末尾并执行一次 `fsync`（或批量 Group Commit），只需要一次顺序磁盘 I/O！
+因为一次写事务可能改动了散落在几十个不同文件位置的节点、关系和属性页，随机刷写几十个 8 KiB 数据页需要几十次随机磁盘 I/O；而把本次事务生成的物理存储命令（`StorageCommand`，内部同时记录了修改前的 `before` 镜像与修改后的 `after` 镜像）打包成一条连续字节流，顺序追加到事务日志文件末尾并执行一次 `fsync`（或批量 Group Commit），只需要一次顺序磁盘 I/O。
 
 这严格遵循数据库内核的 **Write-Ahead Logging 铁律**（WAL）——描述事务修改的日志记录，必须先于被该事务污染的数据页落盘之前到达持久化存储：
 
@@ -450,15 +450,15 @@ $$
 
 1. **为什么 Neo4j 的原生 B+Tree 叫** [`GBPTree`](https://github.com/neo4j/neo4j/blob/eccd584a64d468af3daeab421478fe78567c518f/community/index/src/main/java/org/neo4j/index/internal/gbptree/GBPTree.java)（Generation-Aware B+Tree）？
    在传统数据库中，B+Tree 发生节点分裂（Split）或合并（Merge）时，必须写极其复杂的物理/逻辑混合 WAL（ARIES 协议中的 Nested Top Actions），否则崩溃重启时树指针断成两截就无法恢复。
-   Neo4j 团队在 `community/index` 中独创了**带世代双指针的 `GBPTree`**：每个 Checkpoint 周期对应一个递增的**世代号**（Generation），将上一轮已经安全落盘的旧世代记为 `stable generation`，当前正在内存中修改的新世代记为 `unstable generation`。树节点内部的每一个逻辑指针（如父指子、左指右兄弟）在物理上都占据**两个槽位**（Slot A 与 Slot B），分别附带各自的世代号与校验和！
-   当新事务修改树结构或触发节点分裂时，严禁原地覆盖属于 `stable generation` 的旧页面和旧指针槽位，转而从空闲列表分配新页面，并把新指针写入另一个 `unstable` 槽位（本质上是**细粒度到指针槽位级的 Copy-on-Write**）。这样一来，万一在两个 Checkpoint 之间发生断电崩溃，重启后的 `GBPTree` 只要忽略所有世代号大于最近一次成功 Checkpoint 的 `unstable` 指针槽位，整棵树瞬间原地回退到上一次 Checkpoint 时的 100% 一致状态，然后再重放 $(t_c, t_d]$ 窗口内的逻辑索引更新即可！
+   Neo4j 团队在 `community/index` 中独创了**带世代双指针的 `GBPTree`**：每个 Checkpoint 周期对应一个递增的**世代号**（Generation），将上一轮已经安全落盘的旧世代记为 `stable generation`，当前正在内存中修改的新世代记为 `unstable generation`。树节点内部的每一个逻辑指针（如父指子、左指右兄弟）在物理上都占据**两个槽位**（Slot A 与 Slot B），分别附带各自的世代号与校验和。
+   当新事务修改树结构或触发节点分裂时，严禁原地覆盖属于 `stable generation` 的旧页面和旧指针槽位，转而从空闲列表分配新页面，并把新指针写入另一个 `unstable` 槽位（本质上是**细粒度到指针槽位级的 Copy-on-Write**）。这样一来，万一在两个 Checkpoint 之间发生断电崩溃，重启后的 `GBPTree` 只要忽略所有世代号大于最近一次成功 Checkpoint 的 `unstable` 指针槽位，整棵树瞬间原地回退到上一次 Checkpoint 时的 100% 一致状态，然后再重放 $(t_c, t_d]$ 窗口内的逻辑索引更新即可。
 2. **BM25 全文检索与 `vector-2026.06` HNSW 向量检索如何赋能 GraphRAG？**
    在构建像前两篇精读的 **OpenSPG KAG** 或 **Graphiti / Zep** 这样的知识图谱系统时，每次实体消歧和混合检索都需要同时调用全文 BM25 与向量余弦相似度：
    $$
    \operatorname{score}_{\mathrm{BM25}}(D,Q)=\sum_{q\in Q}\operatorname{IDF}(q)\frac{f(q,D)(k_1+1)}{f(q,D)+k_1\left(1-b+b\frac{|D|}{\operatorname{avgdl}}\right)},\qquad
    \operatorname{cos}(x,y)=\frac{x\cdot y}{\|x\|_2\|y\|_2}.
    $$
-   过去开发者不得不额外部署一套 Elasticsearch 或 Milvus，再写繁琐的双写同步代码把外部向量库的 ID 跟 Neo4j 里的节点 ID 对齐。而在 Neo4j `2026.06` 中，`community/lucene-index` 直接把 Lucene `10.4.0` 的倒排索引与 HNSW 向量图深度集成进了内核事务生命周期——最新的 `vector-2026.06` provider 不仅支持在创建向量索引时开启整型量化压缩与标量属性联合索引，还允许在 Cypher 25 中直接使用声明式的 **`SEARCH` 子句**（取代了早期笨重的 `CALL db.index.vector.queryNodes` 存储过程），在一个查询计划内无缝完成“向量 ANN 找锚点 + 标量预过滤 + 免索引邻接多跳扩展”！
+   过去开发者不得不额外部署一套 Elasticsearch 或 Milvus，再写繁琐的双写同步代码把外部向量库的 ID 跟 Neo4j 里的节点 ID 对齐。而在 Neo4j `2026.06` 中，`community/lucene-index` 直接把 Lucene `10.4.0` 的倒排索引与 HNSW 向量图深度集成进了内核事务生命周期——最新的 `vector-2026.06` provider 不仅支持在创建向量索引时开启整型量化压缩与标量属性联合索引，还允许在 Cypher 25 中直接使用声明式的 **`SEARCH` 子句**（取代了早期笨重的 `CALL db.index.vector.queryNodes` 存储过程），在一个查询计划内无缝完成“向量 ANN 找锚点 + 标量预过滤 + 免索引邻接多跳扩展”。
 
 ---
 
@@ -473,7 +473,7 @@ $$
 ![Neo4j Enterprise follower and writer routing](/images/blog/neo4j-graph-database-cypher-storage-engine/neo4j-doc-fig06-enterprise-follower-writer-routing.webp)
 
 看上方两张官方集群拓扑图：
-- **Raft 共识复制的是什么？** 集群中的 Primary（Leader / Follower）节点之间通过 Raft 共识协议复制的，正是我们在第 5 节剖析过的**由 `StorageCommand` 组成的事务日志流**（Transaction Representation）！写事务全部由驱动路由到当前数据库的单一 Writer（Leader）节点执行锁校验与命令生成，一旦日志条目在 Raft 多数派节点落盘即完成提交；而 Secondary（Read Replica）节点则异步拉取事务日志流重放，用于水平扩展大规模只读图查询。
+- **Raft 共识复制的是什么？** 集群中的 Primary（Leader / Follower）节点之间通过 Raft 共识协议复制的，正是我们在第 5 节剖析过的**由 `StorageCommand` 组成的事务日志流**（Transaction Representation）。写事务全部由驱动路由到当前数据库的单一 Writer（Leader）节点执行锁校验与命令生成，一旦日志条目在 Raft 多数派节点落盘即完成提交；而 Secondary（Read Replica）节点则异步拉取事务日志流重放，用于水平扩展大规模只读图查询。
 - **读写分离下怎么保证“刚创建的节点，下一毫秒在从库一定能查到”？**
   如果用户刚在 Writer 节点提交了一条写事务 `CREATE (u:User {id: 'u1'})`，紧接着发起一次读请求被路由到了稍微落后的 Follower 节点，直接读取就会出现“刚注册完却查不到自己”的尴尬。为此，Neo4j 设计了极轻量却极其可靠的**因果书签**（Causal Chaining Bookmarks）：
   每次写事务在 Writer 上成功提交后，服务端都会随响应返回该事务对应的单调递增**事务日志位置 ID**（Bookmark）；当客户端驱动使用同一个 Session（或显式传递该 Bookmark）向任意 Follower 发起后续读请求时，会在 Bolt `BEGIN` 消息中顺带把这枚 Bookmark 传过去。目标 Follower 收到请求后，会检查本地已重放的最新事务 ID 是否已经大于等于该 Bookmark——如果还差两条日志没追上，Follower 会自动在本地等待几毫秒直到该事务日志重放完毕后再打开读快照，从而在不牺牲读扩展性的前提下实现了严格的**因果一致性**（Causal Consistency）。
@@ -499,7 +499,7 @@ SET i.title = $title, i.embedding = $embedding
 MERGE (u)-[r:INTERACTED]->(i)
 SET r.weight = $weight, r.updatedAt = datetime()
 ```
-为什么要严禁写出 `MERGE (u:User {id: $userId, tier: $tier})`？因为 `MERGE` 的语义是“全图匹配括号里的所有属性，只要有一个属性对不上就尝试 `CREATE` 一个全新的节点”！一旦用户的 `tier` 从 `'SILVER'` 升到了 `'GOLD'`，把可变属性塞进 `MERGE` 会导致引擎判定找不到匹配的旧节点，转而尝试新建一个相同 `id` 的节点，当场触发唯一约束冲突报错！
+为什么要严禁写出 `MERGE (u:User {id: $userId, tier: $tier})`？因为 `MERGE` 的语义是“全图匹配括号里的所有属性，只要有一个属性对不上就尝试 `CREATE` 一个全新的节点”。一旦用户的 `tier` 从 `'SILVER'` 升到了 `'GOLD'`，把可变属性塞进 `MERGE` 会导致引擎判定找不到匹配的旧节点，转而尝试新建一个相同 `id` 的节点，当场触发唯一约束冲突报错。
 
 **第二招：跨系统事务一致性——用事务内 `:OutboxEvent` 节点消灭分布式双写不一致**。
 当业务既要在 Neo4j 里扣减额度创建订单关系，又要发 Kafka 消息通知下游时，切忌在数据库事务闭包里直接调外部网络接口（不仅拉长锁持有时间引发死锁雪崩，而且一旦网络超时回滚会导致两边状态劈叉）。最稳妥的做法是利用 `KernelTransaction` 的原子性，在同一个事务里顺手写一个 `:OutboxEvent` 节点，并且**所有幂等 UUID 必须在客户端重试闭包之外预先生成**（如 `$orderId`、`$eventId`）：
@@ -521,10 +521,10 @@ CREATE (:OutboxEvent {
 在此基础上，我们将日常图数据库慢查询治理浓缩为**六条可直接落地的工程铁律**：
 1. **给一切可变长路径戴上跳数紧箍咒**：单步指针跳转虽是 $O(1)$，但 $d$ 跳状态数是 $\prod_{i=1}^d b_i$。线上 OLTP 查询严禁出现无上界的 `[:REL*]`，必须显式限制如 `[:REL*1..4]`，且尽量使用 Cypher 25 的量化路径模式在每一跳内部立刻过滤掉不合规节点。
 2. **善用 `WITH` 提前拍扁聚合基数**：当需要同时统计同一实体的多个一对多维度（如既统计发帖数、又统计粉丝数）时，每走完一个维度必须立刻用 `WITH u, count(x) AS cnt` 把行数拍回单行，或改用 `COUNT { (u)-[:FOLLOWS]->() }` 标量子查询，严防中间表发生隐式笛卡尔积。
-3. **利用密集节点的“类型 + 方向”分组红利**：我们在 4.2 节看到，度数超过 50 的密集节点会在 `RelationshipGroupStore` 中按**关系类型 + 方向**建立子链表头。因此，线上查询在经过高频节点时，**务必在箭头上显式写明具体的关系类型和方向**（如 `-[:PURCHASED]->`），避免写无类型无方向的 `--`，否则存储引擎不得不把该节点下的所有关系组链表挨个扫一遍！
+3. **利用密集节点的“类型 + 方向”分组红利**：我们在 4.2 节看到，度数超过 50 的密集节点会在 `RelationshipGroupStore` 中按**关系类型 + 方向**建立子链表头。因此，线上查询在经过高频节点时，**务必在箭头上显式写明具体的关系类型和方向**（如 `-[:PURCHASED]->`），避免写无类型无方向的 `--`，否则存储引擎不得不把该节点下的所有关系组链表挨个扫一遍。
 4. **把高频过滤属性下沉或拆分为“分桶节点”**（Bucket Nodes）：如果一个超级节点挂了 100 万条 `[:LOGGED_IN]` 边，每次查询都要找“2026 年 7 月 20 日当天的登录记录”，由于关系链表本身不按属性排序，哪怕指定了关系类型也要扫遍 100 万条边的 `PropertyStore`。此时把日期拆成中间分桶节点 `(:User)-[:LOGGED_ON]->(:Day {date: '2026-07-20'})-[:AT_DEVICE]->(:Device)`，或者把核心维度编码进细粒度关系类型（如 `:LOGGED_IN_2026_07`），就能直接借助 `RelationshipGroupStore` 或 `Expand(Into)` 把百万次扫描降为常数级。
 5. **警惕 `LIMIT` 前面的全局 `ORDER BY` / `DISTINCT`**：`MATCH ... RETURN n ORDER BY n.score DESC LIMIT 10` 如果没有命中有序 Range Index，引擎必须先把全量百万个候选节点的 `score` 属性从 `PropertyStore` 读出来完成全局排序，最后才截断前 10 条。
-6. **守住堆外 `MuninnPageCache` 与 JVM Heap 的黄金内存配比**：千万不要把机器 90% 的内存都分给 JVM Heap！对于图遍历密集型负载，应确保 `server.memory.pagecache.size` 足以容纳整张热图的 `nodestore`、`relationshipstore` 与核心 `GBPTree` 索引文件，让 99% 以上的指针跳转全部命中堆外内存页。
+6. **守住堆外 `MuninnPageCache` 与 JVM Heap 的黄金内存配比**：千万不要把机器 90% 的内存都分给 JVM Heap。对于图遍历密集型负载，应确保 `server.memory.pagecache.size` 足以容纳整张热图的 `nodestore`、`relationshipstore` 与核心 `GBPTree` 索引文件，让 99% 以上的指针跳转全部命中堆外内存页。
 
 ### 6.3 知识图谱与 AI 智能体技术栈的三层合龙
 

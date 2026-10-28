@@ -70,7 +70,7 @@ metadata   graph      objects
 
 ---
 
-## 2. 核心设计哲学一：LLMFriSPG 与三层知识-文本互索引
+## 2. LLMFriSPG 与三层知识-文本互索引
 
 ### 2.1 为什么刚性 Schema 与纯开放抽取都走不通？
 
@@ -99,7 +99,7 @@ $$
 1. **专家预定义静态属性** $p_t^c$（Schema-Constrained）：由领域专家事先声明的强约束业务字段（例如药品的标准批准文号、适应症、禁忌人群，或政务事项的法定办理时限），支撑高精度过滤与 DSL 规则推理。
 2. **运行时动态属性** $p_t^f$（Schema-Free）：在文档抽取阶段由大模型按需补充的开放属性与关系，用于兜底专家未预先枚举的事实细节。
 3. **系统内建属性** $p_t^b$（System Built-in）：这是让符号图谱变得“对 LLM 友好”的关键桥梁，强制每个实例节点和关系边维护四项核心元数据：
-   - `supporting_chunks`：指向产出该实例或关系的原始文本块 ID 列表，构成从图回溯原文的铁证；
+   - `supporting_chunks`：指向产出该实例或关系的原始文本块 ID 列表，构成从图谱回溯原文的证据链；
    - `description`：挂在类型定义上时解释该类型的全局领域含义；挂在具体实例上时，则结合当前文档上下文生成针对性描述，避免同名异义实体在向量空间里挤成一团；
    - `summary`：实例或关系在所属文档段落中的核心事实摘要；
    - `belongTo`：将具体文档里的实例节点归纳连接到概念图中的标准概念节点（例如将具体文本中出现的议会实体 `Chamber` 连接到标准概念 `Legislative Body`）。
@@ -170,7 +170,7 @@ pipeline.invoke(input_data)
 
 ---
 
-## 4. 核心设计哲学二：基于概念图的离线与在线知识对齐
+## 4. 基于概念图的离线与在线知识对齐
 
 ### 4.1 开放图谱的三大错位与六类有向语义关系
 
@@ -205,7 +205,7 @@ pipeline.invoke(input_data)
 
 ---
 
-## 5. 核心设计哲学三：逻辑形式引导的混合推理与多轮反思
+## 5. 逻辑形式引导的混合推理与多轮反思
 
 ![Logical form execution](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig06-logical-form-execution.webp)
 
@@ -274,7 +274,7 @@ Step 4: Output(math1)
 
 ---
 
-## 6. 核心设计哲学四：KAG-Model 底座能力增强与单任务验证
+## 6. KAG-Model 底座能力增强与单任务验证
 
 ![KAG model capabilities](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig07-kag-model-capabilities.webp)
 
@@ -282,7 +282,7 @@ Step 4: Output(math1)
 
 在早期的 NLP 流水线中，命名实体识别、实体链接、关系抽取、问题解析和答案生成往往由五六个不同的小模型分头承担，不仅维护繁琐，而且上游小模型一旦抽错，下游毫无自愈能力。
 
-KAG 的第四条设计哲学是：**把离线 Builder 和在线 Solver 依赖的所有原子任务，统一拆解并收敛到底座大模型的 NLU、NLI、NLG 三大基础能力上**（如上图 Fig. 7 所示）：
+KAG 的第四条设计哲学是：**把离线 Builder 和在线 Solver 依赖的所有原子任务，统一拆解并收敛到底座大模型的 NLU、NLI、NLG 三大基础能力上**（如上图所示）：
 
 - **NLU**（自然语言理解）：支撑离线侧的文档分类、实体提及检测（Mention Detection）、关系与事件抽取，以及在线侧将用户问题编译为 Logical Form；
 - **NLI**（自然语言推断）：支撑离线侧的实体消歧、实例到概念挂载（`belongTo`）、上位概念发现（`isA`），以及在线侧的语义关系匹配与蕴含判断（`Deduce`）；
@@ -300,7 +300,7 @@ KAG 的第四条设计哲学是：**把离线 Builder 和在线 Solver 依赖的
 
 在决定知识对齐质量的 NLI 与概念推理能力上，论文收集了超过 2 万个高质量概念节点与 7 类核心语义关系构建训练集。看上方 Table 4 与 Table 5 的实验结果：
 - 在通用自然语言推断基准（CMNLI、OCNLI、SIQA）上，`KAG-Llama3` 分别拿到 `49.52`、`44.31` 与 `65.81`，相比原生 Llama3（`35.14`、`32.1`、`44.27`）实现了跨越式提升；
-- 更关键的是 Table 5 的 **SemEval2018-Task9 上位概念发现**（Hypernym Discovery）评测：在通用英语（1A English）和音乐（2B Music）子集上，`KAG-Llama3` 的 MRR 达到 `38.26` 和 `30.16`，全面超越 ChatGPT-3.5 与原生 Llama3-8B；而在高度依赖专业术语层级的**医疗子集**（2A Medical）上，`KAG-Llama3` 的 MRR 直接从原生模型的 `24.26` 飙升至 **`55.14`**（翻了一倍有余）！这组数据直接印证了：只要通过领域概念关系数据对基座模型做针对性强化，大模型完全有能力为离线与在线概念对齐提供高精度的 `isA` / `belongTo` 语义桥接。
+- 更关键的是 Table 5 的 **SemEval2018-Task9 上位概念发现**（Hypernym Discovery）评测：在通用英语（1A English）和音乐（2B Music）子集上，`KAG-Llama3` 的 MRR 达到 `38.26` 和 `30.16`，全面超越 ChatGPT-3.5 与原生 Llama3-8B；而在高度依赖专业术语层级的**医疗子集**（2A Medical）上，`KAG-Llama3` 的 MRR 直接从原生模型的 `24.26` 飙升至 **`55.14`**（翻了一倍有余）。这组数据直接印证了：只要通过领域概念关系数据对基座模型做针对性强化，大模型完全有能力为离线与在线概念对齐提供高精度的 `isA` / `belongTo` 语义桥接。
 
 ### 6.3 知识反馈对齐生成与单次前向联合探索
 
@@ -409,10 +409,10 @@ $$
 
 无论是绝对百分点（`+12.5 pp`、`+19.1 pp`、`+12.2 pp`）还是超过 `33%` 的相对增幅，都展现出压倒性的优势。
 
-然而，当我们把目光移到紧挨着的 Table 9（检索召回率表）时，却会发现一个非常反直觉的现象：**在 2WikiMultiHopQA 上，KAG 的支撑段落召回率 Recall@2（`65.4%`）和 Recall@5（`91.9%`），居然比 `IRCoT + HippoRAG`（`75.8% / 93.9%`）还要低！为什么段落召回率更低，最终答案 F1 反而高出了整整 19.1 个百分点？**
+然而，当我们把目光移到紧挨着的 Table 9（检索召回率表）时，却会发现一个非常反直觉的现象：**在 2WikiMultiHopQA 上，KAG 的支撑段落召回率 Recall@2（`65.4%`）和 Recall@5（`91.9%`），居然比 `IRCoT + HippoRAG`（`75.8% / 93.9%`）还要低。为什么段落召回率更低，最终答案 F1 反而高出了整整 19.1 个百分点？**
 
 这恰恰揭示了 KAG 与传统文本 RAG 的本质区别：
-1. **结构化图推理直接短路了原文召回**：2WikiMultiHopQA 中有大量高度规整的实体属性对比与两跳关系问题（例如比较两位导演的出生年份或父母国籍）。KAG 的 `GraphRetrieval` 直接在 $KG_{cs}/KG_{fr}$ 上命中 SPO 三元组并算出了精确子答案，触发了前文 Algorithm 2 的充分性短路机制，**根本不需要再去把原始长文 Chunk 捞出来**！由于 Recall@K 指标只死板统计“是否捞出了标注的原文段落 ID”，KAG 靠图谱直接做对的题在 Recall@K 上反而被记为“未召回段落”。
+1. **结构化图推理直接短路了原文召回**：2WikiMultiHopQA 中有大量高度规整的实体属性对比与两跳关系问题（例如比较两位导演的出生年份或父母国籍）。KAG 的 `GraphRetrieval` 直接在 $KG_{cs}/KG_{fr}$ 上命中 SPO 三元组并算出了精确子答案，触发了前文 Algorithm 2 的充分性短路机制，**根本不需要再去把原始长文 Chunk 捞出来**。由于 Recall@K 指标只死板统计“是否捞出了标注的原文段落 ID”，KAG 靠图谱直接做对的题在 Recall@K 上反而被记为“未召回段落”。
 2. **逻辑形式消除了多文档噪声干扰**：`IRCoT + HippoRAG` 虽然把 93.9% 的相关段落塞进了上下文，但同时也带入了大量同名干扰段落，且靠自然语言 CoT 做年份比较和逻辑交并极易算错；KAG 则用精炼的三元组事实与确定性 `Math`/`Deduce` 算子把证据利用效率推到了极致。
 
 ### 8.2 模块消融、系统耗时成本与图连通性演化
@@ -422,7 +422,7 @@ $$
 ![Retrieval ablation](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-table11-retrieval-ablation.webp)
 
 看 Table 10 与 Table 11 的逐层消融实验，可以清晰看到每个核心模块各自的贡献份额：
-- **知识对齐是图谱能跑通多跳的前提**（`K_Alignment`）：仅做互索引（`M_Indexing + CR_ref3`）时，2Wiki 的 F1 只有 `56.0`；一旦加上离线与在线知识对齐（`K_Alignment + CR_ref3`），F1 瞬间暴涨 **16.5 个百分点** 达到 `72.5`！因为消除了同义实体分裂并补齐了概念层级，原本断头的多跳路径被彻底接通。
+- **知识对齐是图谱能跑通多跳的前提**（`K_Alignment`）：仅做互索引（`M_Indexing + CR_ref3`）时，2Wiki 的 F1 只有 `56.0`；一旦加上离线与在线知识对齐（`K_Alignment + CR_ref3`），F1 瞬间暴涨 **16.5 个百分点** 达到 `72.5`。因为消除了同义实体分裂并补齐了概念层级，原本断头的多跳路径被彻底接通。
 - **逻辑形式求解与混合检索的互补**（`LFS` 与 `LFSH`）：将传统推理（`CR`）升级为纯图谱上的逻辑形式求解（`LFS`），三个数据集继续稳步上涨（注意在 Table 11 中，`LFS_ref1/ref3` 因为完全使用 KG 推理回答子问题、不召回文本块，所以 Chunk Recall 列全部记为 `/`）；在此基础上开启图-文混合回退（`LFSH`），补齐了图谱未覆盖的长尾事实，在三轮反思（`ref3`）下拿下全场最高分。
 
 ![Execution time profiling](/images/blog/openspg-kag-knowledge-augmented-generation/openspg-kag-fig08-execution-time.webp)

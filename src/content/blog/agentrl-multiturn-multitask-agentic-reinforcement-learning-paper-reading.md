@@ -79,7 +79,7 @@ prompt / initial observation
 
 ---
 
-## 2. 核心设计哲学一：双层粒度 MDP 与感知采样组的异步流水线
+## 2. 双层粒度 MDP 与感知采样组的异步流水线
 
 ### 2.1 环境按轮交互、策略按 Token 优化：组合状态 MDP 与 GRPO 基座
 
@@ -133,7 +133,7 @@ $$
 
 ![同步与全异步训练架构对比](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig03-sync-vs-async.webp)
 
-看上图（Fig. 3）对同步架构与 AgentRL 异步架构的对比：
+看上图对同步架构与 AgentRL 异步架构的对比：
 - 在上半图的**同步训练**（Synchronous Training）中，所有 GPU 先集体扮演 Rollout 角色去跑多轮环境交互；由于不同任务、不同样本的交互轮数悬殊，早早跑完的通道只能空转等待最慢的那条轨迹，等整批 2048 条轨迹全部收齐后，所有 GPU 再集体切换成 Training 角色更新参数。时间轴上大片大片的灰色区域全部是白白浪费的算力空泡。
 - 在下半图的 **AgentRL 全异步训练**（Fully-Asynchronous Training）中，GPU 集群被物理切分为常驻的 **Rollout Group** 与 **Training Group**。数百个异步任务协程源源不断地向 Rollout GPU 喂入多轮交互请求，完成的采样组直接流入数据队列；另一边的 Learner GPU 只要从队列里拉够最小批次下限，就立刻开火更新参数并通过高速网络把新权重推回推理端。
 
@@ -145,7 +145,7 @@ NCCL weight stream:                        broadcast latest weights ---->
 
 ![AgentRL 异步训练吞吐与同步基线对比](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig04-throughput.webp)
 
-这种物理切分与流水线解耦究竟能省下多少时间？看上图（Fig. 4）在 `Qwen2.5-14B` 与 WebShop 环境上的实测吞吐曲线（双对数坐标，单位为千 Token/秒）：
+这种物理切分与流水线解耦究竟能省下多少时间？看上图在 `Qwen2.5-14B` 与 WebShop 环境上的实测吞吐曲线（双对数坐标，单位为千 Token/秒）：
 - **16 张 GPU 时**：同步基线吞吐为 `9K tokens/s`，AgentRL 达到 **`17K tokens/s`**（提升 **1.89 倍**）；
 - **32 张 GPU 时**：同步基线为 `16K tokens/s`，AgentRL 达到 **`33K tokens/s`**（提升 **2.06 倍**）；
 - **64 张 GPU 时**：同步基线为 `29K tokens/s`，AgentRL 达到 **`56K tokens/s`**（提升 **1.93 倍**）。
@@ -175,7 +175,7 @@ class Buffer:
 ```
 
 看这段只有十几行的核心代码，设计非常讲究：
-1. **以 `group_id` 为屏障的二级缓冲**：当使用 GRPO（`group_size = 8`）时，`self.strict_group` 为 `True`。每当一条轨迹从环境里跑完调 `add(item)`，它首先被放进暂存字典 `self.groups[group_id]` 里；**只有当同一个 `group_id` 的 8 条兄弟轨迹全部到齐（`len >= 8`）时，这 8 条轨迹才会被一把从 `self.groups` 弹出并追加进真正对 Learner 可见的就绪队列 `self.queue`**！
+1. **以 `group_id` 为屏障的二级缓冲**：当使用 GRPO（`group_size = 8`）时，`self.strict_group` 为 `True`。每当一条轨迹从环境里跑完调 `add(item)`，它首先被放进暂存字典 `self.groups[group_id]` 里；**只有当同一个 `group_id` 的 8 条兄弟轨迹全部到齐（`len >= 8`）时，这 8 条轨迹才会被一把从 `self.groups` 弹出并追加进真正对 Learner 可见的就绪队列 `self.queue`**。
 2. **动态批次拉取与公倍数对齐**：当 Learner 调用 `get(minimum, multiple)` 取数时，Buffer 不仅保证至少取出 `minimum` 条轨迹，还会把当前 `self.queue` 里所有已经攒够的完整组尽可能全部搬走（对齐到 `group_size` 与 FSDP `multiple` 的最小公倍数），从而最大限度清空队列积压、压低数据陈旧度（Staleness）。
 
 也就是说，AgentRL 实现的是 **“跨采样组全异步（Cross-Group Async）+ 组内 8 轨迹聚拢（Intra-Group Sync）”**：不同问题之间谁先凑齐 8 条谁就先插队进训练，彻底消除了“全批次 256 个问题共 2048 条轨迹必须一起等最慢那条”的全局屏障；同时通过在 `self.groups` 字典里等待同组 8 条轨迹到齐，保证了 GRPO 优势公式里的组内均值与标准差永远完整可用。
@@ -184,7 +184,7 @@ class Buffer:
 
 ---
 
-## 3. 核心设计哲学二：统一环境控制面与多轮掩码契约
+## 3. 统一环境控制面与多轮掩码契约
 
 ### 3.1 算力层与沙箱层解耦：中央 Controller 与容器化 TaskWorker
 
@@ -239,11 +239,11 @@ loss_mask += [0] * len(observation_ids)
 log_probs += [0] * len(observation_ids)
 ```
 
-环境观测 Token 的 `loss_mask` 和占位对数概率全部被设为 `0`！这样一来，在拼接而成的完整上下文序列中，模型后续的每一轮动作都能通过自注意力看到前面的所有环境反馈，而在反向传播算 PPO 损失和任务优势归一化时，只有 `loss_mask == 1` 的模型动作 Token 会参与计算。此外，如果交互达到最大轮数（`max_turns = 20`）或最大长度（`max_total_len = 8192`）时会话状态仍未达到正常结束（`completed`），循环会自动给该轨迹打上 `incomplete_punishment = -0.2` 的超时惩罚，逼迫智能体学会在有限步数内干净利落地收尾。
+环境观测 Token 的 `loss_mask` 和占位对数概率全部被设为 `0`。这样一来，在拼接而成的完整上下文序列中，模型后续的每一轮动作都能通过自注意力看到前面的所有环境反馈，而在反向传播算 PPO 损失和任务优势归一化时，只有 `loss_mask == 1` 的模型动作 Token 会参与计算。此外，如果交互达到最大轮数（`max_turns = 20`）或最大长度（`max_total_len = 8192`）时会话状态仍未达到正常结束（`completed`），循环会自动给该轨迹打上 `incomplete_punishment = -0.2` 的超时惩罚，逼迫智能体学会在有限步数内干净利落地收尾。
 
 ---
 
-## 4. 核心设计哲学三：化陈旧为探索——跨策略采样（Cross-Policy Sampling）
+## 4. 化陈旧为探索——跨策略采样（Cross-Policy Sampling）
 
 ### 4.1 为什么多轮自采样会陷入“探索坍缩”？支持集严格扩张的直觉
 
@@ -280,13 +280,13 @@ $$
 \right).
 $$
 
-用大白话讲：让模型 A 走前两步，第 3 步切换成模型 B 触发工具调用，就能拼出一条**无论是模型 A 还是模型 B 单独跑都极难采到的全新成功路径**！一旦这条成功轨迹进了训练池，当前策略就能把这条打通了任督二脉的路径内化成自己的能力。
+直观而言：让模型 A 走前两步，第 3 步切换成模型 B 触发工具调用，就能拼出一条**无论是模型 A 还是模型 B 单独跑都极难采到的全新成功路径**。一旦这条成功轨迹进了训练池，当前策略就能把这条突破局部瓶颈的路径内化成自己的能力。
 
 ### 4.2 轨迹级混合（Mix）与步骤级切换（Cross）的本质差异
 
 ![Single、Mix 与 Cross-Policy 三种采样策略](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig06-rollout-strategies.webp)
 
-看上图（Fig. 6）对三种采样模式的对比，很容易看清为什么很多团队做多模型混合采样效果不佳：
+看上图对三种采样模式的对比，很容易看清为什么很多团队做多模型混合采样效果不佳：
 - **Single**（单策略采样）：每条轨迹从头到尾由单一模型生成，可达范围是 $\operatorname{supp}(\tau^{M_1})$；
 - **Mix**（轨迹级混合）：50% 的完整轨迹由模型 1 从头跑到尾，另外 50% 的完整轨迹由模型 2 从头跑到尾。注意，Mix 的可达成功路径最多只能等于两个模型各自成功集合的简单并集 $\bigcup_{m\in\{1,2\}}(\operatorname{supp}(\tau^m)\cap\mathcal L_{\mathcal G})$——如果一道题必须靠模型 1 的前半程规划加模型 2 的后半程工具调用才能解开，Mix 采一万条也凑不出一条成功样本；
 - **Cross**（步骤级跨策略采样）：在同一条轨迹内部的 Step 1 用 $M_1$、Step 2 切到 $M_2$、Step 3 再切回 $M_1$，真正实现了**单条 Episode 内部的跨策略行为嫁接**。
@@ -295,7 +295,7 @@ $$
 
 理论很丰满，但到了在线强化学习训练时，怎么低成本地构造这个策略池 $\mathcal{M}$？总不能在训练 `Qwen2.5-14B` 的时候，还在旁边额外常驻一个 `Llama` 和一个 `GLM` 陪跑吧？而且异构模型之间的 Tokenizer 和特殊 Token 格式还不兼容。
 
-AgentRL 的工程解法堪称神来之笔：**直接利用强化学习训练自身在时间轴上产生的“历史版本模型”来充当异构策略池！**
+AgentRL 的工程解法颇具巧思：**直接利用强化学习训练自身在时间轴上产生的“历史版本模型”来充当异构策略池。**
 
 回想一下，在 RL 训练过程中，25 步之前的旧模型（Stale Policy）与刚刚更新完的当前模型（Current Policy）虽然共享完全相同的模型架构和 Tokenizer，但它们的动作分布已经发生了分化——当前模型可能已经对某些高频工具形成了强烈偏好（但也可能因此变得狭隘），而 25 步前的旧模型还保留着更早期、更发散的探索倾向。
 
@@ -321,13 +321,13 @@ def cross_sampler(item, **kwargs):
     return rollout_stale.dispatch_rank(...).generate(**kwargs)
 ```
 
-每一次工具调用前，系统掷一枚硬币：以 **75% 的概率** 调实时引擎 `rollout`，以 **25% 的概率** 调滞后至多 25 步的陈旧引擎 `rollout_stale`！
+每一次工具调用前，系统掷一枚硬币：以 **75% 的概率** 调实时引擎 `rollout`，以 **25% 的概率** 调滞后至多 25 步的陈旧引擎 `rollout_stale`。
 
 无论这一步抽中的是实时引擎还是陈旧引擎，生成动作时都会把该引擎真实的 Token 对数概率写进 `rollout_log_prob`。这样既在单条多轮轨迹内部实现了新旧策略的交替探索，又为后续 PPO 损失计算提供了真实的行为策略分母，配合 `clip_ratio = 0.2` 与 `kl_loss_coef = 1e-4` 将离策偏移控制在安全范围内。
 
 ---
 
-## 5. 核心设计哲学四：双层优势归一化与多任务联合训练主链
+## 5. 双层优势归一化与多任务联合训练主链
 
 ### 5.1 为什么有了 GRPO 组内归一化，多任务还是会互相打架？
 
@@ -400,8 +400,8 @@ $$
 ![AgentRL 单任务训练与多任务训练对比](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table04-single-vs-multitask.webp)
 
 比主表更精彩的是上面这张 **“单任务专家 vs. 多任务通才”**（Task-Specific Specialists vs. Multi-Task Generalist）对照表（Table 4，基于 `Qwen2.5-14B`）：
-- **单任务强化学习的灾难性偏科**：看表中前五行，如果你只拿某一个环境的数据去训 RL，模型确实能在该环境上刷出高分，但它在其他四个环境上的能力会遭受毁灭性打击！最典型的是第 5 行 `AgentRL-WS`（只在 WebShop 上训）：它的 WebShop 成功率达到了 `60.3%`，可一旦把它放到 ALFWorld 里，成功率直接从基座的 `8.7%` 跌成了 **`0.0%`**；放到 DB 里也从 `48.4%` 腰斩到 `24.8%`，五任务平均分甚至跌到了 `25.3%`（比不训 RL 的基座 `27.2%` 还低）！原因在于单环境 RL 会让模型把所有的函数调用先验死死绑定到特定网站的按钮格式上，彻底破坏了通用工具协议。
-- **一套权重追平五个专家的组合上限**：如果把五个单任务专家各自最擅长的那一列成绩挑出来拼成一个虚拟的“全明星组合（Best Specialist per Column）”，平均分是 **`67.8%`**（`89.7 / 73.9 / 72.2 / 43.1 / 60.3`）。而底部的单个 **AgentRL 多任务模型**，仅靠一套 14B 权重同时应付五个环境，就拿下了 **`67.7%`** 的平均分（`91.5 / 72.2 / 72.8 / 43.6 / 58.5`）——不仅消除了跨任务遗忘，甚至在 ALFWorld、KG 和 OS 三个环境上反超了专门只训该任务的单科状元！
+- **单任务强化学习的严重偏科效应**：看表中前五行，如果你只拿某一个环境的数据去训 RL，模型确实能在该环境上刷出高分，但它在其他四个环境上的能力会出现显著退化。最典型的是第 5 行 `AgentRL-WS`（只在 WebShop 上训）：它的 WebShop 成功率达到了 `60.3%`，可一旦把它放到 ALFWorld 里，成功率直接从基座的 `8.7%` 跌成了 **`0.0%`**；放到 DB 里也从 `48.4%` 减半至 `24.8%`，五任务平均分甚至跌到了 `25.3%`（比不训 RL 的基座 `27.2%` 还低）。原因在于单环境 RL 会让模型把所有的函数调用先验死死绑定到特定网站的按钮格式上，彻底破坏了通用工具协议。
+- **一套权重追平五个专家的组合上限**：如果把五个单任务专家各自最擅长的那一列成绩挑出来拼成一个虚拟的“全明星组合（Best Specialist per Column）”，平均分是 **`67.8%`**（`89.7 / 73.9 / 72.2 / 43.1 / 60.3`）。而底部的单个 **AgentRL 多任务模型**，仅靠一套 14B 权重同时应付五个环境，就拿下了 **`67.7%`** 的平均分（`91.5 / 72.2 / 72.8 / 43.6 / 58.5`）——不仅消除了跨任务遗忘，甚至在 ALFWorld、KG 和 OS 三个环境上反超了专门只训该任务的单科状元。
 
 ![AgentRL 在 BFCL-v3 上的泛化结果](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table05-bfcl-generalization.webp)
 
@@ -414,19 +414,19 @@ $$
 ![AgentRL Cross-Policy 与任务归一化训练曲线消融](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig07-ablation.webp)
 
 Cross-Policy Sampling 与 Task Advantage Normalization 到底各自贡献了多少功劳？看上面的一表一图（Table 6 与 Fig. 7，在 14B 模型同一阶段快照下对比）：
-1. **去掉跨策略采样**（`w/o cross sampling`）：五任务平均分从 `65.0%` 跌至 `60.7%`（掉了 `4.3` 个百分点），其中多步探索空间最大的 **KG 任务从 `67.7%` 断崖式暴跌至 `55.7%`**（狂掉 `12.0` 个百分点），OS 也掉了 `5.4` 个百分点！对照 Fig. 7(a) 的 KG 训练曲线看得更清楚：不加跨策略采样的紫线虽然前 200 步涨得挺快，但在第 300 步之后就早早撞上天花板躺平了；而带跨策略采样的蓝线则在 300 步之后一路向上突破，证明步骤级策略切换确实帮模型跳出了局部最优。
+1. **去掉跨策略采样**（`w/o cross sampling`）：五任务平均分从 `65.0%` 跌至 `60.7%`（掉了 `4.3` 个百分点），其中多步探索空间最大的 **KG 任务从 `67.7%` 大幅滑落至 `55.7%`**（下降 `12.0` 个百分点），OS 也掉了 `5.4` 个百分点。对照 Fig. 7(a) 的 KG 训练曲线看得更清楚：不加跨策略采样的紫线虽然前 200 步涨得挺快，但在第 300 步之后就过早进入平台期；而带跨策略采样的蓝线则在 300 步之后一路向上突破，证明步骤级策略切换确实帮模型跳出了局部最优。
 2. **去掉任务级优势归一化**（`w/o task advantage norm`）：五任务平均分更是从 `65.0%` 大幅跌落至 **`59.4%`**（掉了 `5.6` 个百分点），KG、OS、WebShop 全面回退；在 Fig. 7(b) 的 ALFWorld 曲线上，去掉任务归一化的橙线不仅爬升极其缓慢，而且全程剧烈震荡。
 
 ![Cross-Policy Sampling 在 WebShop 推理和训练中的效果](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig08-cross-policy-webshop.webp)
 
-为了进一步验证“跨策略步骤级切换能扩大成功支持集”的理论直觉，作者在 Fig. 8(a) 中做了一个纯粹的推理期实验：拿 `Qwen2.5-14B` 和 `Llama-3.1-8B` 两个异构模型在 WebShop 上测 `pass@k`。可以看到，当只采 1～2 次（小 $k$）时，随机切换模型的 Cross-Policy 略逊于单模型表现更好的 Qwen；但随着采样次数 $k$ 增大到 8、16、32，**Cross-Policy 的 `pass@k` 曲线强势反超了两个单模型以及轨迹级混合**（Mix）！这说明当两个模型各自的套路都解不开某道难题时，在步骤间交替切换真的能碰撞出全新的通关路径。Fig. 8(b) 则显示，将这一机制转化为训练期的 Stale Engine 后，WebShop 训练前后的整个 `pass@k` 包络线都得到了显著抬升。
+为了进一步验证“跨策略步骤级切换能扩大成功支持集”的理论直觉，作者在 Fig. 8(a) 中做了一个纯粹的推理期实验：拿 `Qwen2.5-14B` 和 `Llama-3.1-8B` 两个异构模型在 WebShop 上测 `pass@k`。可以看到，当只采 1～2 次（小 $k$）时，随机切换模型的 Cross-Policy 略逊于单模型表现更好的 Qwen；但随着采样次数 $k$ 增大到 8、16、32，**Cross-Policy 的 `pass@k` 曲线强势反超了两个单模型以及轨迹级混合**（Mix）。这说明当两个模型各自的套路都解不开某道难题时，在步骤间交替切换真的能碰撞出全新的通关路径。Fig. 8(b) 则显示，将这一机制转化为训练期的 Stale Engine 后，WebShop 训练前后的整个 `pass@k` 包络线都得到了显著抬升。
 
 ![KG 任务中 GLM、Llama 与 Cross-Policy 的案例](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-fig09-cross-policy-kg-case-study.webp)
 
 上图（Fig. 9）用一个真实的知识图谱（KG）案例，把这种“跨策略接力破局”的过程拍得一清二楚。题目要求查询*“同时包含藏传佛教与道教的宗教实践数量”*：
 - **左边单跑 GLM**：它准确推理出了应该先查两者的实体交集，但在拿到结果后陷入了自我怀疑的重复确认循环，迟迟不按协议调最终提交动作，直到超时失败；
 - **中间单跑 Llama**：它非常痛快地去调工具，却误解了 `count` 工具的参数语义，一上来就传错参数导致连续报错，同样耗尽轮数失败；
-- **右边跑 Cross-Policy**（GLM + Llama 步骤级交替）：前几步由擅长关系规划的 GLM 把关键的实体关系查出来放进上下文；到了容易卡壳的中间步骤，接力棒切给果断调工具的 Llama 打破僵局；最后一步再切回 GLM，根据上下文里已经齐备的证据顺利调对 `count` 并提交正确答案！
+- **右边跑 Cross-Policy**（GLM + Llama 步骤级交替）：前几步由擅长关系规划的 GLM 把关键的实体关系查出来放进上下文；到了容易卡壳的中间步骤，接力棒切给果断调工具的 Llama 打破僵局；最后一步再切回 GLM，根据上下文里已经齐备的证据顺利调对 `count` 并提交正确答案。
 
 ![基础模型与 AgentRL 的主要终止状态对比](/images/blog/agentrl-multiturn-multitask-agentic-reinforcement-learning/agentrl-table07-failure-modes.webp)
 
